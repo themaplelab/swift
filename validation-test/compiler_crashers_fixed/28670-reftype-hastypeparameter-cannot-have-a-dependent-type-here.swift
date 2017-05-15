@@ -8,5 +8,4 @@
 // RUN: not %target-swift-frontend %s -emit-ir
 
 // see https://bugs.swift.org/browse/SR-4894
-// XFAIL: *
 struct A:RangeReplaceableCollection{let c{{a f{}}var f=max
