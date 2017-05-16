@@ -2627,7 +2627,8 @@ extension Double : Codable {
 }
 
 extension String : Codable {}
-extension Substring : Codable {}
+// see https://bugs.swift.org/browse/SR-4911
+// extension Substring : Codable {}
 
 extension StringProtocol where Self : Codable {
     public init(from decoder: Decoder) throws {
