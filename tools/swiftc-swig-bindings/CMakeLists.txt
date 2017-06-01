@@ -18,8 +18,8 @@ swig_add_library(
 
 # For convenience we copy the dynamic library to the current build folder
 add_custom_command(
-    TARGET example 
+    TARGET swiftc 
     POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:example> ${CMAKE_CURRENT_BINARY_DIR}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:swiftc> ${CMAKE_CURRENT_BINARY_DIR}
 )
 
