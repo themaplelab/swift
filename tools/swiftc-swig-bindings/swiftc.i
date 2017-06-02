@@ -1,4 +1,4 @@
-%module example
+%module swiftc
 
 %{
     
@@ -8,7 +8,9 @@
 using namespace llvm;
 using namespace swift;
 
-StringRef make_stringref(const char* str);
+StringRef make_stringref(const char* str) {
+    return StringRef(str);
+}
 
 %}
 
@@ -17,9 +19,7 @@ StringRef make_stringref(const char* str);
 %ignore swift::CompilerInstance::setSILModule(std::unique_ptr<SILModule>);
 %ignore swift::CompilerInstance::takeSILModule();
 
-StringRef make_stringref(const char* str) {
-    return StringRef(str);
-}
+StringRef make_stringref(const char* str);
 
 %include "swift/Frontend/Frontend.h"
 

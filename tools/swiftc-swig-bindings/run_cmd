@@ -1,3 +1,3 @@
 # use this to run the java application
-javac Test.java /Users/noahweninger/swift-source/build/Ninja-DebugAssert/swift-macosx-x86_64/tools/swiftc-swig-bindings/*.java
-java -Djava.library.path="/Users/noahweninger/swift-source/build/Ninja-DebugAssert/swift-macosx-x86_64/lib/" -cp "/Users/noahweninger/swift-source/build/Ninja-DebugAssert/swift-macosx-x86_64/tools/swiftc-swig-bindings/:." Test
+javac Test.java ../../../build/Ninja-DebugAssert/swift-macosx-x86_64/tools/swiftc-swig-bindings/*.java
+java -Djava.library.path="../../../build/Ninja-DebugAssert/swift-macosx-x86_64/lib/" -cp "../../../build/Ninja-DebugAssert/swift-macosx-x86_64/tools/swiftc-swig-bindings/:." Test
