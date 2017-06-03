@@ -6,6 +6,6 @@ swiftc_hacks.cpp is where I intend to put cheap workarounds for swig not being a
 
 Test.java is a simple java program to test the wrapper
 
-to build, build swift as specified in the top level readme, then follow up with running link_cmd and run_cmd (those two scripts are temporary hacks and need to be integrated into CMakeLists.txt)
+to build, build swift as specified in the top level readme. You can run the java test application with run_cmd.
 
-to force an incremental build, I use utils/build-script --preset=buildbot_incremental_base
+to do an incremental build of everything in this directory, use build_lib. This is preferred over using utils/build-script as that will rebuild the entire compiler on any change.

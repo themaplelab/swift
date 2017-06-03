@@ -1,0 +1,1 @@
+/usr/local/bin/cmake --build ../../../build/Ninja-DebugAssert/swift-macosx-x86_64 -- -j8 -v tools/swiftc-swig-bindings/all
