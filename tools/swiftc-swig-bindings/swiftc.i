@@ -1,14 +1,53 @@
-%module swiftc
+%module(directors="1") swiftc
+
+// from swig docs
+/* This tells SWIG to treat char ** as a special case when used as a parameter
+   in a function call */
+%typemap(in) char ** (jint size) {
+  int i = 0;
+  size = jenv->GetArrayLength((jarray)$input);
+  $1 = (char **) malloc((size+1)*sizeof(char *));
+  /* make a copy of each string */
+  for (i = 0; i<size; i++) {
+    jstring j_string = (jstring)jenv->GetObjectArrayElement((jobjectArray)$input, i);
+    const char * c_string = jenv->GetStringUTFChars(j_string, 0);
+    $1[i] = (char*)malloc((strlen(c_string)+1)*sizeof(char));
+    strcpy($1[i], c_string);
+    jenv->ReleaseStringUTFChars(j_string, c_string);
+    jenv->DeleteLocalRef(j_string);
+  }
+  $1[i] = 0;
+}
+
+/* This cleans up the memory we malloc'd before the function call */
+%typemap(freearg) char ** {
+  int i;
+  for (i=0; i<size$argnum-1; i++)
+    free($1[i]);
+  free($1);
+}
+
+/* These 3 typemaps tell SWIG what JNI and Java types to use */
+%typemap(jni) char ** "jobjectArray"
+%typemap(jtype) char ** "String[]"
+%typemap(jstype) char ** "String[]"
+
+/* These 2 typemaps handle the conversion of the jtype to jstype typemap type and visa versa */
+%typemap(javain) char ** "$javainput"
+%typemap(javaout) char ** {
+    return $jnicall;
+}
 
 %{
     
 #include "swift/AST/DiagnosticConsumer.h"
 #include "swift/AST/ASTContext.h"
 #include "swift/Frontend/Frontend.h"
-#include "swift/Frontend/PrintingDiagnosticConsumer.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "swift/Basic/LLVMInitialize.h"
 #include <cstring>
+#include <iostream>
 
 using namespace swift;
 
@@ -16,17 +55,33 @@ StringRef make_stringref(const char* str) {
     int len = strlen(str);
     char *copy = new char[len+1];
     memcpy(copy, str, len+1);
-    printf("%s\n", copy);
     return StringRef(copy);
 }
-ArrayRef<const char*> make_string_arrayref(std::vector<const char*> vec) {
-    return ArrayRef<const char*>(vec);
+ArrayRef<const char*> make_string_arrayref(const char** vec, int length) {
+    return ArrayRef<const char*>(vec, length);
 }
 
+class BasicDiagnosticConsumer : public DiagnosticConsumer {
+public:
+    virtual void handleDiagnostic(SourceManager &SM, SourceLoc Loc,
+                                    DiagnosticKind Kind,
+                                    StringRef FormatString,
+                                    ArrayRef<DiagnosticArgument> FormatArgs,
+                                    const DiagnosticInfo &Info) override {
+        std::cerr << "diagnostic: " << FormatString.str() << std::endl;
+    }
+};
+DiagnosticConsumer* make_BasicDiagnosticConsumer() {
+    return new BasicDiagnosticConsumer();
+}
+
+void initialize_llvm(int argc, char **argv) {
+    INITIALIZE_LLVM(argc, argv);
+}
 %}
 
 // unique_ptr handling in SWIG is not fully there yet
-// we don't need these methods/fields (yet) so just ignore them.
+// we dont need these methods/fields (yet) so just ignore them.
 %ignore swift::CompilerInstance::setSILModule(std::unique_ptr<SILModule>);
 %ignore swift::CompilerInstance::takeSILModule();
 %ignore swift::ASTContext::getForeignRepresentationInfo(NominalTypeDecl *nominal, ForeignLanguage language, const DeclContext *dc);
@@ -38,9 +93,14 @@ ArrayRef<const char*> make_string_arrayref(std::vector<const char*> vec) {
 %ignore swift::ASTContext::LLVMSourceMgr;
 
 StringRef make_stringref(const char* str);
-ArrayRef<const char*> make_string_arrayref(std::vector<const char*> vec);
+ArrayRef<const char*> make_string_arrayref(const char** vec, int length);
 
-%include "swift/AST/DiagnosticConsumer.h"
+//%include "swift/AST/DiagnosticConsumer.h"
+
 %include "swift/AST/ASTContext.h"
-%include "swift/Frontend/PrintingDiagnosticConsumer.h"
 %include "swift/Frontend/Frontend.h"
+DiagnosticConsumer* make_BasicDiagnosticConsumer();
+
+
+void initialize_llvm(int argc, char **argv);
+
