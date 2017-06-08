@@ -10,6 +10,7 @@ public class Test {
         //invocation.setSerializedDiagnosticsPath(swiftc.make_stringref("/tmp/diag"));
 
         instance.addDiagnosticConsumer(swiftc.make_BasicDiagnosticConsumer());
+        //swiftc.addDiagnosticConsumer(instance);
         instance.setup(invocation);
         instance.performSema(); // Perform parsing
         if (instance.getASTContext().hadError())

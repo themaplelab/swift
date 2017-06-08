@@ -61,16 +61,24 @@ ArrayRef<const char*> make_string_arrayref(const char** vec, int length) {
     return ArrayRef<const char*>(vec, length);
 }
 
-class BasicDiagnosticConsumer : public DiagnosticConsumer {
+class BasicDiagnosticConsumer : public swift::DiagnosticConsumer {
 public:
-    virtual void handleDiagnostic(SourceManager &SM, SourceLoc Loc,
-                                    DiagnosticKind Kind,
-                                    StringRef FormatString,
-                                    ArrayRef<DiagnosticArgument> FormatArgs,
-                                    const DiagnosticInfo &Info) override {
-        std::cerr << "diagnostic: " << FormatString.str() << std::endl;
+    BasicDiagnosticConsumer() {}
+  void handleDiagnostic(SourceManager &SM, SourceLoc Loc,
+                        DiagnosticKind Kind,
+                        StringRef FormatString,
+                        ArrayRef<DiagnosticArgument> FormatArgs,
+                        const DiagnosticInfo &Info) override {
+        llvm::dbgs() << "Diagnostic: ";
+        DiagnosticEngine::formatDiagnosticText(llvm::dbgs(), FormatString,
+FormatArgs);
+        llvm::dbgs() << "\n";
     }
 };
+DiagnosticConsumer::~DiagnosticConsumer() { }
+llvm::SMLoc DiagnosticConsumer::getRawLoc(SourceLoc loc) {
+  return loc.Value;
+}
 DiagnosticConsumer* make_BasicDiagnosticConsumer() {
     return new BasicDiagnosticConsumer();
 }
@@ -94,13 +102,12 @@ void initialize_llvm(int argc, char **argv) {
 
 StringRef make_stringref(const char* str);
 ArrayRef<const char*> make_string_arrayref(const char** vec, int length);
+DiagnosticConsumer* make_BasicDiagnosticConsumer();
 
 //%include "swift/AST/DiagnosticConsumer.h"
 
 %include "swift/AST/ASTContext.h"
 %include "swift/Frontend/Frontend.h"
-DiagnosticConsumer* make_BasicDiagnosticConsumer();
-
 
 void initialize_llvm(int argc, char **argv);
 
