@@ -1,5 +1,7 @@
 %module(directors="1") swiftc
 
+%include "std_string.i"
+
 // from swig docs
 /* This tells SWIG to treat char ** as a special case when used as a parameter
    in a function call */
