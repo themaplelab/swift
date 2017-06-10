@@ -213,12 +213,12 @@ public:
   virtual bool walkToParameterListPost(ParameterList *PL) { return true; }
 
 
-protected:
-  ASTWalker() = default;
-  ASTWalker(const ASTWalker &) = default;
-  virtual ~ASTWalker() = default;
+//protected:
+  ASTWalker() {}
+  ASTWalker(const ASTWalker &) {}
+  virtual ~ASTWalker() {}
 
-  virtual void anchor();
+  virtual void anchor() {}
 };
 
 } // end namespace swift

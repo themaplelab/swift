@@ -44,6 +44,8 @@
     
 #include "swift/AST/DiagnosticConsumer.h"
 #include "swift/AST/ASTContext.h"
+#include "swift/AST/ASTWalker.h"
+#include "swift/AST/Module.h"
 #include "swift/Frontend/Frontend.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -90,8 +92,8 @@ void initialize_llvm(int argc, char **argv) {
 }
 %}
 
-// unique_ptr handling in SWIG is not fully there yet
-// we dont need these methods/fields (yet) so just ignore them.
+// SWIG chokes on these items
+// we dont need them (yet) so just ignore them.
 %ignore swift::CompilerInstance::setSILModule(std::unique_ptr<SILModule>);
 %ignore swift::CompilerInstance::takeSILModule();
 %ignore swift::ASTContext::getForeignRepresentationInfo(NominalTypeDecl *nominal, ForeignLanguage language, const DeclContext *dc);
@@ -101,6 +103,15 @@ void initialize_llvm(int argc, char **argv) {
 %ignore swift::ASTContext::Diags;
 %ignore swift::ASTContext::Impl;
 %ignore swift::ASTContext::LLVMSourceMgr;
+%ignore swift::ModuleDecl::forAllVisibleModules;
+%ignore swift::ModuleDecl::collectLinkLibraries;
+%ignore swift::FileUnit::forAllVisibleModules;
+%ignore swift::FileUnit::collectLinkLibraries;
+%ignore swift::SourceFile::collectLinkLibraries;
+%ignore swift::SourceFile::getKind;
+%ignore swift::FileUnit::getKind;
+
+%feature("director") swift::ASTWalker;
 
 StringRef make_stringref(const char* str);
 ArrayRef<const char*> make_string_arrayref(const char** vec, int length);
@@ -108,8 +119,12 @@ DiagnosticConsumer* make_BasicDiagnosticConsumer();
 
 //%include "swift/AST/DiagnosticConsumer.h"
 
+%include "swift/Basic/Compiler.h"
 %include "swift/AST/ASTContext.h"
+%include "swift/AST/ASTWalker.h"
 %include "swift/Frontend/Frontend.h"
+%include "swift/AST/Module.h"
+
 
 void initialize_llvm(int argc, char **argv);
 

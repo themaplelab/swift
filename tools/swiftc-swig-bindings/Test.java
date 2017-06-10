@@ -7,12 +7,12 @@ public class Test {
         
         // setup invocation
         //invocation.parseArgs(swiftc.make_string_arrayref(new String[]{"foo"}, 1), instance.getDiags());
+        invocation.addInputFilename(swiftc.make_stringref("test.swift"));
         invocation.setModuleName(swiftc.make_stringref("Test"));
         invocation.setMainExecutablePath(swiftc.make_stringref("test"));
-        invocation.addInputFilename(swiftc.make_stringref("test.swift"));
         invocation.setSDKPath("/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.12.sdk");
         invocation.setTargetTriple(swiftc.make_stringref("x86_64-apple-macosx10.12.4"));
-        //invocation.setParseStdlib();
+        invocation.setParseStdlib();
 
         // This is necessary to get error messages
         instance.addDiagnosticConsumer(swiftc.make_BasicDiagnosticConsumer());
@@ -20,10 +20,28 @@ public class Test {
         if (instance.setup(invocation))
             System.out.println("Setup error");
 
-        // parse + typecheck
-        instance.performSema();
+        instance.performParseOnly();
         if (instance.getASTContext().hadError())
             System.out.println("Parse error");
-        System.out.println(instance.getPrimarySourceFile());
+        System.out.println(instance.getMainModule().getMainSourceFile(SourceFileKind.Main));
+        ASTWalker walker = new ASTWalker() {
+            @Override
+            public boolean walkToDeclPre(SWIGTYPE_p_swift__Decl s) {
+                System.out.println("Visiting decl: " + s.toString());
+                return true;
+            }
+            @Override
+            public SWIGTYPE_p_swift__Stmt walkToStmtPost(SWIGTYPE_p_swift__Stmt s) {
+                System.out.println("Visiting stmt: " + s.toString());
+                return s;
+            }
+            @Override
+            public SWIGTYPE_p_swift__Expr walkToExprPost(SWIGTYPE_p_swift__Expr e) {
+                System.out.println("Visiting expr: " + e.toString());
+                return e;
+            }
+        };
+        // walk returns true on failure
+        System.out.println("Walk result: " + !instance.getMainModule().walk(walker));
     }
 }
