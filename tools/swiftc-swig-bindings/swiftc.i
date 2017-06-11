@@ -2,7 +2,7 @@
 
 %include "std_string.i"
 
-// from swig docs
+// char** adapter adapted from swig docs - version in docs is out of date and no longer works
 /* This tells SWIG to treat char ** as a special case when used as a parameter
    in a function call */
 %typemap(in) char ** (jint size) {
@@ -58,12 +58,14 @@
 using namespace swift;
 
 StringRef make_stringref(const char* str) {
+    // TODO can we do a typemap instead like for std::string?
     int len = strlen(str);
     char *copy = new char[len+1];
     memcpy(copy, str, len+1);
     return StringRef(copy);
 }
 ArrayRef<const char*> make_string_arrayref(const char** vec, int length) {
+    // TODO this may be broken because we need to make a copy. See make_stringref above
     return ArrayRef<const char*>(vec, length);
 }
 
@@ -76,15 +78,19 @@ public:
                         ArrayRef<DiagnosticArgument> FormatArgs,
                         const DiagnosticInfo &Info) override {
         llvm::dbgs() << "Diagnostic: ";
-        DiagnosticEngine::formatDiagnosticText(llvm::dbgs(), FormatString,
-FormatArgs);
+        DiagnosticEngine::formatDiagnosticText(llvm::dbgs(), FormatString, FormatArgs);
         llvm::dbgs() << "\n";
     }
 };
+
+// For some reason these methods are not linked into any swift library.
+// We need them to make rtti for DiagnosticConsumer available.
+// Definitions are copied from swift.
 DiagnosticConsumer::~DiagnosticConsumer() { }
 llvm::SMLoc DiagnosticConsumer::getRawLoc(SourceLoc loc) {
   return loc.Value;
 }
+
 DiagnosticConsumer* make_BasicDiagnosticConsumer() {
     return new BasicDiagnosticConsumer();
 }
@@ -135,6 +141,7 @@ void initialize_llvm(int argc, char **argv) {
 StringRef make_stringref(const char* str);
 ArrayRef<const char*> make_string_arrayref(const char** vec, int length);
 DiagnosticConsumer* make_BasicDiagnosticConsumer();
+void initialize_llvm(int argc, char **argv);
 
 %include "llvm/Support/Debug.h"
 %include "swift/Basic/Compiler.h"
@@ -148,6 +155,3 @@ DiagnosticConsumer* make_BasicDiagnosticConsumer();
 
 #define alignas(T)
 %include "swift/AST/Expr.h"
-
-void initialize_llvm(int argc, char **argv);
-
