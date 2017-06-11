@@ -1738,7 +1738,7 @@ public:
              == IterableDeclContextKind::ExtensionDecl;
   }
 
-  using DeclContext::operator new;
+  //using DeclContext::operator new;
 };
 
 /// \brief Iterator that walks the extensions of a particular type.
@@ -2008,7 +2008,7 @@ public:
     return C->getContextKind() == DeclContextKind::TopLevelCodeDecl;
   }
   
-  using DeclContext::operator new;
+  //using DeclContext::operator new;
 };
 
 /// SerializedTopLevelCodeDeclContext - This represents what was originally a
@@ -2385,7 +2385,7 @@ public:
 
   // Resolve ambiguity due to multiple base classes.
   using TypeDecl::getASTContext;
-  using DeclContext::operator new;
+  //using DeclContext::operator new;
   using TypeDecl::getDeclaredInterfaceType;
 
   static bool classof(const DeclContext *C) {
@@ -4684,7 +4684,7 @@ public:
     return DC->getContextKind() == DeclContextKind::SubscriptDecl;
   }
 
-  using DeclContext::operator new;
+  //using DeclContext::operator new;
   using Decl::getASTContext;
 };
 
@@ -5042,7 +5042,7 @@ public:
   /// Get the interface type of this decl and remove the Self context.
   Type getMethodInterfaceType() const;
 
-  using DeclContext::operator new;
+  //using DeclContext::operator new;
   using Decl::getASTContext;
 };
 

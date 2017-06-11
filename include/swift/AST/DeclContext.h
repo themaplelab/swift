@@ -501,8 +501,8 @@ public:
   unsigned printContext(llvm::raw_ostream &OS, unsigned indent = 0) const;
 
   // Only allow allocation of DeclContext using the allocator in ASTContext.
-  void *operator new(size_t Bytes, ASTContext &C,
-                     unsigned Alignment = alignof(DeclContext));
+  //void *operator new(size_t Bytes, ASTContext &C,
+  //                   unsigned Alignment = alignof(DeclContext));
   
   // Some Decls are DeclContexts, but not all.
   static bool classof(const Decl *D);

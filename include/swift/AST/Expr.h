@@ -546,18 +546,22 @@ public:
   ///
   /// This distinguishes static references to types, like Int, from metatype
   /// values, "someTy: Any.Type".
+#ifndef SWIG
   bool isTypeReference(llvm::function_ref<Type(const Expr *)> getType =
                            [](const Expr *E) -> Type {
     return E->getType();
   }) const;
+#endif
 
   /// Determine whether this expression refers to a statically-derived metatype.
   ///
   /// This implies `isTypeReference`, but also requires that the referenced type
   /// is not an archetype or dependent type.
+#ifndef SWIG
   bool isStaticallyDerivedMetatype(
       llvm::function_ref<Type(const Expr *)> getType =
           [](const Expr *E) -> Type { return E->getType(); }) const;
+#endif
 
   /// isImplicit - Determines whether this expression was implicitly-generated,
   /// rather than explicitly written in the AST.
@@ -587,12 +591,14 @@ public:
   ///
   /// \param allowOverwrite - true if it's okay if an expression already
   ///   has an access kind
+#ifndef SWIG
   void propagateLValueAccessKind(AccessKind accessKind,
                                  llvm::function_ref<Type(Expr *)> getType
                                    = [](Expr *E) -> Type {
                                      return E->getType();
                                  },
                                  bool allowOverwrite = false);
+#endif
 
   /// Retrieves the declaration that is being referenced by this
   /// expression, if any.
@@ -629,11 +635,13 @@ public:
   /// leaf node, etc.
   llvm::DenseMap<Expr *, unsigned> getPreorderIndexMap();
 
+#ifndef SWIG
   LLVM_ATTRIBUTE_DEPRECATED(
       void dump() const LLVM_ATTRIBUTE_USED,
       "only for use within the debugger");
-  void dump(raw_ostream &OS) const;
-  void print(raw_ostream &OS, unsigned Indent = 0) const;
+#endif
+  void dump(llvm::raw_ostream &OS) const;
+  void print(llvm::raw_ostream &OS, unsigned Indent = 0) const;
   void print(ASTPrinter &Printer, const PrintOptions &Opts) const;
 
   // Only allow allocation of Exprs using the allocator in ASTContext
@@ -642,8 +650,13 @@ public:
                      unsigned Alignment = alignof(Expr));
 
   // Make placement new and vanilla new/delete illegal for Exprs.
-  void *operator new(size_t Bytes) throw() = delete;
-  void operator delete(void *Data) throw() = delete;
+  // SWIG patch: nah
+  void *operator new(size_t Bytes) {
+      return malloc(Bytes);
+  }
+  void operator delete(void *Data) {
+      free(Data);
+  }
 
   void *operator new(size_t Bytes, void *Mem) { 
     assert(Mem); 
@@ -1151,7 +1164,10 @@ public:
 // '#colorLiteral(red: 1, blue: 0, green: 0, alpha: 1)' with a name and a list
 // argument. The components of the list argument are meant to be themselves
 // constant.
-class ObjectLiteralExpr final
+class ObjectLiteralExpr
+#ifndef SWIG
+final
+#endif
     : public LiteralExpr,
       public TrailingCallArguments<ObjectLiteralExpr> {
 public:
@@ -1364,12 +1380,14 @@ public:
 
   // The type of a TypeExpr is always a metatype type.  Return the instance
   // type, ErrorType if an error, or null if not set yet.
+#ifndef SWIG
   Type getInstanceType(llvm::function_ref<bool(const Expr *)> hasType =
                            [](const Expr *E) -> bool { return !!E->getType(); },
                        llvm::function_ref<Type(const Expr *)> getType =
                            [](const Expr *E) -> Type {
                          return E->getType();
                        }) const;
+#endif
 
   // Create an implicit TypeExpr, which has no location information.
   static TypeExpr *createImplicit(Type Ty, ASTContext &C) {
@@ -1483,7 +1501,11 @@ public:
 
 /// OverloadedDeclRefExpr - A reference to an overloaded name that should
 /// eventually be resolved (by overload resolution) to a value reference.
-class OverloadedDeclRefExpr final : public OverloadSetRefExpr {
+class OverloadedDeclRefExpr
+#ifndef SWIG
+final
+#endif
+: public OverloadSetRefExpr {
   DeclNameLoc Loc;
 
 public:
@@ -1717,7 +1739,10 @@ public:
 /// var x : AnyObject = <some value>
 /// print(x[27]! // x[27] has type String?
 /// \endcode
-class DynamicSubscriptExpr final
+class DynamicSubscriptExpr
+#ifndef SWIG
+final
+#endif
     : public DynamicLookupExpr,
       public TrailingCallArguments<DynamicSubscriptExpr> {
   friend TrailingCallArguments;
@@ -1736,11 +1761,13 @@ public:
   ///
   /// Note: do not create new callers to this entry point; use the entry point
   /// that takes separate index arguments.
+#ifndef SWIG
   static DynamicSubscriptExpr *
   create(ASTContext &ctx, Expr *base, Expr *index, ConcreteDeclRef decl,
          bool implicit,
          llvm::function_ref<Type(const Expr *)> getType =
              [](const Expr *E) -> Type { return E->getType(); });
+#endif
 
   /// Create a new dynamic subscript.
   static DynamicSubscriptExpr *create(ASTContext &ctx, Expr *base,
@@ -1793,7 +1820,10 @@ public:
 /// UnresolvedMemberExpr - This represents '.foo', an unresolved reference to a
 /// member, which is to be resolved with context sensitive type information into
 /// bar.foo.  These always have unresolved type.
-class UnresolvedMemberExpr final
+class UnresolvedMemberExpr
+#ifndef SWIG
+final
+#endif
     : public Expr,
       public TrailingCallArguments<UnresolvedMemberExpr> {
   SourceLoc DotLoc;
@@ -2040,7 +2070,11 @@ public:
 /// TupleExpr - Parenthesized expressions like '(a: x+x)' and '(x, y, 4)'.  Also
 /// used to represent the operands to a binary operator.  Note that
 /// expressions like '(4)' are represented with a ParenExpr.
-class TupleExpr final : public Expr,
+class TupleExpr 
+#ifndef SWIG
+final 
+#endif
+: public Expr,
     private llvm::TrailingObjects<TupleExpr, Expr *, Identifier, SourceLoc> {
   friend TrailingObjects;
 
@@ -2270,7 +2304,11 @@ public:
 /// type-checked and well-formed subscript expression refers to a subscript
 /// declaration, which provides a getter and (optionally) a setter that will
 /// be used to perform reads/writes.
-class SubscriptExpr final : public Expr,
+class SubscriptExpr
+#ifndef SWIG
+final
+#endif
+: public Expr,
                             public TrailingCallArguments<SubscriptExpr> {
   friend TrailingCallArguments;
 
@@ -2287,12 +2325,14 @@ public:
   ///
   /// Note: do not create new callers to this entry point; use the entry point
   /// that takes separate index arguments.
+#ifndef SWIG
   static SubscriptExpr *
   create(ASTContext &ctx, Expr *base, Expr *index,
          ConcreteDeclRef decl = ConcreteDeclRef(), bool implicit = false,
          AccessSemantics semantics = AccessSemantics::Ordinary,
          llvm::function_ref<Type(const Expr *)> getType =
              [](const Expr *E) -> Type { return E->getType(); });
+#endif
 
   /// Create a new subscript.
   static SubscriptExpr *create(ASTContext &ctx, Expr *base,
@@ -3241,7 +3281,11 @@ public:
 /// folded into a tree.  The operands all have even indices, while the
 /// subexpressions with odd indices are all (potentially overloaded)
 /// references to binary operators.
-class SequenceExpr final : public Expr,
+class SequenceExpr 
+#ifndef SWIG
+final 
+#endif
+: public Expr,
     private llvm::TrailingObjects<SequenceExpr, Expr *> {
   friend TrailingObjects;
 
@@ -3339,10 +3383,13 @@ public:
     assert(discriminator != InvalidDiscriminator);
     AbstractClosureExprBits.Discriminator = discriminator;
   }
+
+#ifndef SWIG
   enum : unsigned {
     InvalidDiscriminator =
       decltype(AbstractClosureExprBits)::InvalidDiscriminator
   };
+#endif
 
   ArrayRef<ParameterList *> getParameterLists() {
     return parameterList ? parameterList : ArrayRef<ParameterList *>();
@@ -3370,7 +3417,7 @@ public:
     return DC->getContextKind() == DeclContextKind::AbstractClosureExpr;
   }
 
-  using DeclContext::operator new;
+  //using DeclContext::operator new;
   using Expr::dump;
 };
 
@@ -3772,7 +3819,11 @@ public:
 /// CallExpr - Application of an argument to a function, which occurs
 /// syntactically through juxtaposition with a TupleExpr whose
 /// leading '(' is unspaced.
-class CallExpr final : public ApplyExpr,
+class CallExpr 
+#ifndef SWIG
+final 
+#endif
+: public ApplyExpr,
                        public TrailingCallArguments<CallExpr> {
   friend TrailingCallArguments;
 
@@ -3786,12 +3837,14 @@ public:
   /// Create a new call expression.
   ///
   /// Note: prefer to use the entry points that separate out the arguments.
+#ifndef SWIG
   static CallExpr *
   create(ASTContext &ctx, Expr *fn, Expr *arg, ArrayRef<Identifier> argLabels,
          ArrayRef<SourceLoc> argLabelLocs, bool hasTrailingClosure,
          bool implicit, Type type = Type(),
          llvm::function_ref<Type(const Expr *)> getType =
              [](const Expr *E) -> Type { return E->getType(); });
+#endif
 
   /// Create a new implicit call expression without any source-location
   /// information.
@@ -3800,6 +3853,7 @@ public:
   /// \param args The call arguments, not including a trailing closure (if any).
   /// \param argLabels The argument labels, whose size must equal args.size(),
   /// or which must be empty.
+#ifndef SWIG
   static CallExpr *
   createImplicit(ASTContext &ctx, Expr *fn, ArrayRef<Expr *> args,
                  ArrayRef<Identifier> argLabels,
@@ -3808,6 +3862,7 @@ public:
     return create(ctx, fn, SourceLoc(), args, argLabels, { }, SourceLoc(),
                   /*trailingClosure=*/nullptr, /*implicit=*/true, getType);
   }
+#endif
 
   /// Create a new call expression.
   ///
@@ -3818,12 +3873,14 @@ public:
   /// \param argLabelLocs The locations of the argument labels, whose size must
   /// equal args.size() or which must be empty.
   /// \param trailingClosure The trailing closure, if any.
+#ifndef SWIG
   static CallExpr *
   create(ASTContext &ctx, Expr *fn, SourceLoc lParenLoc, ArrayRef<Expr *> args,
          ArrayRef<Identifier> argLabels, ArrayRef<SourceLoc> argLabelLocs,
          SourceLoc rParenLoc, Expr *trailingClosure, bool implicit,
          llvm::function_ref<Type(const Expr *)> getType =
              [](const Expr *E) -> Type { return E->getType(); });
+#endif
 
   SourceLoc getStartLoc() const {
     SourceLoc fnLoc = getFn()->getStartLoc();

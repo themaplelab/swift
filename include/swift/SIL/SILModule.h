@@ -100,7 +100,7 @@ public:
   using CoverageMapListType = llvm::ilist<SILCoverageMap>;
   using LinkingMode = SILOptions::LinkingMode;
 
-private:
+//private:
   friend KeyPathPattern;
   friend SILBasicBlock;
   friend SILCoverageMap;

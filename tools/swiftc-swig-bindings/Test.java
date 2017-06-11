@@ -8,7 +8,7 @@ public class Test {
         // setup invocation
         //invocation.parseArgs(swiftc.make_string_arrayref(new String[]{"foo"}, 1), instance.getDiags());
         invocation.addInputFilename(swiftc.make_stringref("test.swift"));
-        invocation.setModuleName(swiftc.make_stringref("Test"));
+        invocation.setModuleName(swiftc.make_stringref("main"));
         invocation.setMainExecutablePath(swiftc.make_stringref("test"));
         invocation.setSDKPath("/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.12.sdk");
         invocation.setTargetTriple(swiftc.make_stringref("x86_64-apple-macosx10.12.4"));
@@ -23,7 +23,8 @@ public class Test {
         instance.performParseOnly();
         if (instance.getASTContext().hadError())
             System.out.println("Parse error");
-        System.out.println(instance.getMainModule().getMainSourceFile(SourceFileKind.Main));
+        System.out.println("Main source file: " + instance.getMainModule().getMainSourceFile(SourceFileKind.Main));
+        System.out.println("Have SIL module? " + instance.getSILModule());
         ASTWalker walker = new ASTWalker() {
             @Override
             public boolean walkToDeclPre(SWIGTYPE_p_swift__Decl s) {
@@ -36,8 +37,10 @@ public class Test {
                 return s;
             }
             @Override
-            public SWIGTYPE_p_swift__Expr walkToExprPost(SWIGTYPE_p_swift__Expr e) {
-                System.out.println("Visiting expr: " + e.toString());
+            public Expr walkToExprPost(Expr e) {
+                System.out.print("Visiting expr: ");
+                e.print(swiftc.dbgs());
+                System.out.println();
                 return e;
             }
         };

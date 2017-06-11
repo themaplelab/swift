@@ -50,6 +50,9 @@ class ProtocolConformanceRef {
     assert(value && "cannot construct ProtocolConformanceRef with null");
   }
 public:
+  ProtocolConformanceRef() {
+  }
+
   /// Create an abstract protocol conformance reference.
   explicit ProtocolConformanceRef(ProtocolDecl *proto) : Union(proto) {
     assert(proto != nullptr &&

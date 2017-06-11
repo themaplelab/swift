@@ -50,6 +50,8 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "swift/Basic/LLVMInitialize.h"
+#include "swift/SIL/SILModule.h"
+#include "llvm/Support/Debug.h"
 #include <cstring>
 #include <iostream>
 
@@ -110,6 +112,9 @@ void initialize_llvm(int argc, char **argv) {
 %ignore swift::SourceFile::collectLinkLibraries;
 %ignore swift::SourceFile::getKind;
 %ignore swift::FileUnit::getKind;
+%ignore swift::MagicIdentifierLiteralExpr::getKind;
+%ignore swift::Expr::isStaticallyDerivedMetatype;
+%ignore swift::SILModule::BPA;
 
 %feature("director") swift::ASTWalker;
 
@@ -117,14 +122,18 @@ StringRef make_stringref(const char* str);
 ArrayRef<const char*> make_string_arrayref(const char** vec, int length);
 DiagnosticConsumer* make_BasicDiagnosticConsumer();
 
-//%include "swift/AST/DiagnosticConsumer.h"
-
+%include "llvm/Support/Debug.h"
 %include "swift/Basic/Compiler.h"
 %include "swift/AST/ASTContext.h"
 %include "swift/AST/ASTWalker.h"
 %include "swift/Frontend/Frontend.h"
 %include "swift/AST/Module.h"
 
+#define LLVM_LIBRARY_VISIBILITY
+//%include "swift/SIL/SILModule.h"
+
+#define alignas(T)
+%include "swift/AST/Expr.h"
 
 void initialize_llvm(int argc, char **argv);
 
