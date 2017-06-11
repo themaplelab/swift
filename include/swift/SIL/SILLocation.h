@@ -180,7 +180,9 @@ protected:
   /// @{
 
   /// This constructor is used to support getAs operation.
+public:
   SILLocation() { assert(Loc.DebugInfoLoc.Line == 0); }
+protected:
   SILLocation(LocationKind K, unsigned Flags = 0) : KindData(K | Flags) {
     assert(Loc.DebugInfoLoc.Line == 0);
   }

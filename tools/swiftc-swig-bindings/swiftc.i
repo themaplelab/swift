@@ -115,6 +115,20 @@ void initialize_llvm(int argc, char **argv) {
 %ignore swift::MagicIdentifierLiteralExpr::getKind;
 %ignore swift::Expr::isStaticallyDerivedMetatype;
 %ignore swift::SILModule::BPA;
+%ignore swift::SILModule::functions;
+%ignore swift::SILModule::zombieFunctions;
+%ignore swift::SILModule::zombieFunctionNames;
+%ignore swift::SILModule::Types;
+%ignore swift::SILModule::constructSIL; // TODO we will need a wrapper for this
+%ignore swift::SILModule::createEmptyModule;
+%ignore swift::SILModule::getWitnessTables;
+%ignore swift::SILModule::getDefaultWitnessTables;
+%ignore swift::SILModule::getVTables;
+%ignore swift::SILModule::getGlobals;
+%ignore swift::SILModule::getSILGlobals;
+%ignore swift::SILModule::getCoverageMaps;
+%ignore swift::SILModule::getFunctions;
+%ignore getDeserializationCallbacks;
 
 %feature("director") swift::ASTWalker;
 
@@ -130,7 +144,7 @@ DiagnosticConsumer* make_BasicDiagnosticConsumer();
 %include "swift/AST/Module.h"
 
 #define LLVM_LIBRARY_VISIBILITY
-//%include "swift/SIL/SILModule.h"
+%include "swift/SIL/SILModule.h"
 
 #define alignas(T)
 %include "swift/AST/Expr.h"
