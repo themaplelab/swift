@@ -218,7 +218,11 @@ public:
   ASTWalker(const ASTWalker &) {}
   virtual ~ASTWalker() {}
 
-  virtual void anchor() {}
+#ifdef SWIG_COMPILE
+  virtual void anchor() { }
+#else
+  virtual void anchor();
+#endif
 };
 
 } // end namespace swift

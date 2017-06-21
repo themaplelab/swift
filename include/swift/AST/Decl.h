@@ -761,9 +761,11 @@ public:
 
   SourceLoc TrailingSemiLoc;
 
+#ifndef SWIG
   LLVM_ATTRIBUTE_DEPRECATED(
       void dump() const LLVM_ATTRIBUTE_USED,
       "only for use within the debugger");
+#endif
   void dump(raw_ostream &OS, unsigned Indent = 0) const;
 
   /// \brief Pretty-print the given declaration.
@@ -898,8 +900,13 @@ public:
   bool isPotentiallyOverridable() const;
 
   // Make vanilla new/delete illegal for Decls.
-  //void *operator new(size_t Bytes) = delete;
-  //void operator delete(void *Data) SWIFT_DELETE_OPERATOR_DELETED;
+#if !defined(SWIG) && !defined(SWIG_COMPILE)
+  void *operator new(size_t Bytes) = delete;
+  void operator delete(void *Data) SWIFT_DELETE_OPERATOR_DELETED;
+#else
+  void *operator new(size_t Bytes) { return malloc(Bytes); }
+  void operator delete(void *Data) { free(Data); }
+#endif
 
   // Only allow allocation of Decls using the allocator in ASTContext
   // or by doing a placement new.
@@ -1165,9 +1172,11 @@ public:
                        SecondType.getSourceRange().End);
   }
 
+#ifndef SWIG
   LLVM_ATTRIBUTE_DEPRECATED(
       void dump() const LLVM_ATTRIBUTE_USED,
       "only for use within the debugger");
+#endif
   void print(raw_ostream &OS) const;
   void print(ASTPrinter &Printer) const;
 };
@@ -1738,7 +1747,9 @@ public:
              == IterableDeclContextKind::ExtensionDecl;
   }
 
-  //using DeclContext::operator new;
+#ifndef SWIG
+  using DeclContext::operator new;
+#endif
 };
 
 /// \brief Iterator that walks the extensions of a particular type.
@@ -2008,7 +2019,9 @@ public:
     return C->getContextKind() == DeclContextKind::TopLevelCodeDecl;
   }
   
-  //using DeclContext::operator new;
+#ifndef SWIG
+  using DeclContext::operator new;
+#endif
 };
 
 /// SerializedTopLevelCodeDeclContext - This represents what was originally a
@@ -2385,7 +2398,9 @@ public:
 
   // Resolve ambiguity due to multiple base classes.
   using TypeDecl::getASTContext;
-  //using DeclContext::operator new;
+#ifndef SWIG
+  using DeclContext::operator new;
+#endif
   using TypeDecl::getDeclaredInterfaceType;
 
   static bool classof(const DeclContext *C) {
@@ -4684,7 +4699,9 @@ public:
     return DC->getContextKind() == DeclContextKind::SubscriptDecl;
   }
 
-  //using DeclContext::operator new;
+#ifndef SWIG
+  using DeclContext::operator new;
+#endif
   using Decl::getASTContext;
 };
 
@@ -5042,7 +5059,9 @@ public:
   /// Get the interface type of this decl and remove the Self context.
   Type getMethodInterfaceType() const;
 
-  //using DeclContext::operator new;
+#ifndef SWIG
+  using DeclContext::operator new;
+#endif
   using Decl::getASTContext;
 };
 

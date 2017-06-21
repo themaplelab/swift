@@ -650,13 +650,13 @@ public:
                      unsigned Alignment = alignof(Expr));
 
   // Make placement new and vanilla new/delete illegal for Exprs.
-  // SWIG patch: nah
-  void *operator new(size_t Bytes) {
-      return malloc(Bytes);
-  }
-  void operator delete(void *Data) {
-      free(Data);
-  }
+#if !defined(SWIG) && !defined(SWIG_COMPILE)
+  void *operator new(size_t Bytes) throw() = delete;
+  void operator delete(void *Data) throw() = delete;
+#else
+  void *operator new(size_t Bytes) throw() { return malloc(Bytes); }
+  void operator delete(void *Data) throw() { free(Data); }
+#endif
 
   void *operator new(size_t Bytes, void *Mem) { 
     assert(Mem); 
@@ -3417,7 +3417,9 @@ public:
     return DC->getContextKind() == DeclContextKind::AbstractClosureExpr;
   }
 
-  //using DeclContext::operator new;
+#ifndef SWIG
+  using DeclContext::operator new;
+#endif
   using Expr::dump;
 };
 

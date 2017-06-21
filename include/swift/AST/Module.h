@@ -506,9 +506,11 @@ public:
 
 private:
   // Make placement new and vanilla new/delete illegal for Modules.
-  //void *operator new(size_t Bytes) throw() = delete;
-  //void operator delete(void *Data) throw() SWIFT_DELETE_OPERATOR_DELETED;
-  //void *operator new(size_t Bytes, void *Mem) throw() = delete;
+#if !defined(SWIG) && !defined(SWIG_COMPILE)
+  void *operator new(size_t Bytes) throw() = delete;
+  void operator delete(void *Data) throw() SWIFT_DELETE_OPERATOR_DELETED;
+  void *operator new(size_t Bytes, void *Mem) throw() = delete;
+#endif
 public:
   // Only allow allocation of Modules using the allocator in ASTContext
   // or by doing a placement new.

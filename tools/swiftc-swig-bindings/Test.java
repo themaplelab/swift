@@ -20,14 +20,19 @@ public class Test {
         if (instance.setup(invocation))
             System.out.println("Setup error");
 
-        instance.performParseOnly();
+        instance.performSema();
         if (instance.getASTContext().hadError())
             System.out.println("Parse error");
+        ModuleDecl module = instance.getMainModule();
+        SWIGTYPE_p_SILModule silModulePtr = swiftc.constructSILModule(new SWIGTYPE_p_ModuleDecl(ModuleDecl.getCPtr(module), false), new SWIGTYPE_p_SILOptions(SILOptions.getCPtr(new SILOptions()), false));
+        swiftc.setSILModule(new SWIGTYPE_p_CompilerInstance(CompilerInstance.getCPtr(instance), false), silModulePtr);
+        SILModule silModule = new SILModule(SWIGTYPE_p_SILModule.getCPtr(silModulePtr), false);
         System.out.println("Main source file: " + instance.getMainModule().getMainSourceFile(SourceFileKind.Main));
-        System.out.println("Have SIL module? " + instance.getSILModule());
+        System.out.println("Have SIL module? " + silModule);
+        silModule.dump(true);
         ASTWalker walker = new ASTWalker() {
             @Override
-            public boolean walkToDeclPre(SWIGTYPE_p_swift__Decl s) {
+            public boolean walkToDeclPre(Decl s) {
                 System.out.println("Visiting decl: " + s.toString());
                 return true;
             }
@@ -46,5 +51,6 @@ public class Test {
         };
         // walk returns true on failure
         System.out.println("Walk result: " + !instance.getMainModule().walk(walker));
+
     }
 }

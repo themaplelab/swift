@@ -98,6 +98,14 @@ DiagnosticConsumer* make_BasicDiagnosticConsumer() {
 void initialize_llvm(int argc, char **argv) {
     INITIALIZE_LLVM(argc, argv);
 }
+
+SILModule *constructSILModule(ModuleDecl *module, SILOptions &options) {
+    return SILModule::constructSIL(module, options).release();
+}
+
+void setSILModule(CompilerInstance *instance, SILModule *module) {
+    instance->setSILModule(std::unique_ptr<SILModule>(module));
+}
 %}
 
 // SWIG chokes on these items
@@ -134,6 +142,18 @@ void initialize_llvm(int argc, char **argv) {
 %ignore swift::SILModule::getSILGlobals;
 %ignore swift::SILModule::getCoverageMaps;
 %ignore swift::SILModule::getFunctions;
+%ignore swift::RequirementRepr::getLayoutConstraint;
+%ignore swift::ExtensionDecl::getMembers;
+%ignore swift::LiteralExpr::shallowClone;
+%ignore swift::ObjectLiteralExpr::create;
+%ignore swift::ValueDecl::getFormalAccessScope;
+%ignore swift::NominalTypeDecl::getStoredProperties;
+%ignore swift::NominalTypeDecl::getMembers;
+%ignore swift::EnumDecl::getAllElements;
+%ignore swift::EnumDecl::getAllCases;
+%ignore swift::ProtocolDecl::walkInheritedProtocols;
+%ignore swift::ProtocolDecl::getDeclaredType;
+%ignore swift::AbstractFunctionDecl::getForeignErrorConvention;
 %ignore getDeserializationCallbacks;
 
 %feature("director") swift::ASTWalker;
@@ -152,6 +172,12 @@ void initialize_llvm(int argc, char **argv);
 
 #define LLVM_LIBRARY_VISIBILITY
 %include "swift/SIL/SILModule.h"
+%include "swift/AST/SILOptions.h"
 
 #define alignas(T)
+#define final
 %include "swift/AST/Expr.h"
+%include "swift/AST/Decl.h"
+
+SILModule *constructSILModule(ModuleDecl *module, SILOptions &options);
+void setSILModule(CompilerInstance *instance, SILModule *module);
