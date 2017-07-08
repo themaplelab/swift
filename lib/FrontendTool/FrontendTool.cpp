@@ -55,6 +55,7 @@
 #include "swift/Serialization/SerializationOptions.h"
 #include "swift/Serialization/SerializedModuleLoader.h"
 #include "swift/SILOptimizer/PassManager/Passes.h"
+#include "swift/WALASupport/WALAWalker.h"
 
 // FIXME: We're just using CompilerInstance::createOutputFile.
 // This API should be sunk down to LLVM.
@@ -526,6 +527,9 @@ static bool performCompile(CompilerInstance &Instance,
     Instance.performParseOnly();
   else
     Instance.performSema();
+
+  WALAWalker ww;
+  ww.foo();
 
   if (Action == FrontendOptions::Parse)
     return Instance.getASTContext().hadError();
