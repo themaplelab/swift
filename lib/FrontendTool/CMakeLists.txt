@@ -17,4 +17,6 @@ add_swift_library(swiftFrontendTool STATIC
     swiftWALASupport
     clangAPINotes
     clangBasic
+  LINK_FLAGS
+    -L$ENV{WALA_HOME}/com.ibm.wala.cast/target/classes -lcast
 )
