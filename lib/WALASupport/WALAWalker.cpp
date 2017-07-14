@@ -28,8 +28,9 @@ void print_object(JNIEnv *java_env, jobject object) {
 
 void WALAWalker::foo() {
   char *walaHome = getenv("WALA_HOME");
+  char *swiftWalaHome = getenv("SWIFT_WALA_HOME");
   char classpath[1024];
-  sprintf(classpath, "%s/com.ibm.wala.util/target/classes:%s/com.ibm.wala.shrike/target/classes:%s/com.ibm.wala.core/target/classes:%s/com.ibm.wala.cast/target/classes:/Users/dolby/WalaWorkspace/com.ibm.wala.cast.swift/bin", walaHome, walaHome, walaHome, walaHome);
+  sprintf(classpath, "%s/com.ibm.wala.util/target/classes:%s/com.ibm.wala.shrike/target/classes:%s/com.ibm.wala.core/target/classes:%s/com.ibm.wala.cast/target/classes:%s/com.ibm.wala.cast.swift/bin", walaHome, walaHome, walaHome, walaHome, swiftWalaHome);
 
   JNIEnv *java_env = launch(classpath);
   TRY(cpp_ex, java_env)
