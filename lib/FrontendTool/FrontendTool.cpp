@@ -528,9 +528,6 @@ static bool performCompile(CompilerInstance &Instance,
   else
     Instance.performSema();
 
-  WALAWalker ww;
-  ww.foo();
-
   if (Action == FrontendOptions::Parse)
     return Instance.getASTContext().hadError();
 
@@ -704,6 +701,9 @@ static bool performCompile(CompilerInstance &Instance,
                                 opts.SILSerializeAll, true);
     }
   }
+
+  WALAWalker ww;
+  ww.foo();
 
   if (observer) {
     observer->performedSILGeneration(*SM);
