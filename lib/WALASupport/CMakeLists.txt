@@ -11,8 +11,7 @@ add_swift_library(swiftWALASupport STATIC
     swiftAST
   C_COMPILE_FLAGS
     -I$ENV{WALA_HOME}/com.ibm.wala.cast/source/c/include
-    -I/Library/Java/JavaVirtualMachines/jdk1.8.0_131.jdk/Contents/Home/include/
-    -I/Library/Java/JavaVirtualMachines/jdk1.8.0_131.jdk/Contents/Home/include/darwin
+    -I$ENV{JAVA_HOME}/include/
+    -I$ENV{JAVA_HOME}/include/darwin
   ${EXTRA_TYPECHECKER_FLAGS}
 )
-
