@@ -528,9 +528,6 @@ static bool performCompile(CompilerInstance &Instance,
   else
     Instance.performSema();
 
-  WALAWalker ww;
-  ww.foo();
-
   if (Action == FrontendOptions::Parse)
     return Instance.getASTContext().hadError();
 
@@ -704,6 +701,14 @@ static bool performCompile(CompilerInstance &Instance,
                                 opts.SILSerializeAll, true);
     }
   }
+
+  // WALAWalker integration
+  printf("\n--- --- --- WALAWalker Output --- ---- ---\n");
+  WALAWalker ww;
+  ww.foo();
+  ww.print(*SM);
+  printf("--- --- --- End WALAWalker Output Unit --- ---- ---\n\n");
+  // End WALAWalker integration
 
   if (observer) {
     observer->performedSILGeneration(*SM);

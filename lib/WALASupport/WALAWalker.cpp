@@ -21,7 +21,7 @@ void print_object(JNIEnv *java_env, jobject object) {
     jboolean f = false;
     const char *text = java_env->GetStringUTFChars(msg, &f);
 	  
-    printf("%s\n", text);
+    printf("FOO: %s\n", text);
 	  
     java_env->ReleaseStringUTFChars(msg, text);
 }
@@ -61,4 +61,14 @@ void WALAWalker::foo() {
       }
   
   END_CATCH_BLOCK()
+}
+
+// Added @gojeffcho 2017-08-01
+// Test function for breaking down SILModule SM and exploring integration
+void WALAWalker::print(SILModule &SM) {
+
+    printf("--- --- ---> DUMP BEGINS \n");
+    SM.dump();
+	printf("--- --- ---> DUMP ENDS \n");
+	
 }

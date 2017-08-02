@@ -15,6 +15,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "swift/SIL/SILModule.h"
+
 #ifndef SWIFT_WALAWALKER_H
 #define SWIFT_WALAWALKER_H
 
@@ -26,6 +28,7 @@ namespace swift {
     class WALAWalker {
     public:
         void foo();
+        void print(SILModule &SM);
     };
 
 }
