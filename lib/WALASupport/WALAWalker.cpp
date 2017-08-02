@@ -67,8 +67,7 @@ void WALAWalker::foo() {
 // Test function for breaking down SILModule SM and exploring integration
 void WALAWalker::print(SILModule &SM) {
 
-    printf("--- --- ---> DUMP BEGINS \n");
     SM.dump();
-	printf("--- --- ---> DUMP ENDS \n");
-	
+    fflush(stdout);
+    	
 }
