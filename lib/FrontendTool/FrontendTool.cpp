@@ -703,11 +703,9 @@ static bool performCompile(CompilerInstance &Instance,
   }
 
   // WALAWalker integration
-  printf("\n--- --- --- WALAWalker Output --- ---- ---\n");
   WALAWalker ww;
-  ww.foo();
+//   ww.foo();
   ww.print(*SM);
-  printf("--- --- --- End WALAWalker Output Unit --- ---- ---\n\n");
   // End WALAWalker integration
 
   if (observer) {

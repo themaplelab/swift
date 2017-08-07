@@ -63,11 +63,17 @@ void WALAWalker::foo() {
   END_CATCH_BLOCK()
 }
 
-// Added @gojeffcho 2017-08-01
 // Test function for breaking down SILModule SM and exploring integration
 void WALAWalker::print(SILModule &SM) {
 
-    SM.dump();
-    fflush(stdout);
-    	
+	// print() parameters
+	raw_ostream &outstream = llvm::outs();	// output stream -> stdout
+	bool SILLocInfo = false;				// SIL location information in verbose mode
+	ModuleDecl *module = nullptr;			// Types and declarations from module will be printed
+	bool sortOutput = false;				// Sorts functions, vtables, sil globals, witness tables by name
+	bool printASTDecls = false;				// Prints AST Decls
+	
+	// Debug-print the module to stream
+	SM.print(outstream, SILLocInfo, module, sortOutput, printASTDecls);
+   	
 }
