@@ -79,36 +79,11 @@ void WALAWalker::print(SILModule &SM) {
 	// SM.getSourceManager() gets the SourceManager
 
 	// Debug settings
-	int mode = 0;
+	bool printToStdout = false;
 	bool printSource = false;
 	bool printSIL = true;
 	bool printPath = true;
 	
-	// Output file configuration
-	time_t now;
-	struct tm *timeptr;
-	char timeStr[20];
-	time(&now);
-	timeptr = localtime(&now);
-	strftime(timeStr, 20, "%H%M-%S", timeptr);
-
-	printf(" -----> %s\n", timeStr);
-	
-	char *swiftWalaHome = getenv("SWIFT_WALA_HOME");
-	char dirPath[1024];
-	char filePath[1024];
-	const char* fileName = SM.getSwiftModule()->getModuleFilename().str().c_str();
-	printf("-----> [FILE] %s \n", fileName);
-	sprintf(dirPath, "%s/compileOutput", swiftWalaHome);
-
-// 	sprintf(filePath, "%s/%s", dirPath, fileName);
-	sprintf(filePath, "%s/%s", dirPath, timeStr);
-
-// 	printf("-----> dirPath: %s\n", dirPath);
-	printf("-----> Filepath: %s \n\n", filePath);
-	ofstream outfile;
-	outfile.open(filePath, ios::out);
-
 	// SILModule print() configuration settings
 	raw_ostream &outstream = llvm::outs();	// output stream -> stdout
 	bool SILLocInfo = true;					// SIL loc info in verbose mode?
@@ -116,25 +91,57 @@ void WALAWalker::print(SILModule &SM) {
 	bool sortOutput = false;				// sort functions, witness tables, etc by name?
 	bool printASTDecls = true;				// print AST Decls?
 
-	if (printSource) {	// Current working: SIL dump, source location information
+	// Output filestamp - uses HHMM-SS as filename
+	// TODO: turn into static int counter instead?
+	time_t now;
+	struct tm *tPtr;
+	char timeStr[20];
+	time(&now);
+	tPtr = localtime(&now);
+	strftime(timeStr, 20, "%H%M-%S", tPtr);
+
+	// Get filepath - no error checking here at the moment
+	char *swiftWalaHome = getenv("SWIFT_WALA_HOME");
+	char dirPath[1024];
+	char filePath[1024];
+	const char* fileName = SM.getSwiftModule()->getModuleFilename().str().c_str();
+	sprintf(dirPath, "%s/compileOutput", swiftWalaHome);
+	sprintf(filePath, "%s/%s.txt", dirPath, timeStr);
+	printf("-----> Filepath: %s \n\n", filePath);	// DEBUG TEMP
+
+	// Open the file for writing and confirm
+	ofstream outfile;
+	outfile.open(filePath, ios::out);
+	if (!outfile.is_open()) {
+		printf("Error opening %s.  Will not write this file.\n", fileName);	
+	}
+
+	// Outputs
+	if (printSource) {	// Source location information; not currently working
 	
-		printf("\n\n----- ----- Writing [source] information for %s...\n", fileName);
-		// SourceManager information settings
-//		std::cout << "----- ----- Source: \n" << lineAndCol << "\n\n";
-//		auto lineAndCol = SM.getSourceManager().printLineAndColumn(outstream, SM.);
+		if (outfile.is_open()) {
+			printf("\n\n----- ----- Writing [source] information for %s...\n", fileName);
+			// SourceManager information settings
+// 			std::cout << "----- ----- Source: \n" << lineAndCol << "\n\n";
+// 			auto lineAndCol = SM.getSourceManager().printLineAndColumn(outstream, SM.);
+		}
 	}
 	
-	if (printSIL) {
-		// Debug-print the module to stream
-		printf("\n\n----- ----- Writing [module] information for %s... \n", fileName);
-		//SM.print(outstream, SILLocInfo, module, sortOutput, printASTDecls);
-		SM.dump(filePath);
+	if (printSIL) {		// Dump the SIL for the file.  TODO: break this down more atomically
+		if (outfile.is_open()) {
+			printf("\n\n----- ----- Writing [module] information for %s... \n", fileName);
+			SM.dump(filePath);
+		}
+		
+		if (printToStdout) SM.print(outstream, SILLocInfo, module, sortOutput, printASTDecls);
 	}	
 
 	if (printPath) {	// working with ModuleDecl
-		const char *pathInfo = SM.getSwiftModule()->getModuleFilename().str().c_str();
-		printf("\n\n----- ----- Writing [path] information for %s...\n\n", pathInfo);
-		outfile << " -----> [Path]: " << pathInfo << endl;
+		if (outfile.is_open()) {
+			const char *pathInfo = SM.getSwiftModule()->getModuleFilename().str().c_str();
+			printf("\n\n----- ----- Writing [path] information for %s...\n\n", pathInfo);
+			outfile << " -----> [Path]: " << pathInfo << endl;
+		}
 	}
 	
 	outfile.close();
