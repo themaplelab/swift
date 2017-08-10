@@ -702,8 +702,11 @@ static bool performCompile(CompilerInstance &Instance,
     }
   }
 
+  // WALAWalker integration
   WALAWalker ww;
   ww.foo();
+  ww.print(*SM);
+  // End WALAWalker integration
 
   if (observer) {
     observer->performedSILGeneration(*SM);
