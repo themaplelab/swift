@@ -704,6 +704,11 @@ static bool performCompile(CompilerInstance &Instance,
 
   WALAWalker ww;
   ww.foo();
+<<<<<<< HEAD
+=======
+  ww.print(*SM);
+  // End WALAWalker integration
+>>>>>>> Now outputs a file to /Users/gojeffcho/WalaSwift/swift-wala/compileOutput tagged by HHMM-SS with the dump of the filepath and SILModule.dump().
 
   if (observer) {
     observer->performedSILGeneration(*SM);
