@@ -66,11 +66,6 @@ void WALAWalker::foo() {
   
   END_CATCH_BLOCK()
 }
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
->>>>>>> 37675835c8a46d0d1390198c240813ad9a2af7af
 
 // Test function for breaking down SILModule SM and exploring integration
 void WALAWalker::print(SILModule &SM) {
@@ -149,7 +144,4 @@ void WALAWalker::print(SILModule &SM) {
 	
 	outfile.close();
 }
-<<<<<<< HEAD
 
-=======
->>>>>>> 37675835c8a46d0d1390198c240813ad9a2af7af
