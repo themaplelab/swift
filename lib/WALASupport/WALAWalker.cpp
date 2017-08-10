@@ -146,4 +146,4 @@ void WALAWalker::print(SILModule &SM) {
 	
 	outfile.close();
 }
->>>>>>> Now outputs a file to /Users/gojeffcho/WalaSwift/swift-wala/compileOutput tagged by HHMM-SS with the dump of the filepath and SILModule.dump().
+
