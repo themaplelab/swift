@@ -29,6 +29,7 @@ namespace swift {
     public:
         void foo();
         void print(SILModule &SM);
+        bool walk(SILModule &SM);
     };
 
 }

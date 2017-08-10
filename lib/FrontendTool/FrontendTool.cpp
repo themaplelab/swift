@@ -704,7 +704,7 @@ static bool performCompile(CompilerInstance &Instance,
 
   // WALAWalker integration
   WALAWalker ww;
-//   ww.foo();
+  ww.foo();
   ww.print(*SM);
   // End WALAWalker integration
 
