@@ -49,6 +49,7 @@ syn keyword swiftDefinitionModifier
       \ rethrows
       \ static
       \ throws
+      \ weak
 
 syn keyword swiftInOutKeyword skipwhite nextgroup=swiftTypeName
       \ inout
@@ -81,6 +82,8 @@ syn keyword swiftTypeDefinition skipwhite nextgroup=swiftTypeName
       \ protocol
       \ struct
       \ typealias
+syn match swiftMultiwordTypeDefinition nextgroup=swiftTypeName
+      \ "indirect enum"
 
 syn keyword swiftVarDefinition skipwhite nextgroup=swiftVarName
       \ let
@@ -136,8 +139,8 @@ syn match swiftTypeDeclaration skipwhite nextgroup=swiftType,swiftInOutKeyword
 syn match swiftTypeDeclaration skipwhite nextgroup=swiftType
       \ /->/
 
-syn region swiftString start=/"/ skip=/\\\\\|\\"/ end=/"/ contains=swiftInterpolation
-syn region swiftInterpolation start=/\\(/ end=/)/ contained
+syn region swiftString start=/"/ skip=/\\\\\|\\"/ end=/"/ contains=swiftInterpolationRegion
+syn region swiftInterpolationRegion matchgroup=swiftInterpolation start=/\\(/ end=/)/ contained contains=TOP
 syn region swiftComment start="/\*" end="\*/" contains=swiftComment,swiftLineComment,swiftTodo
 syn region swiftLineComment start="//" end="$" contains=swiftComment,swiftTodo
 
@@ -151,7 +154,7 @@ syn match swiftOperator "\.\.[<.]" skipwhite nextgroup=swiftTypeParameters
 
 syn match swiftChar /'\([^'\\]\|\\\(["'tnr0\\]\|x[0-9a-fA-F]\{2}\|u[0-9a-fA-F]\{4}\|U[0-9a-fA-F]\{8}\)\)'/
 
-syn match swiftPreproc /#\(\<file\>\|\<line\>\)/
+syn match swiftPreproc /#\(\<file\>\|\<line\>\|\<function\>\)/
 syn match swiftPreproc /^\s*#\(\<if\>\|\<else\>\|\<elseif\>\|\<endif\>\)/
 syn region swiftPreprocFalse start="^\s*#\<if\>\s\+\<false\>" end="^\s*#\(\<else\>\|\<elseif\>\|\<endif\>\)"
 
@@ -173,6 +176,7 @@ hi def link swiftImportComponent Identifier
 hi def link swiftKeyword Statement
 hi def link swiftMultiwordKeyword Statement
 hi def link swiftTypeDefinition Define
+hi def link swiftMultiwordTypeDefinition Define
 hi def link swiftType Type
 hi def link swiftTypePair Type
 hi def link swiftTypeName Function
