@@ -99,6 +99,10 @@ public:
 private:
   friend class SILBasicBlock;
   friend class SILModule;
+
+	// WALAWalker integration
+	friend class WALAWalker;
+	// end WALAWalker integration
     
   /// Module - The SIL module that the function belongs to.
   SILModule &Module;
