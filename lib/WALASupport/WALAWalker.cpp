@@ -189,21 +189,3 @@ void WALAWalker::print(SILModule &SM) {
 	if (outfile.is_open()) outfile.close();
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
