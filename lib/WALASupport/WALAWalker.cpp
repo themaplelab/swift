@@ -74,7 +74,7 @@ void WALAWalker::print(SILModule &SM) {
 	bool printToStdout = true;
 	bool printPath = true;
 	bool getBreakdown = true;
-	bool printSIL = false;
+	bool printSIL = true;
 	
 	// SILModule print() configuration settings
 	raw_ostream &outstream = llvm::outs();	// output stream -> stdout
@@ -87,7 +87,7 @@ void WALAWalker::print(SILModule &SM) {
 	string filePathName = SM.getSwiftModule()->getModuleFilename().str();
 	size_t splitPoint = filePathName.find_last_of("/");
 	char *fileName = (char *) filePathName.substr(splitPoint + 1).c_str();
-	if (DEBUG) printf("\t\t\t [FILENAME]: %s \n\n", fileName);
+	if (DEBUG) outstream << "\t\t\t [FILENAME]: " << fileName << "\n\n";
 	char *outputDir = getenv("SWIFT_WALA_OUTPUT");
 	char outputFilename[1024];
 	sprintf(outputFilename, "%s/%s.txt", outputDir, fileName);
@@ -95,13 +95,13 @@ void WALAWalker::print(SILModule &SM) {
 	// Open and check the file
 	unsigned i = 0;
 	ifstream fileCheck;
-	if (DEBUG) printf("\t\t\t[FILE PATH]: %s \n\n", outputFilename);
+	if (DEBUG) outstream << "\t\t\t[FILE PATH]: " << outputFilename << "\n\n";
 	fileCheck.open(outputFilename);
 	while (fileCheck && i < 100) {
 		// File existed; differentiate it until it is unique
 		fileCheck.close();
 		sprintf(outputFilename, "%s/%s_%u.txt", outputDir, fileName, i);
-		if (DEBUG) printf("\t\t\t\t[FILE] - trying %s... \n", outputFilename);
+		if (DEBUG) outstream << "\t\t\t\t[FILE] - trying " << outputFilename << "..." << "\n";
 		fileCheck.open(outputFilename);
 		i++;
 	}
@@ -111,14 +111,14 @@ void WALAWalker::print(SILModule &SM) {
 	ofstream outfile;
 	outfile.open(outputFilename, ios::out);
 	if (!outfile.is_open()) {
-		printf("Error opening %s; will not file-dump outputs.\n", outputFilename);
+		outstream << "Error opening " << outputFilename << "; will not file-dump outputs." << "\n";
 	}
 	
 // // // // // // Outputs
 	
 	// Output sourcefile path
 	if (printPath) {	
-		printf("\n\n----- ----- [Source] file: %s...\n\n", outputFilename);
+		outstream << "\n\n----- ----- [Source] file: " << outputFilename << "\n\n";
 	}
 
 	// Break apart SILModule -> SILFunction -> SILBasicBlock -> SILInstruction
@@ -128,8 +128,8 @@ void WALAWalker::print(SILModule &SM) {
 		for (auto func = SM.begin(); func != SM.end(); ++func) {
 			
 			// Print SILFunction name
-			printf("\t --- --- [Function] Name: %s \n", func->Name);
-			printf("\n\n");
+// 			printf("\t --- --- [Function] Name: %s \n", func->Name.str().c_str());
+			outstream << "\t --- --- [Function] Name: " << func->getName() << "\n\n";
 			
 			// Print SILFunction SIL
 // 			printf("\t --- --- [Function] SIL: \n");
@@ -140,26 +140,33 @@ void WALAWalker::print(SILModule &SM) {
 			// Iterate SILBasicBlock: [SILFunction].begin() to [SILFunction].end()
 			for (auto bb = func->begin(); bb != func->end(); ++bb) {
 			
+				// SILBasicBlock parameters
+				SILBasicBlock const *block = &(*bb);
+				SILPrintContext Ctx(outstream);
+				auto bbID = Ctx.getID(block);
+			
 				// Print SILBasicBlock operand
-				printf("\t\t --- --- [Basic Block] Operand: \n");
-				bb->printAsOperand(outstream);
-				printf("\n\n");
+				outstream << "\t\t --- --- [Basic Block] ID: " << bbID << "\n";
+// 				bb->printAsOperand(outstream);
+// 				printf("\n\n");
 				
 				// Print SILBasicBlock
-				printf("\t\t --- --- [Basic Block] Output: \n");
+// 				printf("\t\t --- --- [Basic Block] Output: \n");
 // 				bb->print(outstream);
 				
-				printf("\t\t\t --- --- [Instructions] \n\n");
+				outstream << "\t\t\t --- --- [Instructions] " << "\n";
 				
 				// Iterate SILInstruction: [SILBasicBlock].begin() to [SILBasicBlock].end()
 				for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
 // 					SILLocation loc = instr->getLoc();
-					printf("\t\t\t --- --- [Instruction] would be here. \n");
+					outstream << "\t\t\t --- --- [Instruction] would be here." << "\n";
 				}	// end SILInstruction iter
+				
+				outstream << "\n";
 				
 			} 	// end SILBasicBlock iter
 			
-			printf("\n\n");
+			outstream << "\n";
 			
 		} 	// end SILFunction iter
 
@@ -168,12 +175,14 @@ void WALAWalker::print(SILModule &SM) {
 	// Dump the SIL for the file.  TODO: break this down more atomically
 	if (printSIL) {
 	
-		if (printToStdout) {
-			SM.print(outstream, SILLocInfo, module, sortOutput, printASTDecls);
-		} else {
-			outfile << "[SOURCE] file: %s \n\n" << filePathName;
+// 		if (printToStdout) {
+// 			SM.print(outstream, SILLocInfo, module, sortOutput, printASTDecls);
+// 		} else {
+		if (outfile.is_open()) {
+			outfile << "[SOURCE] file: " << filePathName << "\n\n";
 			SM.dump(outputFilename);
 		}
+// 		}
 	}
 	
 	// Close out the file
