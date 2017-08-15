@@ -6,6 +6,7 @@
 #include <fstream>
 #include <string>
 
+#include "swift/SIL/SILLocation.h"
 #include "swift/WALASupport/WALAWalker.h"
 
 #include "launch.h"
@@ -71,7 +72,7 @@ void WALAWalker::print(SILModule &SM) {
 
 	// Debug/mode settings
 	bool DEBUG = true;
-	bool printToStdout = true;
+	bool printToStdout = false;
 	bool printPath = true;
 	bool getBreakdown = true;
 	bool printSIL = true;
@@ -147,27 +148,44 @@ void WALAWalker::print(SILModule &SM) {
 			
 				// Print SILBasicBlock operand
 				outstream << "\t\t --- --- [Basic Block] ID: " << bbID << "\n";
-// 				bb->printAsOperand(outstream);
-// 				printf("\n\n");
 				
 				// Print SILBasicBlock
-// 				printf("\t\t --- --- [Basic Block] Output: \n");
-// 				bb->print(outstream);
+				outstream << "\t\t --- --- [Basic Block] Output: \n";
+				bb->print(outstream);
+				outstream << "\n";
 				
+				// Instructions
 				outstream << "\t\t\t --- --- [Instructions] " << "\n";
 				
 				// Iterate SILInstruction: [SILBasicBlock].begin() to [SILBasicBlock].end()
 				for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
-// 					SILLocation loc = instr->getLoc();
-					outstream << "\t\t\t --- --- [Instruction] would be here." << "\n";
+					unsigned i = 0;
+
+					outstream << "\t\t\t --- --- [Instruction] #" << i;
+					outstream << " <would be here>." << "\n"; // TODO
+
+					SILLocation debugLoc = instr->getDebugLocation().getLocation();
+					outstream << "\t\t\t\t ";
+					if (debugLoc.isASTNode()) {
+						outstream << " ---> isASTNode";
+					} else if (debugLoc.isSILFile()) {
+						outstream << " ---> isSILFile";					
+					} else if (debugLoc.isDebugInfoLoc()) {
+						SILLocation::DebugLoc debugInfo = debugLoc.getDebugInfoLoc();					
+						outstream << " ---> Debug Info - File: " << debugInfo.Filename;
+						outstream << ", Line: " << debugInfo.Line;
+						outstream << ", Col: " << debugInfo.Column;
+					} else {
+						outstream << " ---> Couldn't get type.";
+					}
+					
+					outstream << "\n";
 				}	// end SILInstruction iter
 				
-				outstream << "\n";
+				outstream << "\t\t --- --- [Basic Block] "<< bbID << " End \n";
 				
 			} 	// end SILBasicBlock iter
-			
-			outstream << "\n";
-			
+				
 		} 	// end SILFunction iter
 
 	} 	// end getBreakdown
@@ -175,14 +193,14 @@ void WALAWalker::print(SILModule &SM) {
 	// Dump the SIL for the file.  TODO: break this down more atomically
 	if (printSIL) {
 	
-// 		if (printToStdout) {
-// 			SM.print(outstream, SILLocInfo, module, sortOutput, printASTDecls);
-// 		} else {
-		if (outfile.is_open()) {
-			outfile << "[SOURCE] file: " << filePathName << "\n\n";
-			SM.dump(outputFilename);
+		if (printToStdout) {
+			SM.print(outstream, SILLocInfo, module, sortOutput, printASTDecls);
+		} else {
+			if (outfile.is_open()) {
+				outfile << "[SOURCE] file: " << filePathName << "\n\n";
+				SM.dump(outputFilename);
+			}
 		}
-// 		}
 	}
 	
 	// Close out the file
