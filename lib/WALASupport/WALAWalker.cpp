@@ -72,13 +72,17 @@ void WALAWalker::print(SILModule &SM) {
 
 	// Debug/mode settings
 	bool DEBUG = true;
-	bool printToStdout = false;
+	bool printSILToStdout = false;
+	bool printToFile = true;
 	bool printPath = true;
 	bool getBreakdown = true;
 	bool printSIL = true;
-	
-	// SILModule print() configuration settings
+
+	// Per-SILModule settings	
 	raw_ostream &outstream = llvm::outs();	// output stream -> stdout
+	SourceManager &srcMgr = SM.getSourceManager();
+
+	// SILModule print() configuration settings
 	bool SILLocInfo = false;				// SIL loc info in verbose mode?
 	ModuleDecl *module = nullptr;			// types and decls from mod will be printed
 	bool sortOutput = false;				// sort functions, witness tables, etc by name?
@@ -86,9 +90,12 @@ void WALAWalker::print(SILModule &SM) {
 	
 	// File output settings
 	string filePathName = SM.getSwiftModule()->getModuleFilename().str();
+
+	// Split scenarios
+	string swiftSource("swift-source/");	// used later
 	size_t splitPoint = filePathName.find_last_of("/");
 	char *fileName = (char *) filePathName.substr(splitPoint + 1).c_str();
-	if (DEBUG) outstream << "\t\t\t [FILENAME]: " << fileName << "\n\n";
+	if (DEBUG) outstream << "\t [FILENAME]: " << fileName << "\n\n";
 	char *outputDir = getenv("SWIFT_WALA_OUTPUT");
 	char outputFilename[1024];
 	sprintf(outputFilename, "%s/%s.txt", outputDir, fileName);
@@ -96,13 +103,13 @@ void WALAWalker::print(SILModule &SM) {
 	// Open and check the file
 	unsigned i = 0;
 	ifstream fileCheck;
-	if (DEBUG) outstream << "\t\t\t[FILE PATH]: " << outputFilename << "\n\n";
+	if (DEBUG) outstream << "\t[FILE PATH]: " << outputFilename << "\n\n";
 	fileCheck.open(outputFilename);
 	while (fileCheck && i < 100) {
 		// File existed; differentiate it until it is unique
 		fileCheck.close();
 		sprintf(outputFilename, "%s/%s_%u.txt", outputDir, fileName, i);
-		if (DEBUG) outstream << "\t\t\t\t[FILE] - trying " << outputFilename << "..." << "\n";
+		if (DEBUG) outstream << "\t[FILE] - trying " << outputFilename << "..." << "\n";
 		fileCheck.open(outputFilename);
 		i++;
 	}
@@ -116,10 +123,14 @@ void WALAWalker::print(SILModule &SM) {
 	}
 	
 // // // // // // Outputs
-	
+
 	// Output sourcefile path
-	if (printPath) {	
-		outstream << "\n\n----- ----- [Source] file: " << outputFilename << "\n\n";
+	if (printPath) {
+		outstream << "\t [SOURCE] file: " << filePathName << "\n\n";
+
+		if (printToFile && outfile.is_open()) {
+			outfile << "[SOURCE] file: " << filePathName << "\n\n";
+		}
 	}
 
 	// Break apart SILModule -> SILFunction -> SILBasicBlock -> SILInstruction
@@ -129,77 +140,67 @@ void WALAWalker::print(SILModule &SM) {
 		for (auto func = SM.begin(); func != SM.end(); ++func) {
 			
 			// Print SILFunction name
-// 			printf("\t --- --- [Function] Name: %s \n", func->Name.str().c_str());
-			outstream << "\t --- --- [Function] Name: " << func->getName() << "\n\n";
-			
-			// Print SILFunction SIL
-// 			printf("\t --- --- [Function] SIL: \n");
-// 			func->print(outstream, printFuncVerbose);
-// 			func->dump();
-// 			printf("\n\n");
+			outstream << "\t -- [FUNCTION] Name: " << func->getName() << "\n";
 			
 			// Iterate SILBasicBlock: [SILFunction].begin() to [SILFunction].end()
 			for (auto bb = func->begin(); bb != func->end(); ++bb) {
 			
 				// SILBasicBlock parameters
 				SILBasicBlock const *block = &(*bb);
-				SILPrintContext Ctx(outstream);
+								SILPrintContext Ctx(outstream);
 				auto bbID = Ctx.getID(block);
-			
+		
 				// Print SILBasicBlock operand
-				outstream << "\t\t --- --- [Basic Block] ID: " << bbID << "\n";
-				
-				// Print SILBasicBlock
-				outstream << "\t\t --- --- [Basic Block] Output: \n";
-				bb->print(outstream);
-				outstream << "\n";
-				
+				outstream << "\t\t ---- [Basic Block] ID: " << bbID << "\n";
+								
 				// Instructions
-				outstream << "\t\t\t --- --- [Instructions] " << "\n";
+				outstream << "\t\t ---- ---- [Instructions] " << "\n";
 				
 				// Iterate SILInstruction: [SILBasicBlock].begin() to [SILBasicBlock].end()
 				for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
 					unsigned i = 0;
 
-					outstream << "\t\t\t --- --- [Instruction] #" << i;
+					outstream << "\t\t ---- ---- -- [Instruction] #" << i;
 					outstream << " <would be here>." << "\n"; // TODO
 
+					// Print source file, line, and col
 					SILLocation debugLoc = instr->getDebugLocation().getLocation();
-					outstream << "\t\t\t\t ";
-					if (debugLoc.isASTNode()) {
-						outstream << " ---> isASTNode";
-					} else if (debugLoc.isSILFile()) {
-						outstream << " ---> isSILFile";					
-					} else if (debugLoc.isDebugInfoLoc()) {
-						SILLocation::DebugLoc debugInfo = debugLoc.getDebugInfoLoc();					
-						outstream << " ---> Debug Info - File: " << debugInfo.Filename;
-						outstream << ", Line: " << debugInfo.Line;
-						outstream << ", Col: " << debugInfo.Column;
-					} else {
-						outstream << " ---> Couldn't get type.";
-					}
-					
+					SILLocation::DebugLoc debugInfo = debugLoc.decodeDebugLoc(srcMgr);
+
+// 					string debugFilepath = debugInfo.Filename.str();			
+// 					size_t debugSplitPoint = debugFilepath.find(swiftSource);
+// 					string debugShortPath = debugFilepath.substr(debugSplitPoint);
+// 					outstream << "\t\t ---- [DEBUG] filepath: " << debugFilepath << "\n";
+// 					outstream << "\t\t ---- [DEBUG]: file: " << debugShortPath << "\n";
+
+					outstream << "\t\t ---- ---- --> Debug Info \n";
+					outstream << "\t\t ---- ---- ----> File: " << debugInfo.Filename;
+					outstream << ", Line: " << debugInfo.Line;
+					outstream << ", Col: " << debugInfo.Column;					
 					outstream << "\n";
+					
 				}	// end SILInstruction iter
 				
-				outstream << "\t\t --- --- [Basic Block] "<< bbID << " End \n";
+				// Print SILBasicBlock
+				outstream << "\t\t ---- -- [Basic Block] Output: \n";
+				bb->print(outstream);
+				outstream << "\n";
+
+				// End SILBasicBlock
+				outstream << "\t\t ---- [Basic Block] "<< bbID << " End \n\n";
 				
 			} 	// end SILBasicBlock iter
 				
 		} 	// end SILFunction iter
 
 	} 	// end getBreakdown
-	
+
 	// Dump the SIL for the file.  TODO: break this down more atomically
 	if (printSIL) {
-	
-		if (printToStdout) {
+		if (printSILToStdout) {
 			SM.print(outstream, SILLocInfo, module, sortOutput, printASTDecls);
-		} else {
-			if (outfile.is_open()) {
-				outfile << "[SOURCE] file: " << filePathName << "\n\n";
-				SM.dump(outputFilename);
-			}
+		} else if (printToFile && outfile.is_open()) {
+			SM.dump(outputFilename);
 		}
 	}
 	
