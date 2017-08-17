@@ -30,6 +30,234 @@ void print_object(JNIEnv *java_env, jobject object) {
     java_env->ReleaseStringUTFChars(msg, text);
 }
 
+// Gets the directory-less string version of the given filename.
+string getShortFilename(string filenamePath, string splitString, unsigned offset = 0) {
+
+	// Split the filepath
+	size_t splitPoint = filenamePath.find_last_of(splitString);
+	return filenamePath.substr(splitPoint + offset);
+
+}
+
+// Takes the shortFilename, concatenates the $SWIFT_WALA_OUTPUT dir, and writes the result
+// to char *outfileName.  Used for dump() and open().
+void getOutputFilename(raw_ostream &outstream, 
+	string shortFilename, char *outfileName) {
+	// Get output dir	
+	string outputDir = getenv("SWIFT_WALA_OUTPUT");
+	
+	// Concatenate to output full path
+	sprintf(outfileName, "%s/%s.txt", outputDir.c_str(), shortFilename.c_str());
+
+	outstream << "\t [FILENAME]: " << shortFilename << "\n";	// DEBUG
+	outstream << "\t [FILEPATH]: " << outfileName << "\n";		// DEBUG
+	
+	// Check if file exists; if so, try to make the file unique
+	unsigned i = 0;
+	ifstream fileCheck;
+	fileCheck.open(outfileName);
+	while (fileCheck && i < 100) {
+		fileCheck.close();
+		sprintf(outfileName, "%s_%u.txt", outfileName, i);
+		fileCheck.open(outfileName);
+		i++;
+	}
+	
+}
+
+// Prints the path to outstream, and also to outfile if it is open and writeable.
+void printPath(raw_ostream &outstream, ofstream &outfile, string filenamePath) {
+	outstream << "\t [SOURCE] file: " << filenamePath << "\n\n";
+
+	if (outfile.is_open()) {
+		outfile << "[SOURCE] file: " << filenamePath << "\n\n";
+	}
+	
+}
+
+// Prints the SIL to the outfile if it is open and writeable.
+void printSIL(ofstream &outfile, char *outputFilename, SILModule &SM) {
+	if (outfile.is_open()) {
+		SM.dump(outputFilename);
+	}
+}
+
+// Outputs the mangled SILFunction name to outstream.
+void printSILFunctionInfo(raw_ostream &outstream, SILFunction &func) {
+	// Print function name
+	outstream << "\t -- [FUNCTION] Name: " << func.getName() << "\n";
+}
+
+// Outputs the SILBasicBlock ID to outstream.
+void printSILBasicBlockInfo(raw_ostream &outstream, SILBasicBlock &bb) {
+
+	// Print SILBasicBlock ID
+	SILPrintContext context(outstream);
+	auto bbID = context.getID(&bb);
+	outstream << "\t ---- [BASIC BLOCK] ID: " << bbID << "\n";
+}
+
+// Prints the sourcefile, line, and column info to outstream.
+void printInstrDebugLocInfo(raw_ostream &outstream, SILInstruction &instr, SourceManager &srcMgr) {
+
+	// Get file-line-col information for the source
+	SILLocation debugLoc = instr.getDebugLocation().getLocation();
+	SILLocation::DebugLoc debugInfo = debugLoc.decodeDebugLoc(srcMgr);
+	
+	size_t splitPoint = debugInfo.Filename.find("swift-source/");
+	string splitString = debugInfo.Filename.substr(splitPoint);
+	
+	outstream << "\t\t\t ----> Source: " << splitString;
+	outstream << ", Line: " << debugInfo.Line << ", Col: " << debugInfo.Column << "\n";
+}
+
+// Outputs to outstream whether instr may release, write to memory, read from memory,
+// trap the instruction, or potentially have side effects.
+void printInstrMemoryReleasingInfo(raw_ostream &outstream, SILInstruction &instr) {
+
+	switch (instr.getMemoryBehavior()) {
+		case SILInstruction::MemoryBehavior::None : {
+			break;
+		}
+		case SILInstruction::MemoryBehavior::MayRead : {
+			outstream << "\t\t\t [MEM-R]: May read from memory. \n";
+			break;
+		}
+		case SILInstruction::MemoryBehavior::MayWrite : {
+			outstream << "\t\t\t [MEM-W]: May write to memory. \n";
+			break;
+		}
+		case SILInstruction::MemoryBehavior::MayReadWrite : {
+			outstream << "\t\t\t [MEM-RW]: May read or write memory. \n";
+			break;
+		}
+		case SILInstruction::MemoryBehavior::MayHaveSideEffects : {
+			outstream << "\t\t\t [EFF]: May have side effects. \n";
+		}
+	}
+	
+	switch (instr.getReleasingBehavior()) {
+		case SILInstruction::ReleasingBehavior::DoesNotRelease : {
+			outstream << "\t\t\t [REL]: Does not release memory. \n";
+			break;
+		}
+		case SILInstruction::ReleasingBehavior::MayRelease : {
+			outstream << "\t\t\t [REL]: May release memory. \n";
+			break;
+		}
+	}
+}
+
+// Goes over all operands on the SILInstr and prints them out.
+void printInstrOpInfo(raw_ostream &outstream, SILInstruction &instr) {
+
+	// Output operand information
+	for (unsigned i = 0; i < instr.getNumOperands(); ++i) {
+		SILValue v = instr.getOperand(i);
+		outstream << "\t\t\t **** Operand #" << i << ": " << v << "\n";
+	}
+}
+
+// The big one - gets the ValueKind of the SILInstruction then goes through the
+// mega-switch to handle appropriately.
+void printInstrValueKindInfo(raw_ostream &outstream, SILInstruction &instr) {
+
+	//
+	auto instrKind = instr.getKind();
+	switch (instrKind) {
+	
+		case ValueKind::ApplyInst : {
+			// Cast to ValueKind::ApplyInst 
+			ApplyInst *applyInst = &cast<ApplyInst>(instr);
+			
+			// Iterate args and output SILValue
+			for (unsigned i = 0; i < applyInst->getNumArguments(); ++i) {
+				SILValue v = applyInst->getArgument(i);
+				outstream << "\t\t ***** " << v << "\n";
+			}
+			break;
+		}
+		default: {
+			outstream << "\t\t ##### Not an ApplyInst \n";
+			break;
+		}
+	}
+}
+
+// Handles all the SILInstruction printing and management.
+void printSILInstrInfo(raw_ostream &outstream, 
+	SILInstruction &instr, SourceManager &srcMgr) {
+	unsigned i = 0;
+	
+	outstream << "\t\t ---- -- [INSTRUCTION] #" << i << ": \n";
+	
+	printInstrDebugLocInfo(outstream, instr, srcMgr);
+	printInstrMemoryReleasingInfo(outstream, instr);
+	printInstrOpInfo(outstream, instr);
+	printInstrValueKindInfo(outstream, instr);
+}
+
+// Break down SILModule -> SILFunction -> SILBasicBlock -> SILInstruction -> SILValue
+void getBreakdown(raw_ostream &outstream, 
+	SILModule &SM, SourceManager &srcMgr) {
+
+	// Iterate over SILFunctions
+	for (auto func = SM.begin(); func != SM.end(); ++func) {
+	
+		printSILFunctionInfo(outstream, *func);
+	
+		// Iterate over SILBasicBlocks
+		for (auto bb = func->begin(); bb != func->end(); ++bb) {
+		
+			printSILBasicBlockInfo(outstream, *bb);
+			
+			for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
+			
+				printSILInstrInfo(outstream, *instr, srcMgr);
+			
+			}
+		}	
+	}
+}
+
+// Main WALAWalker implementation.
+void analyzeSILModule(SILModule &SM) {
+
+	// Modes and settings
+	bool outputPath = true;
+	bool outputSIL = true;
+
+	// Output configurations
+	raw_ostream &outstream = llvm::outs();
+	
+	// SILModule-derived information
+	SourceManager &srcMgr = SM.getSourceManager();
+	string filenamePath = SM.getSwiftModule()->getModuleFilename().str();
+	
+	// Get output filename
+	string splitString = "/";
+	string shortFilename = getShortFilename(filenamePath, splitString, 1);
+	char outputFilename[1024];
+	getOutputFilename(outstream, shortFilename, outputFilename);
+	
+	// Open output file for writing
+	ofstream outfile;
+	outfile.open(outputFilename, ios::out);
+	if (!outfile.is_open()) {
+		outstream << "\t[FILE]: Error opening " << outputFilename << ".";
+		outstream << "  Will not dump outputs." << "\n";	
+	}
+	
+	// Print and file-output source path information
+	if (outputPath) { printPath(outstream, outfile, filenamePath); }
+
+	// Dump SIL for SILModule to output file.
+	if (outputSIL) { printSIL(outfile, outputFilename, SM); }
+	
+	// Iterate SILModule -> SILFunction -> SILBasicBlock -> SILInstruction
+	getBreakdown(outstream, SM, srcMgr);
+}
+
 void WALAWalker::foo() {
   char *walaHome = getenv("WALA_HOME");
   char *swiftWalaHome = getenv("SWIFT_WALA_HOME");
@@ -69,142 +297,5 @@ void WALAWalker::foo() {
 
 // Test function for breaking down SILModule SM and exploring integration
 void WALAWalker::print(SILModule &SM) {
-
-	// Debug/mode settings
-	bool DEBUG = true;
-	bool printSILToStdout = false;
-	bool printToFile = true;
-	bool printPath = true;
-	bool getBreakdown = true;
-	bool printSIL = true;
-
-	// Per-SILModule settings	
-	raw_ostream &outstream = llvm::outs();	// output stream -> stdout
-	SourceManager &srcMgr = SM.getSourceManager();
-
-	// SILModule print() configuration settings
-	bool SILLocInfo = false;				// SIL loc info in verbose mode?
-	ModuleDecl *module = nullptr;			// types and decls from mod will be printed
-	bool sortOutput = false;				// sort functions, witness tables, etc by name?
-	bool printASTDecls = false;				// print AST Decls?
-	
-	// File output settings
-	string filePathName = SM.getSwiftModule()->getModuleFilename().str();
-
-	// Split scenarios
-	string swiftSource("swift-source/");	// used later
-	size_t splitPoint = filePathName.find_last_of("/");
-	char *fileName = (char *) filePathName.substr(splitPoint + 1).c_str();
-	if (DEBUG) outstream << "\t [FILENAME]: " << fileName << "\n\n";
-	char *outputDir = getenv("SWIFT_WALA_OUTPUT");
-	char outputFilename[1024];
-	sprintf(outputFilename, "%s/%s.txt", outputDir, fileName);
-	
-	// Open and check the file
-	unsigned i = 0;
-	ifstream fileCheck;
-	if (DEBUG) outstream << "\t[FILE PATH]: " << outputFilename << "\n\n";
-	fileCheck.open(outputFilename);
-	while (fileCheck && i < 100) {
-		// File existed; differentiate it until it is unique
-		fileCheck.close();
-		sprintf(outputFilename, "%s/%s_%u.txt", outputDir, fileName, i);
-		if (DEBUG) outstream << "\t[FILE] - trying " << outputFilename << "..." << "\n";
-		fileCheck.open(outputFilename);
-		i++;
-	}
-	fileCheck.close();
-	
-	// Filename is differentiated; open it for output now.
-	ofstream outfile;
-	outfile.open(outputFilename, ios::out);
-	if (!outfile.is_open()) {
-		outstream << "Error opening " << outputFilename << "; will not file-dump outputs." << "\n";
-	}
-	
-// // // // // // Outputs
-
-	// Output sourcefile path
-	if (printPath) {
-		outstream << "\t [SOURCE] file: " << filePathName << "\n\n";
-
-		if (printToFile && outfile.is_open()) {
-			outfile << "[SOURCE] file: " << filePathName << "\n\n";
-		}
-	}
-
-	// Break apart SILModule -> SILFunction -> SILBasicBlock -> SILInstruction
-	if (getBreakdown) {	
-
-		// Iterate SILFunctions: [SILModule].begin() to [SILModule].end()
-		for (auto func = SM.begin(); func != SM.end(); ++func) {
-			
-			// Print SILFunction name
-			outstream << "\t -- [FUNCTION] Name: " << func->getName() << "\n";
-			
-			// Iterate SILBasicBlock: [SILFunction].begin() to [SILFunction].end()
-			for (auto bb = func->begin(); bb != func->end(); ++bb) {
-			
-				// SILBasicBlock parameters
-				SILBasicBlock const *block = &(*bb);
-								SILPrintContext Ctx(outstream);
-				auto bbID = Ctx.getID(block);
-		
-				// Print SILBasicBlock operand
-				outstream << "\t\t ---- [Basic Block] ID: " << bbID << "\n";
-								
-				// Instructions
-				outstream << "\t\t ---- ---- [Instructions] " << "\n";
-				
-				// Iterate SILInstruction: [SILBasicBlock].begin() to [SILBasicBlock].end()
-				for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
-					unsigned i = 0;
-
-					outstream << "\t\t ---- ---- -- [Instruction] #" << i;
-					outstream << " <would be here>." << "\n"; // TODO
-
-					// Print source file, line, and col
-					SILLocation debugLoc = instr->getDebugLocation().getLocation();
-					SILLocation::DebugLoc debugInfo = debugLoc.decodeDebugLoc(srcMgr);
-
-// 					string debugFilepath = debugInfo.Filename.str();			
-// 					size_t debugSplitPoint = debugFilepath.find(swiftSource);
-// 					string debugShortPath = debugFilepath.substr(debugSplitPoint);
-// 					outstream << "\t\t ---- [DEBUG] filepath: " << debugFilepath << "\n";
-// 					outstream << "\t\t ---- [DEBUG]: file: " << debugShortPath << "\n";
-
-					outstream << "\t\t ---- ---- --> Debug Info \n";
-					outstream << "\t\t ---- ---- ----> File: " << debugInfo.Filename;
-					outstream << ", Line: " << debugInfo.Line;
-					outstream << ", Col: " << debugInfo.Column;					
-					outstream << "\n";
-					
-				}	// end SILInstruction iter
-				
-				// Print SILBasicBlock
-				outstream << "\t\t ---- -- [Basic Block] Output: \n";
-				bb->print(outstream);
-				outstream << "\n";
-
-				// End SILBasicBlock
-				outstream << "\t\t ---- [Basic Block] "<< bbID << " End \n\n";
-				
-			} 	// end SILBasicBlock iter
-				
-		} 	// end SILFunction iter
-
-	} 	// end getBreakdown
-
-	// Dump the SIL for the file.  TODO: break this down more atomically
-	if (printSIL) {
-		if (printSILToStdout) {
-			SM.print(outstream, SILLocInfo, module, sortOutput, printASTDecls);
-		} else if (printToFile && outfile.is_open()) {
-			SM.dump(outputFilename);
-		}
-	}
-	
-	// Close out the file
-	if (outfile.is_open()) outfile.close();
-
+	analyzeSILModule(SM);
 }
