@@ -27,16 +27,12 @@ namespace swift {
 
     class WALAWalker {
     private:
-    	void printInstrDebugLocInfo(raw_ostream &outstream, SILInstruction &instr, SourceManager &srcMgr);
-    	void printInstrMemoryReleasingInfo(raw_ostream &outstream, SILInstruction &instr);
-    	void printInstrOpInfo(raw_ostream &outstream, SILInstruction &instr);
-    	void printInstrValueKindINfo(raw_ostream &outstream, SILInstruction &instr);
-    	void printSILInstrInfo(raw_ostream &outstream, SILInstruction &instr, SourceManager &srcMgr);
+    	
     public:
         void foo();        
         void print(SILModule &SM);
     };
-
+    
 }
 
 #endif

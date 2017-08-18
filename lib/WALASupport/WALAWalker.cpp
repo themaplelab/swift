@@ -49,8 +49,8 @@ void getOutputFilename(raw_ostream &outstream,
 	// Concatenate to output full path
 	sprintf(outfileName, "%s/%s.txt", outputDir.c_str(), shortFilename.c_str());
 
+	outstream << "\t [OUTPUTFILE]: " << outfileName << "\n";	// DEBUG
 	outstream << "\t [FILENAME]: " << shortFilename << "\n";	// DEBUG
-	outstream << "\t [FILEPATH]: " << outfileName << "\n";		// DEBUG
 	
 	// Check if file exists; if so, try to make the file unique
 	unsigned i = 0;
@@ -58,21 +58,20 @@ void getOutputFilename(raw_ostream &outstream,
 	fileCheck.open(outfileName);
 	while (fileCheck && i < 100) {
 		fileCheck.close();
-		sprintf(outfileName, "%s_%u.txt", outfileName, i);
+		sprintf(outfileName, "%s/%s_%u.txt", outputDir.c_str(), shortFilename.c_str(), i);
 		fileCheck.open(outfileName);
 		i++;
 	}
-	
 }
 
 // Prints the path to outstream, and also to outfile if it is open and writeable.
-void printPath(raw_ostream &outstream, ofstream &outfile, string filenamePath) {
-	outstream << "\t [SOURCE] file: " << filenamePath << "\n\n";
+void printSourceFilepath(raw_ostream &outstream, ofstream &outfile, 
+	string filenamePath) {
 
+// 	outstream << "\t [SOURCE] file: " << filenamePath << "\n\n";
 	if (outfile.is_open()) {
 		outfile << "[SOURCE] file: " << filenamePath << "\n\n";
 	}
-	
 }
 
 // Prints the SIL to the outfile if it is open and writeable.
@@ -83,84 +82,105 @@ void printSIL(ofstream &outfile, char *outputFilename, SILModule &SM) {
 }
 
 // Outputs the mangled SILFunction name to outstream.
-void printSILFunctionInfo(raw_ostream &outstream, SILFunction &func) {
+void printSILFunctionInfo(raw_ostream &outstream, ofstream &outfile, 
+	SILFunction &func) {
+
 	// Print function name
-	outstream << "\t -- [FUNCTION] Name: " << func.getName() << "\n";
+// 	outstream << "\t -- [FUNCTION] Name: " << func.getName() << "\n";
+
+	// Output function name to written file
+	outfile << "\t -- [FUNCTION] Name: " << func.getName().str().c_str() << "\n";	
 }
 
 // Outputs the SILBasicBlock ID to outstream.
-void printSILBasicBlockInfo(raw_ostream &outstream, SILBasicBlock &bb) {
+void printSILBasicBlockInfo(raw_ostream &outstream, ofstream &outfile, 
+	SILBasicBlock &bb) {
 
 	// Print SILBasicBlock ID
 	SILPrintContext context(outstream);
-	auto bbID = context.getID(&bb);
-	outstream << "\t ---- [BASIC BLOCK] ID: " << bbID << "\n";
+	SILPrintContext::ID bbID = context.getID(&bb);
+// 	outstream << "\t ---- [BASIC BLOCK] ID: " << bbID << "\n";
+	outfile << "\t ---- [BASIC BLOCK] ID: " << bbID.Number << "\n";
 }
 
 // Prints the sourcefile, line, and column info to outstream.
-void printInstrDebugLocInfo(raw_ostream &outstream, SILInstruction &instr, SourceManager &srcMgr) {
+void printInstrDebugLocInfo(raw_ostream &outstream, ofstream &outfile,
+	SILInstruction &instr, SourceManager &srcMgr) {
 
 	// Get file-line-col information for the source
 	SILLocation debugLoc = instr.getDebugLocation().getLocation();
 	SILLocation::DebugLoc debugInfo = debugLoc.decodeDebugLoc(srcMgr);
 	
-	size_t splitPoint = debugInfo.Filename.find("swift-source/");
+	size_t splitPoint = debugInfo.Filename.find("swift/");
 	string splitString = debugInfo.Filename.substr(splitPoint);
 	
-	outstream << "\t\t\t ----> Source: " << splitString;
-	outstream << ", Line: " << debugInfo.Line << ", Col: " << debugInfo.Column << "\n";
+// 	outstream << "\t\t\t ----> Source: " << splitString;
+// 	outstream << ", Line: " << debugInfo.Line << ", Col: " << debugInfo.Column << "\n";
+
+	outfile << "\t\t\t >>> Source: " << splitString;
+	outfile << ", Line: " << debugInfo.Line << ", Col: " << debugInfo.Column << "\n";
 }
 
 // Outputs to outstream whether instr may release, write to memory, read from memory,
 // trap the instruction, or potentially have side effects.
-void printInstrMemoryReleasingInfo(raw_ostream &outstream, SILInstruction &instr) {
+void printInstrMemoryReleasingInfo(raw_ostream &outstream, ofstream &outfile, 
+	SILInstruction &instr) {
 
 	switch (instr.getMemoryBehavior()) {
 		case SILInstruction::MemoryBehavior::None : {
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayRead : {
-			outstream << "\t\t\t [MEM-R]: May read from memory. \n";
+// 			outstream << "\t\t\t [MEM-R]: May read from memory. \n";
+			outfile << "\t\t\t +++ [MEM-R]: May read from memory. \n";
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayWrite : {
-			outstream << "\t\t\t [MEM-W]: May write to memory. \n";
+// 			outstream << "\t\t\t [MEM-W]: May write to memory. \n";
+			outfile << "\t\t\t +++ [MEM-W]: May write to memory. \n";
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayReadWrite : {
-			outstream << "\t\t\t [MEM-RW]: May read or write memory. \n";
+// 			outstream << "\t\t\t [MEM-RW]: May read or write memory. \n";
+			outfile << "\t\t\t +++ [MEM-RW]: May read or write memory. \n";
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayHaveSideEffects : {
-			outstream << "\t\t\t [EFF]: May have side effects. \n";
+// 			outstream << "\t\t\t [EFF]: May have side effects. \n";
+			outfile << "\t\t\t +++ [MEM-F]: May have side effects. \n";
 		}
 	}
 	
 	switch (instr.getReleasingBehavior()) {
 		case SILInstruction::ReleasingBehavior::DoesNotRelease : {
-			outstream << "\t\t\t [REL]: Does not release memory. \n";
+// 			outstream << "\t\t\t [REL]: Does not release memory. \n";
+			outfile << "\t\t\t +++ [REL]: Does not release memory. \n";
 			break;
 		}
 		case SILInstruction::ReleasingBehavior::MayRelease : {
-			outstream << "\t\t\t [REL]: May release memory. \n";
+// 			outstream << "\t\t\t [REL]: May release memory. \n";
+			outfile << "\t\t\t +++ [REL]: May release memory. \n";
 			break;
 		}
 	}
 }
 
 // Goes over all operands on the SILInstr and prints them out.
-void printInstrOpInfo(raw_ostream &outstream, SILInstruction &instr) {
+void printInstrOpInfo(raw_ostream &outstream, ofstream &outfile,
+	SILInstruction &instr) {
 
 	// Output operand information
 	for (unsigned i = 0; i < instr.getNumOperands(); ++i) {
 		SILValue v = instr.getOperand(i);
-		outstream << "\t\t\t **** Operand #" << i << ": " << v << "\n";
+// 		outstream << "\t\t\t **** Operand #" << i << ": " << v << "\n";
+		outfile << "\t\t\t *** [OPER] #" << i << ": " << v << "\n";
 	}
 }
 
 // The big one - gets the ValueKind of the SILInstruction then goes through the
 // mega-switch to handle appropriately.
-void printInstrValueKindInfo(raw_ostream &outstream, SILInstruction &instr) {
+void printInstrValueKindInfo(raw_ostream &outstream, ofstream &outfile, 
+	SILInstruction &instr) {
 
 	//
 	auto instrKind = instr.getKind();
@@ -173,59 +193,69 @@ void printInstrValueKindInfo(raw_ostream &outstream, SILInstruction &instr) {
 			// Iterate args and output SILValue
 			for (unsigned i = 0; i < applyInst->getNumArguments(); ++i) {
 				SILValue v = applyInst->getArgument(i);
-				outstream << "\t\t ***** " << v << "\n";
+// 				outstream << "\t\t ***** " << v << "\n";
+				outfile << "\t\t\t ***** [ARG] #" << i << ": " << v << "\n";
 			}
 			break;
 		}
 		default: {
-			outstream << "\t\t ##### Not an ApplyInst \n";
+// 			outstream << "\t\t ##### Not an ApplyInst \n";
+			outfile << "\t\t\t ##### Not an ApplyInst \n";
 			break;
 		}
 	}
 }
 
 // Handles all the SILInstruction printing and management.
-void printSILInstrInfo(raw_ostream &outstream, 
+void printSILInstrInfo(raw_ostream &outstream, ofstream &outfile,
 	SILInstruction &instr, SourceManager &srcMgr) {
-	unsigned i = 0;
-	
-	outstream << "\t\t ---- -- [INSTRUCTION] #" << i << ": \n";
-	
-	printInstrDebugLocInfo(outstream, instr, srcMgr);
-	printInstrMemoryReleasingInfo(outstream, instr);
-	printInstrOpInfo(outstream, instr);
-	printInstrValueKindInfo(outstream, instr);
+		
+	printInstrDebugLocInfo(outstream, outfile, instr, srcMgr);
+	printInstrMemoryReleasingInfo(outstream, outfile, instr);
+	printInstrOpInfo(outstream, outfile, instr);
+	printInstrValueKindInfo(outstream, outfile, instr);
 }
 
 // Break down SILModule -> SILFunction -> SILBasicBlock -> SILInstruction -> SILValue
-void getBreakdown(raw_ostream &outstream, 
+void getModBreakdown(raw_ostream &outstream, ofstream &outfile,
 	SILModule &SM, SourceManager &srcMgr) {
 
 	// Iterate over SILFunctions
 	for (auto func = SM.begin(); func != SM.end(); ++func) {
 	
-		printSILFunctionInfo(outstream, *func);
+		printSILFunctionInfo(outstream, outfile, *func);
 	
 		// Iterate over SILBasicBlocks
 		for (auto bb = func->begin(); bb != func->end(); ++bb) {
 		
-			printSILBasicBlockInfo(outstream, *bb);
+			printSILBasicBlockInfo(outstream, outfile, *bb);
+			unsigned i = 0; 	// for Instruction count
 			
 			for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
 			
-				printSILInstrInfo(outstream, *instr, srcMgr);
+// 				outstream << "\t\t ---- -- [INSTRUCTION] #" << i << ": \n";
+				outfile << "\t\t ----> [INSTRUCTION] #" << i << ": \n";
+
+				printSILInstrInfo(outstream, outfile, *instr, srcMgr);
+				outfile << "\n";
+				++i;
 			
 			}
-		}	
+			
+			// End SILBasicBlock block
+			outfile << "\n";
+		}
+		
+		// End SILFunction block
+		outfile << "\n";
 	}
 }
 
 // Main WALAWalker implementation.
 void analyzeSILModule(SILModule &SM) {
 
-	// Modes and settings
-	bool outputPath = true;
-	bool outputSIL = true;
+	// Modes and settings 
+	bool outputSIL = false;		// Whether or not to create a full SIL dump to file
 
 	// Output configurations
 	raw_ostream &outstream = llvm::outs();
@@ -249,13 +279,16 @@ void analyzeSILModule(SILModule &SM) {
 	}
 	
 	// Print and file-output source path information
-	if (outputPath) { printPath(outstream, outfile, filenamePath); }
+	printSourceFilepath(outstream, outfile, filenamePath);
 
 	// Dump SIL for SILModule to output file.
 	if (outputSIL) { printSIL(outfile, outputFilename, SM); }
 	
 	// Iterate SILModule -> SILFunction -> SILBasicBlock -> SILInstruction
-	getBreakdown(outstream, SM, srcMgr);
+	getModBreakdown(outstream, outfile, SM, srcMgr);
+	
+	// Close out the file
+	outfile.close();
 }
 
 void WALAWalker::foo() {
