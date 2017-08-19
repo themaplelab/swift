@@ -41,16 +41,24 @@ string getShortFilename(string filenamePath, string splitString, unsigned offset
 
 // Takes the shortFilename, concatenates the $SWIFT_WALA_OUTPUT dir, and writes the result
 // to char *outfileName.  Used for dump() and open().
-void getOutputFilename(raw_ostream &outstream, 
-	string shortFilename, char *outfileName) {
+void getOutputFilename(raw_ostream &outstream, string filenamePath, 
+	char *outfileName) {
 	// Get output dir	
 	string outputDir = getenv("SWIFT_WALA_OUTPUT");
+
+	// Get shortfilename (trailing final '/')	
+	string splitString = "/";
+	string shortFilename = getShortFilename(filenamePath, splitString, 1);
+	if (shortFilename.empty()) {
+		shortFilename = "_noSourceFileFound";
+	}
 	
 	// Concatenate to output full path
 	sprintf(outfileName, "%s/%s.txt", outputDir.c_str(), shortFilename.c_str());
 
 	outstream << "\t [OUTPUTFILE]: " << outfileName << "\n";	// DEBUG
 	outstream << "\t [FILENAME]: " << shortFilename << "\n";	// DEBUG
+	outstream << "\n";
 	
 	// Check if file exists; if so, try to make the file unique
 	unsigned i = 0;
@@ -68,7 +76,7 @@ void getOutputFilename(raw_ostream &outstream,
 void printSourceFilepath(raw_ostream &outstream, ofstream &outfile, 
 	string filenamePath) {
 
-// 	outstream << "\t [SOURCE] file: " << filenamePath << "\n\n";
+	outstream 	<< "\t [SOURCE] file: " << filenamePath << "\n\n";
 	if (outfile.is_open()) {
 		outfile << "[SOURCE] file: " << filenamePath << "\n\n";
 	}
@@ -86,10 +94,10 @@ void printSILFunctionInfo(raw_ostream &outstream, ofstream &outfile,
 	SILFunction &func) {
 
 	// Print function name
-// 	outstream << "\t -- [FUNCTION] Name: " << func.getName() << "\n";
+	outstream 	<< "\t -- [FUNCTION] Name: " << func.getName() << "\n";
 
 	// Output function name to written file
-	outfile << "\t -- [FUNCTION] Name: " << func.getName().str().c_str() << "\n";	
+	outfile 	<< "\t -- [FUNCTION] Name: " << func.getName().str().c_str() << "\n";	
 }
 
 // Outputs the SILBasicBlock ID to outstream.
@@ -99,8 +107,8 @@ void printSILBasicBlockInfo(raw_ostream &outstream, ofstream &outfile,
 	// Print SILBasicBlock ID
 	SILPrintContext context(outstream);
 	SILPrintContext::ID bbID = context.getID(&bb);
-// 	outstream << "\t ---- [BASIC BLOCK] ID: " << bbID << "\n";
-	outfile << "\t ---- [BASIC BLOCK] ID: " << bbID.Number << "\n";
+	outstream 	<< "\t ---- [BASIC BLOCK] ID: " << bbID << "\n";
+	outfile 	<< "\t ---- [BASIC BLOCK] ID: " << bbID.Number << "\n";
 }
 
 // Prints the sourcefile, line, and column info to outstream.
@@ -114,11 +122,13 @@ void printInstrDebugLocInfo(raw_ostream &outstream, ofstream &outfile,
 	size_t splitPoint = debugInfo.Filename.find("swift/");
 	string splitString = debugInfo.Filename.substr(splitPoint);
 	
-// 	outstream << "\t\t\t ----> Source: " << splitString;
-// 	outstream << ", Line: " << debugInfo.Line << ", Col: " << debugInfo.Column << "\n";
+	outstream << "\t\t\t >>> Source: " << splitString;
+	outstream << ", Line: " << debugInfo.Line;
+	outstream << ", Col: " << debugInfo.Column << "\n";
 
 	outfile << "\t\t\t >>> Source: " << splitString;
-	outfile << ", Line: " << debugInfo.Line << ", Col: " << debugInfo.Column << "\n";
+	outfile << ", Line: " << debugInfo.Line;
+	outfile << ", Col: " << debugInfo.Column << "\n";
 }
 
 // Outputs to outstream whether instr may release, write to memory, read from memory,
@@ -131,35 +141,35 @@ void printInstrMemoryReleasingInfo(raw_ostream &outstream, ofstream &outfile,
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayRead : {
-// 			outstream << "\t\t\t [MEM-R]: May read from memory. \n";
-			outfile << "\t\t\t +++ [MEM-R]: May read from memory. \n";
+			outstream 	<< "\t\t\t +++ [MEM-R]: May read from memory. \n";
+			outfile 	<< "\t\t\t +++ [MEM-R]: May read from memory. \n";
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayWrite : {
-// 			outstream << "\t\t\t [MEM-W]: May write to memory. \n";
-			outfile << "\t\t\t +++ [MEM-W]: May write to memory. \n";
+			outstream 	<< "\t\t\t +++ [MEM-W]: May write to memory. \n";
+			outfile 	<< "\t\t\t +++ [MEM-W]: May write to memory. \n";
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayReadWrite : {
-// 			outstream << "\t\t\t [MEM-RW]: May read or write memory. \n";
-			outfile << "\t\t\t +++ [MEM-RW]: May read or write memory. \n";
+			outstream 	<< "\t\t\t +++ [MEM-RW]: May read or write memory. \n";
+			outfile 	<< "\t\t\t +++ [MEM-RW]: May read or write memory. \n";
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayHaveSideEffects : {
-// 			outstream << "\t\t\t [EFF]: May have side effects. \n";
-			outfile << "\t\t\t +++ [MEM-F]: May have side effects. \n";
+			outstream 	<< "\t\t\t +++ [MEM-F]: May have side effects. \n";
+			outfile 	<< "\t\t\t +++ [MEM-F]: May have side effects. \n";
 		}
 	}
 	
 	switch (instr.getReleasingBehavior()) {
 		case SILInstruction::ReleasingBehavior::DoesNotRelease : {
-// 			outstream << "\t\t\t [REL]: Does not release memory. \n";
-			outfile << "\t\t\t +++ [REL]: Does not release memory. \n";
+			outstream 	<< "\t\t\t +++ [REL]: Does not release memory. \n";
+			outfile 	<< "\t\t\t +++ [REL]: Does not release memory. \n";
 			break;
 		}
 		case SILInstruction::ReleasingBehavior::MayRelease : {
-// 			outstream << "\t\t\t [REL]: May release memory. \n";
-			outfile << "\t\t\t +++ [REL]: May release memory. \n";
+			outstream 	<< "\t\t\t +++ [REL]: May release memory. \n";
+			outfile 	<< "\t\t\t +++ [REL]: May release memory. \n";
 			break;
 		}
 	}
@@ -172,8 +182,8 @@ void printInstrOpInfo(raw_ostream &outstream, ofstream &outfile,
 	// Output operand information
 	for (unsigned i = 0; i < instr.getNumOperands(); ++i) {
 		SILValue v = instr.getOperand(i);
-// 		outstream << "\t\t\t **** Operand #" << i << ": " << v << "\n";
-		outfile << "\t\t\t *** [OPER] #" << i << ": " << v << "\n";
+		outstream 	<< "\t\t\t *** [OPER] #" << i << ": " << v;
+		outfile 	<< "\t\t\t *** [OPER] #" << i << ": " << v << "\n";
 	}
 }
 
@@ -188,19 +198,19 @@ void printInstrValueKindInfo(raw_ostream &outstream, ofstream &outfile,
 	
 		case ValueKind::ApplyInst : {
 			// Cast to ValueKind::ApplyInst 
-			ApplyInst *applyInst = &cast<ApplyInst>(instr);
+			ApplyInst *applyInst = cast<ApplyInst>(&instr);
 			
 			// Iterate args and output SILValue
 			for (unsigned i = 0; i < applyInst->getNumArguments(); ++i) {
 				SILValue v = applyInst->getArgument(i);
-// 				outstream << "\t\t ***** " << v << "\n";
-				outfile << "\t\t\t ***** [ARG] #" << i << ": " << v << "\n";
+				outstream 	<< "\t\t\t ***** [ARG] #" << i << ": " << v;
+				outfile 	<< "\t\t\t ***** [ARG] #" << i << ": " << v << "\n";
 			}
 			break;
 		}
 		default: {
-// 			outstream << "\t\t ##### Not an ApplyInst \n";
-			outfile << "\t\t\t ##### Not an ApplyInst \n";
+			outstream 	<< "\t\t\t ##### Not an ApplyInst \n";
+			outfile 	<< "\t\t\t ##### Not an ApplyInst \n";
 			break;
 		}
 	}
@@ -233,21 +243,24 @@ void getModBreakdown(raw_ostream &outstream, ofstream &outfile,
 			
 			for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
 			
-// 				outstream << "\t\t ---- -- [INSTRUCTION] #" << i << ": \n";
-				outfile << "\t\t ----> [INSTRUCTION] #" << i << ": \n";
+				outstream 	<< "\t\t ----> [INSTR] #" << i << ": \n";
+				outfile 	<< "\t\t ----> [INSTR] #" << i << ": \n";
 
 				printSILInstrInfo(outstream, outfile, *instr, srcMgr);
-				outfile << "\n";
+				outfile 	<< "\n";
+				outstream	<< "\n";
 				++i;
 			
 			}
 			
 			// End SILBasicBlock block
-			outfile << "\n";
+			outstream	<< "\n";
+			outfile 	<< "\n";
 		}
 		
 		// End SILFunction block
-		outfile << "\n";
+		outstream	<< "\n";
+		outfile 	<< "\n";
 	}
 }
 
@@ -265,10 +278,8 @@ void analyzeSILModule(SILModule &SM) {
 	string filenamePath = SM.getSwiftModule()->getModuleFilename().str();
 	
 	// Get output filename
-	string splitString = "/";
-	string shortFilename = getShortFilename(filenamePath, splitString, 1);
 	char outputFilename[1024];
-	getOutputFilename(outstream, shortFilename, outputFilename);
+	getOutputFilename(outstream, filenamePath, outputFilename);
 	
 	// Open output file for writing
 	ofstream outfile;
