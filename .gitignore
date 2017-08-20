@@ -24,6 +24,9 @@
 #==============================================================================#
 cscope.files
 cscope.out
+add
+add.swift
+swiftc
 
 #==============================================================================#
 # Directories to ignore (do not add trailing '/'s, they skip symlinks).

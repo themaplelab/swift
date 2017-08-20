@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "swift/SIL/SILModule.h"
+#include "llvm/Support/FileSystem.h"
 
 #ifndef SWIFT_WALAWALKER_H
 #define SWIFT_WALAWALKER_H
