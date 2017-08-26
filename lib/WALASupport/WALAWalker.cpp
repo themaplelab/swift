@@ -447,7 +447,7 @@ void printInstrValueKindInfo(llvm::raw_fd_ostream &outfile, SILInstruction &inst
 			break;
 		}
 		case ValueKind::MetatypeInst: {		
-			outfile		<< "\t\t << Metatype Instruction >>" << "\n";
+			outfile		<< "\t\t << MetatypeInst >>" << "\n";
 			break;
 		}
 		
