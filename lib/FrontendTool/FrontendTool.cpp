@@ -789,8 +789,7 @@ static bool performCompile(CompilerInstance &Instance,
 
   // WALAWalker Integration
   WALAWalker ww;
-//   ww.foo();
-  ww.print(*SM);
+  ww.analyzeSILModule(*SM);
   // End WALAWalker Integration
 
   if (observer) {

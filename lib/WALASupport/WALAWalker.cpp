@@ -1,8 +1,6 @@
 #include <stdlib.h>
 #include <jni.h>
 #include <csetjmp>
-#include <stdio.h>
-#include <iostream>
 #include <fstream>
 #include <string>
 
@@ -16,25 +14,30 @@
 
 using namespace swift;
 
-void print_object(JNIEnv *java_env, jobject object) {
-    jclass Object = java_env->FindClass("java/lang/Object");
+// Functions for passing information to and from WALA.
+class WALAIntegration {
+public:
+	void print_object(JNIEnv *java_env, jobject object) {
+		jclass Object = java_env->FindClass("java/lang/Object");
 	  
-    jmethodID toString = java_env->GetMethodID(Object, "toString", "()Ljava/lang/String;");
+		jmethodID toString = java_env->GetMethodID(Object, "toString", "()Ljava/lang/String;");
 
-    jstring msg = (jstring) java_env->CallObjectMethod(object, toString);
+		jstring msg = (jstring) java_env->CallObjectMethod(object, toString);
 
-    jboolean f = false;
-    const char *text = java_env->GetStringUTFChars(msg, &f);
+		jboolean f = false;
+		const char *text = java_env->GetStringUTFChars(msg, &f);
 	  
-    printf("FOO: %s\n", text);
+		printf("FOO: %s\n", text);
 	  
-    java_env->ReleaseStringUTFChars(msg, text);
-}
+		java_env->ReleaseStringUTFChars(msg, text);
+	}
 
-// Takes the shortFilename, concatenates the $SWIFT_WALA_OUTPUT dir, and writes the result
-// to char *outfileName.  Used for dump() and open().
-void getOutputFilename(raw_ostream &outstream, string filenamePath, 
-	char *outfileName) {
+};
+
+// Gets shortFilename from full filenamePath, concatenates it to
+// $SWIFT_WALA_OUTPUT dir, and writes the result to outfileName.
+void WALAWalker::getOutputFilename(string filenamePath, char *outfileName) {
+
 	// Get output dir	
 	string outputDir = getenv("SWIFT_WALA_OUTPUT");
 
@@ -53,7 +56,8 @@ void getOutputFilename(raw_ostream &outstream, string filenamePath,
 	}
 	
 	// Concatenate to output full path
-	sprintf(outfileName, "%s/%s.txt", outputDir.c_str(), shortFilename.c_str());
+	sprintf(outfileName, "%s/%s.txt", outputDir.c_str(), 
+		shortFilename.c_str());
 
 	// Check if file exists; if so, try to make the file unique
 	unsigned i = 0;
@@ -61,7 +65,8 @@ void getOutputFilename(raw_ostream &outstream, string filenamePath,
 	fileCheck.open(outfileName);
 	while (fileCheck && i < 100) {
 		fileCheck.close();
-		sprintf(outfileName, "%s/%s_%u.txt", outputDir.c_str(), shortFilename.c_str(), i);
+		sprintf(outfileName, "%s/%s_%u.txt", 
+			outputDir.c_str(), shortFilename.c_str(), i);
 		fileCheck.open(outfileName);
 		i++;
 	}
@@ -69,12 +74,11 @@ void getOutputFilename(raw_ostream &outstream, string filenamePath,
 	fileCheck.close();
 	
 	// DEBUG OUTSTREAM
-	outstream << "\t [OUTPUTFILE]: " << outfileName << "\n";
-	outstream << "\t [FILENAME]: " << shortFilename << ".txt" << "\n";
+	if (WALAWalker::debug) { llvm::outs() << "\t [OUTPUTFILE]: " << outfileName << "\n"; }
 }
 
 // Prints the path (after swift/) to outfile if it is open and writeable.
-void printSourceFilepath(llvm::raw_fd_ostream &outfile, string filenamePath) {
+void WALAWalker::printSourceFilepath(llvm::raw_ostream &outfile, string filenamePath) {
 	size_t splitPoint = filenamePath.find("swift/");
 	if (splitPoint == string::npos) {
 		outfile		<< "[SOURCE] Not Found; probably not from a file." << "\n\n";
@@ -85,7 +89,7 @@ void printSourceFilepath(llvm::raw_fd_ostream &outfile, string filenamePath) {
 }
 
 // Prints the SIL to the outfile if it is open and writeable.
-void printSIL(char *outputFilename, SILModule &SM) {
+void WALAWalker::printSIL(char *outputFilename, SILModule &SM) {
 	
 	// Convert <filename>.txt to <filename>.sil
 	string strFilename(outputFilename);
@@ -95,14 +99,14 @@ void printSIL(char *outputFilename, SILModule &SM) {
 	const char *SILFilename = strFilename.replace(splitPoint, extToReplace.length(), newExt).c_str();
 	
 	// DEBUG OUTSTREAM
-	llvm::outs() << "\t [SIL]: " << SILFilename << "\n";
+	if (WALAWalker::debug) { llvm::outs() << "\t [SIL FILE]: " << SILFilename << "\n"; }
 
 	// Output to .sil
 	SM.dump(SILFilename);
 }
 
-// Outputs the mangled SILFunction name to outstream.
-void printSILFunctionInfo(llvm::raw_fd_ostream &outfile, SILFunction &func) {
+// Outputs the mangled and demangled SILFunction name to outfile.
+void WALAWalker::printSILFunctionInfo(llvm::raw_ostream &outfile, SILFunction &func) {
 
 	// Output function name to written file
 	outfile 	<< "-- [FUNCTION] Name: " << func.getName() << "\n";
@@ -112,8 +116,8 @@ void printSILFunctionInfo(llvm::raw_fd_ostream &outfile, SILFunction &func) {
 	outfile 	<< Demangle::demangleSymbolAsString(func.getName()) << "\n";
 }
 
-// Outputs the SILBasicBlock ID to outstream.
-void printSILBasicBlockInfo(llvm::raw_fd_ostream &outfile, SILBasicBlock &bb) {
+// Outputs the SILBasicBlock ID to outfile.
+void WALAWalker::printSILBasicBlockInfo(llvm::raw_ostream &outfile, SILBasicBlock &bb) {
 
 	// Print SILBasicBlock ID
 	SILPrintContext context(outfile);
@@ -121,8 +125,8 @@ void printSILBasicBlockInfo(llvm::raw_fd_ostream &outfile, SILBasicBlock &bb) {
 	outfile 	<< "---- [BASIC BLOCK] ID: " << bbID << "\n";
 }
 
-// Prints the sourcefile, line, and column info to outstream.
-void printInstrDebugLocInfo(llvm::raw_fd_ostream &outfile,
+// Prints the sourcefile, line, and column info to outfile.
+void WALAWalker::printInstrDebugLocInfo(llvm::raw_ostream &outfile,
 	SILInstruction &instr, SourceManager &srcMgr) {
 
 	// Get file-line-col information for the source
@@ -141,9 +145,10 @@ void printInstrDebugLocInfo(llvm::raw_fd_ostream &outfile,
 	outfile << ", Col: " << debugInfo.Column << "\n";
 }
 
-// Outputs to outstream whether instr may release, write to memory, read from memory,
+// Outputs to outfile whether instr may release, write to memory, read from memory,
 // trap the instruction, or potentially have side effects.
-void printInstrMemoryReleasingInfo(llvm::raw_fd_ostream &outfile, SILInstruction &instr) {
+void WALAWalker::printInstrMemoryReleasingInfo(llvm::raw_ostream &outfile, 
+	SILInstruction &instr) {
 
 	switch (instr.getMemoryBehavior()) {
 		case SILInstruction::MemoryBehavior::None: {
@@ -179,7 +184,7 @@ void printInstrMemoryReleasingInfo(llvm::raw_fd_ostream &outfile, SILInstruction
 }
 
 // Goes over all operands on the SILInstr and prints them out.
-void printInstrOpInfo(llvm::raw_fd_ostream &outfile, SILInstruction &instr) {
+void WALAWalker::printInstrOpInfo(llvm::raw_ostream &outfile, SILInstruction &instr) {
 
 	if (instr.getNumOperands() == 0) {
 		outfile		<< "\t\t *** [OPER]: No Operands." << "\n";
@@ -195,7 +200,7 @@ void printInstrOpInfo(llvm::raw_fd_ostream &outfile, SILInstruction &instr) {
 
 // The big one - gets the ValueKind of the SILInstruction then goes through the
 // mega-switch to handle appropriately.
-void printInstrValueKindInfo(llvm::raw_fd_ostream &outfile, SILInstruction &instr) {
+void WALAWalker::printInstrValueKindInfo(llvm::raw_ostream &outfile, SILInstruction &instr) {
 
 	//
 	auto instrKind = instr.getKind();
@@ -208,7 +213,7 @@ void printInstrValueKindInfo(llvm::raw_fd_ostream &outfile, SILInstruction &inst
 			break;
 		}
 		
-		case ValueKind::AllocBoxInst: {		
+		case ValueKind::AllocBoxInst: {
 			outfile		<< "\t\t << AllocBoxInst >>" << "\n";
 			break;
 		}
@@ -217,8 +222,8 @@ void printInstrValueKindInfo(llvm::raw_fd_ostream &outfile, SILInstruction &inst
 		
 			outfile 	<< "\t\t << ApplyInst >>" << "\n";
 		
-			// Cast to ValueKind::ApplyInst 
-// 			ApplyInst *applyInst = cast<ApplyInst>(&instr);
+			// Cast the instr 
+// 			ApplyInst *castInst = cast<ApplyInst>(&instr);
 			
 			// Iterate args and output SILValue
 // 			for (unsigned i = 0; i < applyInst->getNumArguments(); ++i) {
@@ -280,10 +285,10 @@ void printInstrValueKindInfo(llvm::raw_fd_ostream &outfile, SILInstruction &inst
 		
 		case ValueKind::FunctionRefInst: {
 
-			// Cast the instr to FunctionRefInst
+			// Cast the instr to access methods
 			FunctionRefInst *castInst = cast<FunctionRefInst>(&instr);
 
-			// Debug output identifier
+			// ValueKind identifier
 			outfile		<< "\t\t << FunctionRefInst >>" << "\n";
 
 			// Demangled FunctionRef name
@@ -722,7 +727,7 @@ void printInstrValueKindInfo(llvm::raw_fd_ostream &outfile, SILInstruction &inst
 }
 
 // Handles all the SILInstruction printing and management.
-void printSILInstrInfo(llvm::raw_fd_ostream &outfile,
+void WALAWalker::printSILInstrInfo(llvm::raw_ostream &outfile,
 	SILInstruction &instr, SourceManager &srcMgr) {
 		
 	printInstrDebugLocInfo(outfile, instr, srcMgr);
@@ -731,7 +736,7 @@ void printSILInstrInfo(llvm::raw_fd_ostream &outfile,
 }
 
 // Break down SILModule -> SILFunction -> SILBasicBlock -> SILInstruction -> SILValue
-void getModBreakdown(llvm::raw_fd_ostream &outfile,
+void WALAWalker::getModBreakdown(llvm::raw_ostream &outfile,
 	SILModule &SM, SourceManager &srcMgr) {
 
 	// Iterate over SILFunctions
@@ -766,21 +771,18 @@ void getModBreakdown(llvm::raw_fd_ostream &outfile,
 }
 
 // Main WALAWalker implementation.
-void analyzeSILModule(SILModule &SM) {
+void WALAWalker::analyzeSILModule(SILModule &SM) {
 
 	// Modes and settings 
 	bool outputSIL = true;		// Whether or not to create a full SIL dump to file
 
-	// Output configurations
-	raw_ostream &outstream = llvm::outs();
-	
 	// SILModule-derived information
 	SourceManager &srcMgr = SM.getSourceManager();
 	string filenamePath = SM.getSwiftModule()->getModuleFilename().str();
 	
 	// Get output filename
 	char outputFilename[1024];
-	getOutputFilename(outstream, filenamePath, outputFilename);
+	getOutputFilename(filenamePath, outputFilename);
 	
 	// Open outfile as llvm::raw_fd_ostream for writing
 	std::error_code EC;
@@ -796,7 +798,7 @@ void analyzeSILModule(SILModule &SM) {
 
 	// Dump SIL for SILModule to output file.
 	if (outputSIL) { printSIL(outputFilename, SM); }
-	outstream << "\n";
+	if (WALAWalker::debug) { llvm::outs() << "\n"; }
 	
 	// Iterate SILModule -> SILFunction -> SILBasicBlock -> SILInstruction
 	getModBreakdown(outfile, SM, srcMgr);
@@ -810,6 +812,9 @@ void WALAWalker::foo() {
   char *swiftWalaHome = getenv("SWIFT_WALA_HOME");
   char classpath[1024];
   sprintf(classpath, "%s/com.ibm.wala.util/target/classes:%s/com.ibm.wala.shrike/target/classes:%s/com.ibm.wala.core/target/classes:%s/com.ibm.wala.cast/target/classes:%s/com.ibm.wala.cast.swift/bin", walaHome, walaHome, walaHome, walaHome, swiftWalaHome);
+
+  // Instance the WALAIntegration object to call print_object later
+  WALAIntegration wala;
 
   JNIEnv *java_env = launch(classpath);
   TRY(cpp_ex, java_env)
@@ -828,7 +833,7 @@ void WALAWalker::foo() {
 
       jobject x = CAst.makeConstant(3.7);
 
-      print_object(java_env, x);
+      wala.print_object(java_env, x);
       THROW_ANY_EXCEPTION(cpp_ex);
       
   START_CATCH_BLOCK()
@@ -836,13 +841,8 @@ void WALAWalker::foo() {
       if (java_env->ExceptionCheck()) {
 	  jthrowable real_ex = java_env->ExceptionOccurred();
 	  
-	  print_object(java_env, real_ex);
+	  wala.print_object(java_env, real_ex);
       }
   
   END_CATCH_BLOCK()
-}
-
-// Test function for breaking down SILModule SM and exploring integration
-void WALAWalker::print(SILModule &SM) {
-	analyzeSILModule(SM);
 }
