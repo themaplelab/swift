@@ -77,10 +77,10 @@ void getOutputFilename(raw_ostream &outstream, string filenamePath,
 void printSourceFilepath(llvm::raw_fd_ostream &outfile, string filenamePath) {
 	size_t splitPoint = filenamePath.find("swift/");
 	if (splitPoint == string::npos) {
-		// 
+		outfile		<< "[SOURCE] Not Found; probably not from a file." << "\n\n";
 	} else {
 		string shortPath = filenamePath.substr(splitPoint);
-		outfile 	<< "\t [SOURCE] file: " << shortPath << "\n\n";
+		outfile 	<< "[SOURCE] file: " << shortPath << "\n\n";
 	}
 }
 
