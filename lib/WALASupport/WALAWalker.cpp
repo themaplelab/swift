@@ -7,6 +7,7 @@
 #include <string>
 
 #include "swift/SIL/SILLocation.h"
+#include "swift/Demangling/Demangle.h"
 #include "swift/WALASupport/WALAWalker.h"
 
 #include "launch.h"
@@ -47,8 +48,8 @@ void getOutputFilename(raw_ostream &outstream, string filenamePath,
 		// Get rid of the .swift extension
 		string swiftExt = ".swift";
 		string newExt = "";
-		size_t ext = shortFilename.find(swiftExt);
-		shortFilename.replace(swiftExt, swiftExt.length(), newExt);
+		size_t extSplit = shortFilename.find(swiftExt);
+		shortFilename.replace(extSplit, swiftExt.length(), newExt);
 	}
 	
 	// Concatenate to output full path
@@ -104,7 +105,11 @@ void printSIL(char *outputFilename, SILModule &SM) {
 void printSILFunctionInfo(llvm::raw_fd_ostream &outfile, SILFunction &func) {
 
 	// Output function name to written file
-	outfile 	<< "\t -- [FUNCTION] Name: " << func.getName() << "\n";	
+	outfile 	<< "-- [FUNCTION] Name: " << func.getName() << "\n";
+	
+	// Print demangled name
+	outfile		<< "-- [FUNCTION] Demangled: ";
+	outfile 	<< Demangle::demangleSymbolAsString(func.getName()) << "\n";
 }
 
 // Outputs the SILBasicBlock ID to outstream.
@@ -113,7 +118,7 @@ void printSILBasicBlockInfo(llvm::raw_fd_ostream &outfile, SILBasicBlock &bb) {
 	// Print SILBasicBlock ID
 	SILPrintContext context(outfile);
 	SILPrintContext::ID bbID = context.getID(&bb);
-	outfile 	<< "\t ---- [BASIC BLOCK] ID: " << bbID << "\n";
+	outfile 	<< "---- [BASIC BLOCK] ID: " << bbID << "\n";
 }
 
 // Prints the sourcefile, line, and column info to outstream.
@@ -128,9 +133,9 @@ void printInstrDebugLocInfo(llvm::raw_fd_ostream &outfile,
 	string splitString = debugInfo.Filename.substr(splitPoint);
 	
 	if (debugInfo.Filename == "") {
-		outfile << "\t\t\t >>> Source: <no file>";
+		outfile << "\t\t >>> Source: <no file>";
 	} else {
-		outfile << "\t\t\t >>> Source: " << splitString;
+		outfile << "\t\t >>> Source: " << splitString;
 	}
 	outfile << ", Line: " << debugInfo.Line;
 	outfile << ", Col: " << debugInfo.Column << "\n";
@@ -145,29 +150,29 @@ void printInstrMemoryReleasingInfo(llvm::raw_fd_ostream &outfile, SILInstruction
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayRead: {
-			outfile 	<< "\t\t\t +++ [MEM-R]: May read from memory. \n";
+			outfile 	<< "\t\t +++ [MEM-R]: May read from memory. \n";
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayWrite: {
-			outfile 	<< "\t\t\t +++ [MEM-W]: May write to memory. \n";
+			outfile 	<< "\t\t +++ [MEM-W]: May write to memory. \n";
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayReadWrite: {
-			outfile 	<< "\t\t\t +++ [MEM-RW]: May read or write memory. \n";
+			outfile 	<< "\t\t +++ [MEM-RW]: May read or write memory. \n";
 			break;
 		}
 		case SILInstruction::MemoryBehavior::MayHaveSideEffects: {
-			outfile 	<< "\t\t\t +++ [MEM-F]: May have side effects. \n";
+			outfile 	<< "\t\t +++ [MEM-F]: May have side effects. \n";
 		}
 	}
 	
 	switch (instr.getReleasingBehavior()) {
 		case SILInstruction::ReleasingBehavior::DoesNotRelease: {
-			outfile 	<< "\t\t\t +++ [REL]: Does not release memory. \n";
+			outfile 	<< "\t\t +++ [REL]: Does not release memory. \n";
 			break;
 		}
 		case SILInstruction::ReleasingBehavior::MayRelease: {
-			outfile 	<< "\t\t\t +++ [REL]: May release memory. \n";
+			outfile 	<< "\t\t +++ [REL]: May release memory. \n";
 			break;
 		}
 	}
@@ -177,13 +182,13 @@ void printInstrMemoryReleasingInfo(llvm::raw_fd_ostream &outfile, SILInstruction
 void printInstrOpInfo(llvm::raw_fd_ostream &outfile, SILInstruction &instr) {
 
 	if (instr.getNumOperands() == 0) {
-		outfile		<< "\t\t\t [OPER]: No Operands." << "\n";
+		outfile		<< "\t\t *** [OPER]: No Operands." << "\n";
 	} else {
 
 		// Output operand information
 		for (unsigned i = 0; i < instr.getNumOperands(); ++i) {
 			SILValue v = instr.getOperand(i);
-			outfile 	<< "\t\t\t *** [OPER] #" << i << ": " << v;
+			outfile 	<< "\t\t *** [OPER] #" << i << ": " << v;
 		}
 	}
 }
@@ -274,7 +279,17 @@ void printInstrValueKindInfo(llvm::raw_fd_ostream &outfile, SILInstruction &inst
 		}
 		
 		case ValueKind::FunctionRefInst: {
+
+			// Cast the instr to FunctionRefInst
+			FunctionRefInst *castInst = cast<FunctionRefInst>(&instr);
+
+			// Debug output identifier
 			outfile		<< "\t\t << FunctionRefInst >>" << "\n";
+
+			// Demangled FunctionRef name
+			outfile		<< "\t\t === [FUNC] Ref'd: ";
+			string funcName = Demangle::demangleSymbolAsString(castInst->getReferencedFunction()->getName());
+			outfile		<< 	funcName << "\n";
 			break;
 		}
 		
@@ -732,7 +747,7 @@ void getModBreakdown(llvm::raw_fd_ostream &outfile,
 			
 			for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
 			
-				outfile 	<< "\t\t ----> [INSTR] #" << i << ":";
+				outfile 	<< "\t ----> [INSTR] #" << i << ":";
 				printInstrValueKindInfo(outfile, *instr);
 
 				printSILInstrInfo(outfile, *instr, srcMgr);
