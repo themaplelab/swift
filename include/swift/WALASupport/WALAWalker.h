@@ -55,6 +55,7 @@ public:
 		WALAWalker::FunctionInfo *funcInfo;
 		WALAWalker::SourceRangeInfo *srcInfo;
 		ValueKind instrKind;
+		ArrayRef<Operand> ops;
 	};
 
 private:

@@ -647,11 +647,13 @@ void WALAWalker::analyzeSILModule(SILModule &SM) {
 			for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
 				
 				WALAWalker::InstrInfo instrInfo;
+				WALAWalker::SourceRangeInfo srcInfo = getInstrSrcInfo(*instr);
+
 				instrInfo.num = i;
 				instrInfo.funcInfo = &funcInfo;
-				WALAWalker::SourceRangeInfo srcInfo = getInstrSrcInfo(*instr);
 				instrInfo.srcInfo = &srcInfo;
 				instrInfo.instrKind = getInstrValueKindInfo(*instr);
+				instrInfo.ops = instr->getAllOperands();
 				
 				perInstruction(SM, instrInfo);
 				
@@ -679,6 +681,12 @@ void WALAWalker::perInstruction(SILModule &SM, WALAWalker::InstrInfo instrInfo) 
 	if (src.type == 0) {
 		outs << "\t ---- End - Line " << src.endLine << ":" << src.endCol << "\n";
 	}
+	
+	for (auto op = instrInfo.ops.begin(); op != instrInfo.ops.end(); ++op) {
+		outs << "\t\t [OPER]:" << op->get() << "\n";
+	}
+
+	outs << "\n";	
 }
 
 void WALAWalker::foo() {
