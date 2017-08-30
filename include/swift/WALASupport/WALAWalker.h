@@ -37,7 +37,7 @@ class WALAWalker {
 public:
 
 	struct SourceRangeInfo {
-		short type;	// -1: invalid; 0: normal; 1: debug
+		short type;	// -1: invalid; 0: has start and end; 1: has start but no end
 		string Filename;
 		unsigned startLine;
 		unsigned startCol;
