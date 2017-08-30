@@ -52,11 +52,9 @@ WALAWalker::FunctionInfo WALAWalker::getSILFunctionInfo(SILFunction &func) {
 	return funcInfo;
 }
 
-// Gets the sourcefile, start line/col, end line/col, and returns it in a 
-// SourceRangeInfo.  If there is no valid loc, startLine and startCol are -1.
-// If there was a valid loc, but info could not be pulled, it will have start
-// info but endLine and endCol will be -1.
-WALAWalker::SourceRangeInfo WALAWalker::getInstrSrcInfo(SILInstruction &instr) {
+// Gets the sourcefile, start line/col, end line/col, and writes it to the InstrInfo 
+// that is passed in.  
+void WALAWalker::getInstrSrcInfo(SILInstruction &instr, WALAWalker::InstrInfo *instrInfo) {
 	
 	SourceManager &srcMgr = instr.getModule().getSourceManager();
 	
@@ -64,11 +62,10 @@ WALAWalker::SourceRangeInfo WALAWalker::getInstrSrcInfo(SILInstruction &instr) {
 	SILLocation debugLoc = instr.getDebugLocation().getLocation();
 	SILLocation::DebugLoc debugInfo = debugLoc.decodeDebugLoc(srcMgr);
 	
-	SourceRangeInfo srcInfo;
-	srcInfo.Filename = debugInfo.Filename;
+	instrInfo->Filename = debugInfo.Filename;
 	
 	if (instr.getLoc().isNull()) {
-		srcInfo.type = -1;
+		instrInfo->srcType = -1;
 	} else {
 
 		SourceRange srcRange = instr.getLoc().getSourceRange();
@@ -77,28 +74,26 @@ WALAWalker::SourceRangeInfo WALAWalker::getInstrSrcInfo(SILInstruction &instr) {
 		
 		if (srcStart.isValid() ) {
 
-			srcInfo.type = 0;
+			instrInfo->srcType = 0;
 			
 			auto startLineCol = srcMgr.getLineAndColumn(srcStart);	
-			srcInfo.startLine = startLineCol.first;
-			srcInfo.startCol = startLineCol.second;			
+			instrInfo->startLine = startLineCol.first;
+			instrInfo->startCol = startLineCol.second;			
 
 		} else {
-			srcInfo.startLine = debugInfo.Line;
-			srcInfo.startCol = debugInfo.Column;
+			instrInfo->startLine = debugInfo.Line;
+			instrInfo->startCol = debugInfo.Column;
 		}
 		
 		if (srcEnd.isValid() ) {
 		
 			auto endLineCol = srcMgr.getLineAndColumn(srcEnd);
-			srcInfo.endLine = endLineCol.first;
-			srcInfo.endCol = endLineCol.second;
+			instrInfo->endLine = endLineCol.first;
+			instrInfo->endCol = endLineCol.second;
 		} else {
-			srcInfo.type = 1;
+			instrInfo->srcType = 1;
 		}
 	}
-	
-	return srcInfo;
 }
 
 // The big one - gets the ValueKind of the SILInstruction then goes through the
@@ -631,10 +626,10 @@ ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr) {
 }
 
 // Main WALAWalker implementation.
-void WALAWalker::analyzeSILModule(SILModule &SM) {
+void WALAWalker::analyzeSILModule() {
 
 	// Iterate over SILFunctions
-	for (auto func = SM.begin(); func != SM.end(); ++func) {
+	for (auto func = this->SM->begin(); func != this->SM->end(); ++func) {
 	
 		WALAWalker::FunctionInfo funcInfo = getSILFunctionInfo(*func);
 	
@@ -646,16 +641,28 @@ void WALAWalker::analyzeSILModule(SILModule &SM) {
 			// Iterate over SILInstructions
 			for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
 				
+				SILPrintContext Ctx(llvm::outs());
+	
 				WALAWalker::InstrInfo instrInfo;
-				WALAWalker::SourceRangeInfo srcInfo = getInstrSrcInfo(*instr);
+				getInstrSrcInfo(*instr, &instrInfo);
 
 				instrInfo.num = i;
 				instrInfo.funcInfo = &funcInfo;
-				instrInfo.srcInfo = &srcInfo;
 				instrInfo.instrKind = getInstrValueKindInfo(*instr);
-				instrInfo.ops = instr->getAllOperands();
+
+				// Get each operand <SILValue> and save it in a vector; get instr ID
+				ArrayRef<Operand> ops = instr->getAllOperands();
+				std::vector<SILValue> vals;				
+				for (auto op = ops.begin(); op != ops.end(); ++op) {
+					instrInfo.id = Ctx.getID(op->get());
+					vals.push_back(op->get());
+				}
 				
-				perInstruction(SM, instrInfo);
+				// Store vector as ArrayRef<SILValue> in instrInfo
+				instrInfo.ops = llvm::ArrayRef<SILValue>(vals);
+				
+				// Pass instrInfo to perInstruction, where actions can be taken
+				perInstruction(&instrInfo);
 				
 				++i;
 			
@@ -665,28 +672,31 @@ void WALAWalker::analyzeSILModule(SILModule &SM) {
 }
 
 // Do something per instruction
-void WALAWalker::perInstruction(SILModule &SM, WALAWalker::InstrInfo instrInfo) {
+void WALAWalker::perInstruction(WALAWalker::InstrInfo *instrInfo) {
 
 	raw_ostream &outs = llvm::outs();
-	WALAWalker::SourceRangeInfo src = *(instrInfo.srcInfo);	
 
-	outs << "\t [INSTR] #" << instrInfo.num << ": \n";
-	outs << "\t --> File: " << src.Filename << "\n";
-	if (src.type == -1) {
-		outs << "\t **** No source information. \n";
-	} else {
-		outs << "\t ++++ Start - Line " << src.startLine << ":" 
-			<< src.startCol << "\n";
-	}
-	if (src.type == 0) {
-		outs << "\t ---- End - Line " << src.endLine << ":" << src.endCol << "\n";
-	}
+	if (this->printStdout) {
+		outs << "\t [INSTR] #" << instrInfo->num;
+		outs << ", [OPNUM] " << instrInfo->id << "\n";
+		outs << "\t --> File: " << instrInfo->Filename << "\n";
+		if (instrInfo->srcType == -1) {
+			outs << "\t **** No source information. \n";
+		} else {
+			outs << "\t ++++ Start - Line " << instrInfo->startLine << ":" 
+				<< instrInfo->startCol << "\n";
+		}
+		if (instrInfo->srcType == 0) {
+			outs << "\t ---- End - Line " << instrInfo->endLine;
+			outs << ":" << instrInfo->endCol << "\n";
+		}
 	
-	for (auto op = instrInfo.ops.begin(); op != instrInfo.ops.end(); ++op) {
-		outs << "\t\t [OPER]:" << op->get() << "\n";
+		for (auto op = instrInfo->ops.begin(); op != instrInfo->ops.end(); ++op) {
+			outs << "\t\t[OPER]: " << *op;
+		}
+	
+		outs << "\n";	
 	}
-
-	outs << "\n";	
 }
 
 void WALAWalker::foo() {

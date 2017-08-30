@@ -36,15 +36,6 @@ class WALAWalker {
 
 public:
 
-	struct SourceRangeInfo {
-		short type;	// -1: invalid; 0: has start and end; 1: has start but no end
-		string Filename;
-		unsigned startLine;
-		unsigned startCol;
-		unsigned endLine;
-		unsigned endCol;
-	};
-	
 	struct FunctionInfo {
 		StringRef name;
 		StringRef demangled;
@@ -52,33 +43,44 @@ public:
 	
 	struct InstrInfo {
 		unsigned num;
-		WALAWalker::FunctionInfo *funcInfo;
-		WALAWalker::SourceRangeInfo *srcInfo;
+		SILPrintContext::ID id;
 		ValueKind instrKind;
-		ArrayRef<Operand> ops;
+		
+		short srcType;
+		string Filename;
+		unsigned startLine;
+		unsigned startCol;
+		unsigned endLine;
+		unsigned endCol;
+		
+		ArrayRef<SILValue> ops;
+		WALAWalker::FunctionInfo *funcInfo;
 	};
+	
+	void setSILModule(std::unique_ptr<SILModule> SM) { this->SM = std::move(SM); }
 
 private:
-// 	bool printStdout = false;
+	std::unique_ptr<SILModule> SM;
+	bool printStdout = false;
 // 	llvm::raw_fd_ostream &outfile;
 	
 	// Gets the mangled and demangled SILFunction and returns in a FunctionInfo.
 	WALAWalker::FunctionInfo getSILFunctionInfo(SILFunction &func);
 	
-	// Gets the sourcefile, start line/col, end line/col, and returns it in a 	
-	// SourceRangeInfo.
-	WALAWalker::SourceRangeInfo getInstrSrcInfo(SILInstruction &instr);
+	// Gets the sourcefile, start line/col, end line/col, and writes it to the 
+	// InstrInfo that is passed in.
+	void getInstrSrcInfo(SILInstruction &instr, WALAWalker::InstrInfo *instrInfo);
 
 	// The big one - gets the ValueKind of the SILInstruction then goes 			
 	// through the mega-switch to cast and handle each appropriately.
 	ValueKind getInstrValueKindInfo(SILInstruction &instr);
 
 	// Do something per instruction
-	void perInstruction(SILModule &SM, WALAWalker::InstrInfo instrInfo);
+	void perInstruction(WALAWalker::InstrInfo *instrInfo);
     
 public:
 	void foo();
-	void analyzeSILModule(SILModule &SM);
+	void analyzeSILModule();
 };
     
 } // end namespace swift
