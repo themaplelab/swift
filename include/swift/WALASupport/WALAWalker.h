@@ -36,6 +36,7 @@ class WALAWalker {
 
 private:
 	bool debug = true;
+	bool printStdout = true;
 	
 	// Gets shortFilename from full filenamePath, concatenates it to
 	// $SWIFT_WALA_OUTPUT dir, and writes the result to outfileName.
@@ -43,7 +44,7 @@ private:
 	
 	// Prints the path (after swift/) to outfile if it is open and writeable.
 	void printSourceFilepath(llvm::raw_ostream &outfile, 
-		string filenamePath);
+		SILModule &SM);
 	
 	// Prints the SIL to the outfile if it is open and writeable.
 	void printSIL(char *outputFilename, SILModule &SM);
@@ -79,8 +80,10 @@ private:
 		SILInstruction &instr, SourceManager &srcMgr);
     
     // Break down SILModule -> SILFunction -> SILBasicBlock -> SILInstruction
-	void getModBreakdown(llvm::raw_ostream &outfile,
-		SILModule &SM, SourceManager &srcMgr);
+	void getModBreakdown(llvm::raw_ostream &outfile, SILModule &SM);
+	
+	// Debugging for why some SILModules don't return a source filename
+	void sourcefileDebug(SILModule &SM);
     
 public:
 	void foo();

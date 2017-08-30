@@ -14,7 +14,10 @@
 
 using namespace swift;
 
-// Functions for passing information to and from WALA.
+//
+// 	WALAIntegration:
+// 		Methods for passing information to and from WALA.
+//
 class WALAIntegration {
 public:
 	void print_object(JNIEnv *java_env, jobject object) {
@@ -34,30 +37,23 @@ public:
 
 };
 
+//
+//	WALAWalker methods
+//
+
 // Gets shortFilename from full filenamePath, concatenates it to
 // $SWIFT_WALA_OUTPUT dir, and writes the result to outfileName.
-void WALAWalker::getOutputFilename(string filenamePath, char *outfileName) {
+void WALAWalker::getOutputFilename(string shortname, char *outfileName) {
 
 	// Get output dir	
 	string outputDir = getenv("SWIFT_WALA_OUTPUT");
 
-	// Get shortfilename (trailing final '/')	
-	string splitString = "/";
-	size_t splitPoint = filenamePath.find_last_of(splitString);
-	string shortFilename = filenamePath.substr(splitPoint + 1);
-	if (shortFilename.empty()) {
-		shortFilename = "_noSourceFileFound";
-	} else {
-		// Get rid of the .swift extension
-		string swiftExt = ".swift";
-		string newExt = "";
-		size_t extSplit = shortFilename.find(swiftExt);
-		shortFilename.replace(extSplit, swiftExt.length(), newExt);
+	if (shortname.empty()) {
+		shortname = "_noSourceFileFound";
 	}
-	
+		
 	// Concatenate to output full path
-	sprintf(outfileName, "%s/%s.txt", outputDir.c_str(), 
-		shortFilename.c_str());
+	sprintf(outfileName, "%s/%s.txt", outputDir.c_str(), shortname.c_str());
 
 	// Check if file exists; if so, try to make the file unique
 	unsigned i = 0;
@@ -66,25 +62,28 @@ void WALAWalker::getOutputFilename(string filenamePath, char *outfileName) {
 	while (fileCheck && i < 100) {
 		fileCheck.close();
 		sprintf(outfileName, "%s/%s_%u.txt", 
-			outputDir.c_str(), shortFilename.c_str(), i);
+			outputDir.c_str(), shortname.c_str(), i);
 		fileCheck.open(outfileName);
 		i++;
 	}
 
 	fileCheck.close();
 	
-	// DEBUG OUTSTREAM
-	if (WALAWalker::debug) { llvm::outs() << "\t [OUTPUTFILE]: " << outfileName << "\n"; }
+	if (WALAWalker::printStdout) {
+		llvm::outs() << "\t [OUTFILE]: " << outfileName << "\n";
+	}
 }
 
-// Prints the path (after swift/) to outfile if it is open and writeable.
-void WALAWalker::printSourceFilepath(llvm::raw_ostream &outfile, string filenamePath) {
-	size_t splitPoint = filenamePath.find("swift/");
-	if (splitPoint == string::npos) {
+// Prints the full path to outfile if it is open and writeable.
+void WALAWalker::printSourceFilepath(llvm::raw_ostream &outfile, SILModule &SM) {
+
+	string filenamePath = SM.getSwiftModule()->getModuleFilename().str();
+
+	// Print sourcefile information to stream	
+	if ( filenamePath.empty() ) {
 		outfile		<< "[SOURCE] Not Found; probably not from a file." << "\n\n";
 	} else {
-		string shortPath = filenamePath.substr(splitPoint);
-		outfile 	<< "[SOURCE] file: " << shortPath << "\n\n";
+		outfile 	<< "[SOURCE] Path: " << filenamePath << "\n\n";
 	}
 }
 
@@ -98,9 +97,6 @@ void WALAWalker::printSIL(char *outputFilename, SILModule &SM) {
  	size_t splitPoint = strFilename.find(extToReplace);
 	const char *SILFilename = strFilename.replace(splitPoint, extToReplace.length(), newExt).c_str();
 	
-	// DEBUG OUTSTREAM
-	if (WALAWalker::debug) { llvm::outs() << "\t [SIL FILE]: " << SILFilename << "\n"; }
-
 	// Output to .sil
 	SM.dump(SILFilename);
 }
@@ -736,8 +732,10 @@ void WALAWalker::printSILInstrInfo(llvm::raw_ostream &outfile,
 }
 
 // Break down SILModule -> SILFunction -> SILBasicBlock -> SILInstruction -> SILValue
-void WALAWalker::getModBreakdown(llvm::raw_ostream &outfile,
-	SILModule &SM, SourceManager &srcMgr) {
+void WALAWalker::getModBreakdown(llvm::raw_ostream &outfile, SILModule &SM) {
+
+	// Get SourceManager
+	SourceManager &srcMgr = SM.getSourceManager();
 
 	// Iterate over SILFunctions
 	for (auto func = SM.begin(); func != SM.end(); ++func) {
@@ -770,19 +768,54 @@ void WALAWalker::getModBreakdown(llvm::raw_ostream &outfile,
 	}
 }
 
+void WALAWalker::sourcefileDebug(SILModule &SM) {
+
+	ModuleDecl *swiftModule = SM.getSwiftModule();
+
+	// SILModule's ModuleDecl -> getModuleFilename()
+	llvm::outs() << "\t [getModuleFilename] " << swiftModule->getModuleFilename() << "\n"; 
+	llvm::outs() << "\t [getName] " << swiftModule->getName() << "\n"; 
+	llvm::outs() << "\t [getFullName] " << swiftModule->getFullName() << "\n"; 
+			
+	if (swiftModule->isStdlibModule() ) {
+		llvm::outs() << "\t\t stdlib Module \n";
+	}
+	if (swiftModule->isSwiftShimsModule() ) {
+		llvm::outs() << "\t\t SwiftShims Module \n";
+	}
+	if (swiftModule->isBuiltinModule() ) {
+		llvm::outs() << "\t\t Builtin Module \n";
+	}
+	if (swiftModule->isSystemModule() ) {
+		llvm::outs() << "\t\t System Module \n";
+	}
+	if (swiftModule->hasEntryPoint() ) {
+		llvm::outs() << "\t\t Has Entry Point \n";
+	}
+}
+
 // Main WALAWalker implementation.
 void WALAWalker::analyzeSILModule(SILModule &SM) {
 
 	// Modes and settings 
 	bool outputSIL = true;		// Whether or not to create a full SIL dump to file
 
-	// SILModule-derived information
-	SourceManager &srcMgr = SM.getSourceManager();
-	string filenamePath = SM.getSwiftModule()->getModuleFilename().str();
-	
-	// Get output filename
+	// DEBUG
+// 	if (this->debug && WALAWalker::printStdout) { 
+// 		sourcefileDebug(SM); 
+// 	} else {
+// 		if (WALAWalker::printStdout) {
+// 			llvm::outs() << "\t [FILE]: " << filenamePath << "\n";
+// 		}
+// 	}
+
+	// Get filename with no path
+	llvm::SmallString<64> scratch;
+	string shortname = SM.getSwiftModule()->getFullName().getString(scratch);
+
+	// Get output filename with path
 	char outputFilename[1024];
-	getOutputFilename(filenamePath, outputFilename);
+	getOutputFilename(shortname, outputFilename);
 	
 	// Open outfile as llvm::raw_fd_ostream for writing
 	std::error_code EC;
@@ -794,14 +827,14 @@ void WALAWalker::analyzeSILModule(SILModule &SM) {
 	}	
 	
 	// Print and file-output source path information
-	printSourceFilepath(outfile, filenamePath);
+	printSourceFilepath(outfile, SM);
 
 	// Dump SIL for SILModule to output file.
 	if (outputSIL) { printSIL(outputFilename, SM); }
 	if (WALAWalker::debug) { llvm::outs() << "\n"; }
 	
 	// Iterate SILModule -> SILFunction -> SILBasicBlock -> SILInstruction
-	getModBreakdown(outfile, SM, srcMgr);
+	getModBreakdown(outfile, SM);
 	
 	// Close out the file
 	outfile.close();
