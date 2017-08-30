@@ -34,56 +34,46 @@ namespace swift {
 
 class WALAWalker {
 
+public:
+
+	struct SourceRangeInfo {
+		short type;	// -1: invalid; 0: normal; 1: debug
+		string Filename;
+		unsigned startLine;
+		unsigned startCol;
+		unsigned endLine;
+		unsigned endCol;
+	};
+	
+	struct FunctionInfo {
+		StringRef name;
+		StringRef demangled;
+	};
+	
+	struct InstrInfo {
+		unsigned num;
+		WALAWalker::FunctionInfo *funcInfo;
+		WALAWalker::SourceRangeInfo *srcInfo;
+		ValueKind instrKind;
+	};
+
 private:
-	bool debug = true;
-	bool printStdout = true;
+// 	bool printStdout = false;
+// 	llvm::raw_fd_ostream &outfile;
 	
-	// Gets shortFilename from full filenamePath, concatenates it to
-	// $SWIFT_WALA_OUTPUT dir, and writes the result to outfileName.
-	void getOutputFilename(string filenamePath, char *outfileName);
+	// Gets the mangled and demangled SILFunction and returns in a FunctionInfo.
+	WALAWalker::FunctionInfo getSILFunctionInfo(SILFunction &func);
 	
-	// Prints the path (after swift/) to outfile if it is open and writeable.
-	void printSourceFilepath(llvm::raw_ostream &outfile, 
-		SILModule &SM);
-	
-	// Prints the SIL to the outfile if it is open and writeable.
-	void printSIL(char *outputFilename, SILModule &SM);
-	
-	// Outputs the mangled and demangled SILFunction name to outfile.
-	void printSILFunctionInfo(llvm::raw_ostream &outfile, 
-		SILFunction &func);
-	
-	// Outputs the SILBasicBlock ID to outstream.
-	void printSILBasicBlockInfo(llvm::raw_ostream &outfile, 
-		SILBasicBlock &bb);
-	
-	// Prints the sourcefile, line, and column info to outstream.
-	void printInstrDebugLocInfo(llvm::raw_ostream &outfile,
-		SILInstruction &instr, SourceManager &srcMgr);
-		
-	// Outputs whether instr may release, write to / read from memory,
-	// trap the instruction, or potentially have side effects.
-	void printInstrMemoryReleasingInfo(llvm::raw_ostream &outfile, 
-		SILInstruction &instr);
-	
-	// Goes over all operands on the SILInstr and prints them out.
-	void printInstrOpInfo(llvm::raw_ostream &outfile, 
-		SILInstruction &instr);
+	// Gets the sourcefile, start line/col, end line/col, and returns it in a 	
+	// SourceRangeInfo.
+	WALAWalker::SourceRangeInfo getInstrSrcInfo(SILInstruction &instr);
 
 	// The big one - gets the ValueKind of the SILInstruction then goes 			
 	// through the mega-switch to cast and handle each appropriately.
-	void printInstrValueKindInfo(llvm::raw_ostream &outfile, 
-		SILInstruction &instr);
-	
-	// Handles all the SILInstruction printing and management.
-	void printSILInstrInfo(llvm::raw_ostream &outfile,
-		SILInstruction &instr, SourceManager &srcMgr);
-    
-    // Break down SILModule -> SILFunction -> SILBasicBlock -> SILInstruction
-	void getModBreakdown(llvm::raw_ostream &outfile, SILModule &SM);
-	
-	// Debugging for why some SILModules don't return a source filename
-	void sourcefileDebug(SILModule &SM);
+	ValueKind getInstrValueKindInfo(SILInstruction &instr);
+
+	// Do something per instruction
+	void perInstruction(SILModule &SM, WALAWalker::InstrInfo instrInfo);
     
 public:
 	void foo();
