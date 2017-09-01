@@ -13,6 +13,9 @@
 #include "CAstWrapper.h"
 
 using namespace swift;
+using ModuleInfo = WALAWalker::ModuleInfo;
+using FunctionInfo = WALAWalker::FunctionInfo;
+using InstrInfo = WALAWalker::InstrInfo;
 
 //
 // 	WALAIntegration:
@@ -42,9 +45,9 @@ public:
 //
 
 // Gets the mangled and demangled SILFunction and returns in a FunctionInfo.
-WALAWalker::FunctionInfo WALAWalker::getSILFunctionInfo(SILFunction &func) {
+FunctionInfo WALAWalker::getSILFunctionInfo(SILFunction &func) {
 
-	WALAWalker::FunctionInfo funcInfo;
+	FunctionInfo funcInfo;
 	funcInfo.name = func.getName();
 	StringRef demangled = Demangle::demangleSymbolAsString(funcInfo.name);
 	funcInfo.demangled = demangled;
@@ -54,7 +57,8 @@ WALAWalker::FunctionInfo WALAWalker::getSILFunctionInfo(SILFunction &func) {
 
 // Gets the sourcefile, start line/col, end line/col, and writes it to the InstrInfo 
 // that is passed in.  
-void WALAWalker::getInstrSrcInfo(SILInstruction &instr, WALAWalker::InstrInfo *instrInfo) {
+// TODO: check lastBuffer vs. buffer to see if start and end are in the same file
+void WALAWalker::getInstrSrcInfo(SILInstruction &instr, InstrInfo *instrInfo) {
 	
 	SourceManager &srcMgr = instr.getModule().getSourceManager();
 	
@@ -96,8 +100,9 @@ void WALAWalker::getInstrSrcInfo(SILInstruction &instr, WALAWalker::InstrInfo *i
 	}
 }
 
-// The big one - gets the ValueKind of the SILInstruction then goes through the
-// mega-switch to handle appropriately.
+// Gets the ValueKind of the SILInstruction then goes through the mega-switch to handle 
+// appropriately.  
+// TODO: currently only returns ValueKind, switch is not descended into functionally
 ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr) {
 
 	auto instrKind = instr.getKind();
@@ -625,13 +630,24 @@ ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr) {
 	return instrKind;
 }
 
-// Main WALAWalker implementation.
-void WALAWalker::analyzeSILModule() {
+// Main WALAWalker implementation.  Iterates over SILModule -> SILFunctions -> 
+// SILBasicBlocks -> SILInstructions and extracts all the important information, gathers
+// it in InstrInfo, and passes it on to perInstruction().  The logic for handling each
+// instruction should be placed in perInstruction(), and analyzeSILModule() should be
+// used to create the data structures to perInstruction().
+void WALAWalker::analyzeSILModule(SILModule &SM) {
+
+	ModuleInfo modInfo;
+
+	// Entry point file:
+	modInfo.sourcefile = SM.getSwiftModule()->getModuleFilename();
+	if (modInfo.sourcefile.empty() ) { modInfo.sourcefile = "N/A"; }
+	llvm::outs() << "[ENTRY]: " << modInfo.sourcefile << "\n"; // REMOVE
 
 	// Iterate over SILFunctions
-	for (auto func = this->SM->begin(); func != this->SM->end(); ++func) {
+	for (auto func = SM.begin(); func != SM.end(); ++func) {
 	
-		WALAWalker::FunctionInfo funcInfo = getSILFunctionInfo(*func);
+		FunctionInfo funcInfo = getSILFunctionInfo(*func);
 	
 		// Iterate over SILBasicBlocks
 		for (auto bb = func->begin(); bb != func->end(); ++bb) {
@@ -643,10 +659,14 @@ void WALAWalker::analyzeSILModule() {
 				
 				SILPrintContext Ctx(llvm::outs());
 	
-				WALAWalker::InstrInfo instrInfo;
+				InstrInfo instrInfo;
 				getInstrSrcInfo(*instr, &instrInfo);
+				
+				instrInfo.memBehavior = instr->getMemoryBehavior();
+				instrInfo.relBehavior = instr->getReleasingBehavior();
 
 				instrInfo.num = i;
+				instrInfo.modInfo = &modInfo;
 				instrInfo.funcInfo = &funcInfo;
 				instrInfo.instrKind = getInstrValueKindInfo(*instr);
 
@@ -671,34 +691,78 @@ void WALAWalker::analyzeSILModule() {
 	}	// end SILFunction
 }
 
-// Do something per instruction
-void WALAWalker::perInstruction(WALAWalker::InstrInfo *instrInfo) {
+// Actions to take on a per-instruction basis.  instrInfo contains all the relevant info
+// for the current instruction in the iteration.
+void WALAWalker::perInstruction(InstrInfo *instrInfo) {
 
 	raw_ostream &outs = llvm::outs();
 
 	if (this->printStdout) {
+
 		outs << "\t [INSTR] #" << instrInfo->num;
 		outs << ", [OPNUM] " << instrInfo->id << "\n";
 		outs << "\t --> File: " << instrInfo->Filename << "\n";
+
+		// Has no location information
 		if (instrInfo->srcType == -1) {
 			outs << "\t **** No source information. \n";
+			
+		// Has only start information
 		} else {
 			outs << "\t ++++ Start - Line " << instrInfo->startLine << ":" 
 				<< instrInfo->startCol << "\n";
 		}
+
+		// Has end information
 		if (instrInfo->srcType == 0) {
 			outs << "\t ---- End - Line " << instrInfo->endLine;
 			outs << ":" << instrInfo->endCol << "\n";
 		}
+		
+		// Memory Behavior
+		switch (instrInfo->memBehavior) {
+			case SILInstruction::MemoryBehavior::None: {
+				break;
+			}
+			case SILInstruction::MemoryBehavior::MayRead: {
+				outs	<< "\t\t +++ [MEM-R]: May read from memory. \n";
+				break;
+			}
+			case SILInstruction::MemoryBehavior::MayWrite: {
+				outs 	<< "\t\t +++ [MEM-W]: May write to memory. \n";
+				break;
+			}
+			case SILInstruction::MemoryBehavior::MayReadWrite: {
+				outs 	<< "\t\t +++ [MEM-RW]: May read or write memory. \n";
+				break;
+			}
+			case SILInstruction::MemoryBehavior::MayHaveSideEffects: {
+				outs 	<< "\t\t +++ [MEM-F]: May have side effects. \n";
+			}
+		}
+		
+		// Releasing Behavior
+		switch (instrInfo->relBehavior) {
+			case SILInstruction::ReleasingBehavior::DoesNotRelease: {
+				outs 	<< "\t\t [REL]: Does not release memory. \n";
+				break;
+			}
+			case SILInstruction::ReleasingBehavior::MayRelease: {
+				outs 	<< "\t\t [REL]: May release memory. \n";
+				break;
+			}
+		}
 	
+		// Show operands, if they exist
 		for (auto op = instrInfo->ops.begin(); op != instrInfo->ops.end(); ++op) {
-			outs << "\t\t[OPER]: " << *op;
+			outs << "\t\t [OPER]: " << *op;
 		}
 	
 		outs << "\n";	
 	}
 }
 
+// TODO: move to WALAIntegration eventually
 void WALAWalker::foo() {
   char *walaHome = getenv("WALA_HOME");
   char *swiftWalaHome = getenv("SWIFT_WALA_HOME");

@@ -36,6 +36,10 @@ class WALAWalker {
 
 public:
 
+	struct ModuleInfo {
+		StringRef sourcefile;
+	};
+
 	struct FunctionInfo {
 		StringRef name;
 		StringRef demangled;
@@ -46,22 +50,23 @@ public:
 		SILPrintContext::ID id;
 		ValueKind instrKind;
 		
+		SILInstruction::MemoryBehavior memBehavior;
+		SILInstruction::ReleasingBehavior relBehavior;
+
 		short srcType;
 		string Filename;
 		unsigned startLine;
 		unsigned startCol;
 		unsigned endLine;
 		unsigned endCol;
-		
+	
 		ArrayRef<SILValue> ops;
+		WALAWalker::ModuleInfo *modInfo;
 		WALAWalker::FunctionInfo *funcInfo;
 	};
-	
-	void setSILModule(std::unique_ptr<SILModule> SM) { this->SM = std::move(SM); }
 
 private:
-	std::unique_ptr<SILModule> SM;
-	bool printStdout = false;
+	bool printStdout = true;
 // 	llvm::raw_fd_ostream &outfile;
 	
 	// Gets the mangled and demangled SILFunction and returns in a FunctionInfo.
@@ -70,7 +75,7 @@ private:
 	// Gets the sourcefile, start line/col, end line/col, and writes it to the 
 	// InstrInfo that is passed in.
 	void getInstrSrcInfo(SILInstruction &instr, WALAWalker::InstrInfo *instrInfo);
-
+	
 	// The big one - gets the ValueKind of the SILInstruction then goes 			
 	// through the mega-switch to cast and handle each appropriately.
 	ValueKind getInstrValueKindInfo(SILInstruction &instr);
@@ -80,7 +85,7 @@ private:
     
 public:
 	void foo();
-	void analyzeSILModule();
+	void analyzeSILModule(SILModule &SM);
 };
     
 } // end namespace swift

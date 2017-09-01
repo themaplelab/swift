@@ -789,8 +789,7 @@ static bool performCompile(CompilerInstance &Instance,
 
   // WALAWalker Integration
   WALAWalker ww;
-  ww.setSILModule(std::move(SM));
-  ww.analyzeSILModule();
+  ww.analyzeSILModule(*SM);
   // End WALAWalker Integration
 
   if (observer) {
