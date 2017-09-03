@@ -91,8 +91,7 @@ SILModule::SILModule(ModuleDecl *SwiftModule, SILOptions &Options,
 SILModule::~SILModule() {
   // Decrement ref count for each SILGlobalVariable with static initializers.
   for (SILGlobalVariable &v : silGlobals)
-    if (v.getInitializer())
-      v.getInitializer()->decrementRefCount();
+    v.dropAllReferences();
 
   // Drop everything functions in this module reference.
   //
@@ -689,36 +688,21 @@ SILModule::lookUpFunctionInDefaultWitnessTable(const ProtocolDecl *Protocol,
   return std::make_pair(nullptr, nullptr);
 }
 
-static ClassDecl *getClassDeclSuperClass(ClassDecl *Class) {
-  Type T = Class->getSuperclass();
-  if (!T)
-    return nullptr;
-  return T->getCanonicalType()->getClassOrBoundGenericClass();
-}
-
 SILFunction *
 SILModule::
 lookUpFunctionInVTable(ClassDecl *Class, SILDeclRef Member) {
-  // Until we reach the top of the class hierarchy...
-  while (Class) {
-    // Try to lookup a VTable for Class from the module...
-    auto *Vtbl = lookUpVTable(Class);
+  // Try to lookup a VTable for Class from the module...
+  auto *Vtbl = lookUpVTable(Class);
 
-    // Bail, if the lookup of VTable fails.
-    if (!Vtbl) {
-      return nullptr;
-    }
-
-    // Ok, we have a VTable. Try to lookup the SILFunction implementation from
-    // the VTable.
-    if (SILFunction *F = Vtbl->getImplementation(*this, Member))
-      return F;
-
-    // If we fail to lookup the SILFunction, again skip Class and attempt to
-    // resolve the method in the VTable of the super class of Class if such a
-    // super class exists.
-    Class = getClassDeclSuperClass(Class);
+  // Bail, if the lookup of VTable fails.
+  if (!Vtbl) {
+    return nullptr;
   }
+
+  // Ok, we have a VTable. Try to lookup the SILFunction implementation from
+  // the VTable.
+  if (auto E = Vtbl->getEntry(*this, Member))
+    return E->Implementation;
 
   return nullptr;
 }

@@ -622,6 +622,10 @@ ERROR(sil_vtable_func_not_found,none,
       "sil function not found %0", (Identifier))
 ERROR(sil_vtable_class_not_found,none,
       "sil class not found %0", (Identifier))
+ERROR(sil_vtable_bad_entry_kind,none,
+      "expected 'inherited' or 'override'", ())
+ERROR(sil_vtable_expect_rsquare,none,
+      "expected ']' after vtable entry kind", ())
 
 // SIL Global
 ERROR(sil_global_variable_not_found,none,
@@ -1270,8 +1274,8 @@ ERROR(attr_interpolated_string,none,
 ERROR(attr_only_at_non_local_scope, none,
       "attribute '%0' can only be used in a non-local scope", (StringRef))
 
-// accessibility
-ERROR(attr_accessibility_expected_set,none,
+// Access control
+ERROR(attr_access_expected_set,none,
       "expected 'set' as subject of '%0' modifier", (StringRef))
 
 // availability

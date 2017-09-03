@@ -3263,7 +3263,7 @@ retry_after_fail:
 
   // If the instance type is a bridged to an Objective-C type, perform
   // a lookup into that Objective-C type.
-  if (bridgedType) {
+  if (bridgedType && !isMetatype) {
     LookupResult &bridgedLookup = lookupMember(bridgedClass, memberName);
     ModuleDecl *foundationModule = nullptr;
     for (auto result : bridgedLookup) {
@@ -3320,9 +3320,9 @@ retry_after_fail:
       includeInaccessibleMembers) {
     NameLookupOptions lookupOptions = defaultMemberLookupOptions;
     
-    // Ignore accessibility so we get candidates that might have been missed
+    // Ignore access control so we get candidates that might have been missed
     // before.
-    lookupOptions |= NameLookupFlags::IgnoreAccessibility;
+    lookupOptions |= NameLookupFlags::IgnoreAccessControl;
     // This is only used for diagnostics, so always use KnownPrivate.
     lookupOptions |= NameLookupFlags::KnownPrivate;
     

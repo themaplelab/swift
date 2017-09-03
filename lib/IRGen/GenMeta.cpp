@@ -52,6 +52,7 @@
 #include "IRGenMangler.h"
 #include "IRGenModule.h"
 #include "MetadataLayout.h"
+#include "ProtocolInfo.h"
 #include "ScalarTypeInfo.h"
 #include "StructLayout.h"
 #include "StructMetadataVisitor.h"
@@ -1369,6 +1370,9 @@ static llvm::Function *getTypeMetadataAccessFunction(IRGenModule &IGM,
   if (!isTypeMetadataAccessTrivial(IGM, type)) {
     cacheVariable = cast<llvm::GlobalVariable>(
         IGM.getAddrOfTypeMetadataLazyCacheVariable(type, ForDefinition));
+
+    if (IGM.getOptions().OptimizeForSize)
+      accessor->addFnAttr(llvm::Attribute::NoInline);
   }
 
   emitLazyCacheAccessFunction(IGM, accessor, cacheVariable,
@@ -1410,6 +1414,9 @@ static llvm::Function *getGenericTypeMetadataAccessFunction(IRGenModule &IGM,
   // have defined it, just return the pointer.
   if (!shouldDefine || !accessor->empty())
     return accessor;
+
+  if (IGM.getOptions().OptimizeForSize)
+    accessor->addFnAttr(llvm::Attribute::NoInline);
 
   emitLazyCacheAccessFunction(IGM, accessor, /*cacheVariable=*/nullptr,
                               [&](IRGenFunction &IGF) -> llvm::Value* {
@@ -2076,6 +2083,32 @@ void irgen::emitMetatypeRef(IRGenFunction &IGF, CanMetatypeType type,
 /** Nominal Type Descriptor Emission *****************************************/
 /*****************************************************************************/
 
+template <class Flags>
+static Flags getMethodDescriptorFlags(ValueDecl *fn) {
+  if (isa<ConstructorDecl>(fn))
+    return Flags(Flags::Kind::Init); // 'init' is considered static
+
+  auto kind = [&] {
+    switch (cast<FuncDecl>(fn)->getAccessorKind()) {
+    case AccessorKind::NotAccessor:
+      return Flags::Kind::Method;
+    case AccessorKind::IsGetter:
+      return Flags::Kind::Getter;
+    case AccessorKind::IsSetter:
+      return Flags::Kind::Setter;
+    case AccessorKind::IsMaterializeForSet:
+      return Flags::Kind::MaterializeForSet;
+    case AccessorKind::IsWillSet:
+    case AccessorKind::IsDidSet:
+    case AccessorKind::IsAddressor:
+    case AccessorKind::IsMutableAddressor:
+      llvm_unreachable("these accessors never appear in protocols or v-tables");
+    }
+    llvm_unreachable("bad kind");
+  }();
+  return Flags(kind).withIsInstance(!fn->isStatic());
+}
+
 namespace {  
   template<class Impl>
   class NominalTypeDescriptorBuilderBase {
@@ -2155,6 +2188,11 @@ namespace {
         flags = flags.withHasParent(true);
       if (requirements.hasParentType())
         flags = flags.withHasGenericParent(true);
+      if (auto *cd = dyn_cast<ClassDecl>(ntd)) {
+        auto &layout = IGM.getMetadataLayout(cd);
+        if (layout.getVTableSize() > 0)
+          flags = flags.withHasVTable(true);
+      }
       B.addInt32(flags.getIntValue());
 
       // TODO: provide reflective descriptions of the type and
@@ -2328,24 +2366,37 @@ namespace {
   };
   
   class ClassNominalTypeDescriptorBuilder
-    : public NominalTypeDescriptorBuilderBase<ClassNominalTypeDescriptorBuilder>
+    : public NominalTypeDescriptorBuilderBase<ClassNominalTypeDescriptorBuilder>,
+      public SILVTableVisitor<ClassNominalTypeDescriptorBuilder>
   {
     using super
       = NominalTypeDescriptorBuilderBase<ClassNominalTypeDescriptorBuilder>;
     
     // Offsets of key fields in the metadata records.
     Size FieldVectorOffset, GenericParamsOffset;
-    
+
+    SILVTable *VTable;
+
+    Size VTableOffset;
+    unsigned VTableSize;
+
     ClassDecl *Target;
     
   public:
     ClassNominalTypeDescriptorBuilder(IRGenModule &IGM,
                                        ClassDecl *c)
-      : super(IGM), Target(c)
+      : super(IGM),
+        SILVTableVisitor<ClassNominalTypeDescriptorBuilder>(IGM.getSILTypes()),
+        Target(c)
     {
       auto &layout = IGM.getMetadataLayout(Target);
       FieldVectorOffset = layout.getStaticFieldOffsetVectorOffset();
       GenericParamsOffset = layout.getStaticGenericRequirementsOffset();
+
+      VTable = IGM.getSILModule().lookUpVTable(Target);
+
+      VTableOffset = layout.getStaticVTableOffset();
+      VTableSize = layout.getVTableSize();
     }
     
     ClassDecl *getTarget() { return Target; }
@@ -2372,9 +2423,68 @@ namespace {
       // Build the field type accessor function.
       llvm::Function *fieldTypeVectorAccessor
         = getFieldTypeAccessorFn(IGM, Target,
-                                   Target->getStoredProperties());
+                                 Target->getStoredProperties());
       
       B.addRelativeAddress(fieldTypeVectorAccessor);
+    }
+
+    void addVTableDescriptor() {
+      assert(VTableSize != 0);
+      B.addInt32(VTableOffset / IGM.getPointerSize());
+      B.addInt32(VTableSize);
+
+      if (doesClassMetadataRequireDynamicInitialization(IGM, Target))
+        addVTableEntries(Target);
+
+      // TODO: Emit reflection metadata for virtual methods
+    }
+
+    void addMethod(SILDeclRef fn) {
+      assert(VTable && "no vtable?!");
+
+      auto descriptor = B.beginStruct(IGM.MethodDescriptorStructTy);
+
+      // Classify the method.
+      using Flags = MethodDescriptorFlags;
+      auto flags = getMethodDescriptorFlags<Flags>(fn.getDecl());
+
+      // Remember if the declaration was dynamic.
+      if (fn.getDecl()->isDynamic())
+        flags = flags.withIsDynamic(true);
+
+      // TODO: final? open?
+
+      auto *dc = fn.getDecl()->getDeclContext();
+      assert(!isa<ExtensionDecl>(dc));
+
+      if (fn.getDecl()->getDeclContext() == Target) {
+        if (auto entry = VTable->getEntry(IGM.getSILModule(), fn)) {
+          assert(entry->TheKind == SILVTable::Entry::Kind::Normal);
+          auto *implFn = IGM.getAddrOfSILFunction(entry->Implementation,
+                                                  NotForDefinition);
+          descriptor.addRelativeAddress(implFn);
+        } else {
+          // The method is removed by dead method elimination.
+          // It should be never called. We add a pointer to an error function.
+          descriptor.addRelativeAddressOrNull(nullptr);
+        }
+      }
+
+      descriptor.addInt(IGM.Int32Ty, flags.getIntValue());
+
+      descriptor.finishAndAddTo(B);
+    }
+
+    void addMethodOverride(SILDeclRef baseRef, SILDeclRef declRef) {}
+
+    void addPlaceholder(MissingMemberDecl *MMD) {
+      llvm_unreachable("cannot generate metadata with placeholders in it");
+    }
+
+    void layout() {
+      super::layout();
+      if (VTableSize != 0)
+        addVTableDescriptor();
     }
   };
   
@@ -2826,6 +2936,11 @@ namespace {
       return B.getNextOffsetFromGlobal() - TemplateHeaderSize;
     }
 
+    /// Ignore the destructor and value witness table.
+    Size getNextOffsetFromAddressPoint() const {
+      return getNextOffsetFromTemplateHeader() - AddressPoint;
+    }
+
     template <class... T>
     void addGenericArgument(CanType type, T &&...args) {
       NumGenericWitnesses++;
@@ -2938,11 +3053,19 @@ namespace {
   protected:
     using super::IGM;
     using super::Target;
+    using super::asImpl;
 
     ConstantStructBuilder &B;
     const StructLayout &Layout;
     const ClassLayout &FieldLayout;
     SILVTable *VTable;
+
+    struct MethodOverride {
+      Size Offset;
+      SILFunction *Method;
+    };
+
+    SmallVector<MethodOverride, 4> Overrides;
 
     ClassMetadataBuilderBase(IRGenModule &IGM, ClassDecl *theClass,
                              ConstantStructBuilder &builder,
@@ -3195,14 +3318,31 @@ namespace {
     void addMethod(SILDeclRef fn) {
       // Find the vtable entry.
       assert(VTable && "no vtable?!");
-      if (SILFunction *func =
-            VTable->getImplementation(IGM.getSILModule(), fn)) {
-        B.add(IGM.getAddrOfSILFunction(func, NotForDefinition));
-      } else {
-        // The method is removed by dead method elimination.
-        // It should be never called. We add a pointer to an error function.
-        B.addBitCast(IGM.getDeletedMethodErrorFn(), IGM.FunctionPtrTy);
+      auto entry = VTable->getEntry(IGM.getSILModule(), fn);
+
+      // If the class is resilient or generic, the runtime will construct the
+      // vtable for us. All we need to do is fix up overrides of superclass
+      // methods.
+      if (doesClassMetadataRequireDynamicInitialization(IGM, Target)) {
+        if (entry && entry->TheKind == SILVTable::Entry::Kind::Override) {
+          // Record the override so that we can fill it in later.
+          Overrides.push_back({asImpl().getNextOffsetFromAddressPoint(),
+                               entry->Implementation});
+        }
+
+        B.addNullPointer(IGM.FunctionPtrTy);
+        return;
       }
+
+      // The class is fragile. Emit a direct reference to the vtable entry.
+      if (entry) {
+        B.add(IGM.getAddrOfSILFunction(entry->Implementation, NotForDefinition));
+        return;
+      }
+
+      // The method is removed by dead method elimination.
+      // It should be never called. We add a pointer to an error function.
+      B.addBitCast(IGM.getDeletedMethodErrorFn(), IGM.FunctionPtrTy);
     }
 
     void addPlaceholder(MissingMemberDecl *) {
@@ -3275,7 +3415,10 @@ namespace {
       // Otherwise, all we need to do is register with the ObjC runtime.
       } else {
         metadata = emitFinishIdempotentInitialization(IGF, metadata);
+        assert(Overrides.empty());
       }
+
+      emitInitializeMethodOverrides(IGF, metadata);
 
       // Realizing the class with the ObjC runtime will copy back to the
       // field offset globals for us; but if ObjC interop is disabled, we
@@ -3285,6 +3428,29 @@ namespace {
         emitInitializeFieldOffsets(IGF, metadata);
 
       return metadata;
+    }
+
+    // Update vtable entries for method overrides. The runtime copies in
+    // the vtable from the superclass for us; we have to install method
+    // overrides ourselves.
+    void emitInitializeMethodOverrides(IRGenFunction &IGF,
+                                       llvm::Value *metadata) {
+      if (Overrides.empty())
+        return;
+
+      Address metadataWords(
+          IGF.Builder.CreateBitCast(metadata, IGM.Int8PtrPtrTy),
+          IGM.getPointerAlignment());
+
+      for (auto Override : Overrides) {
+        auto *implFn = IGM.getAddrOfSILFunction(Override.Method,
+                                                NotForDefinition);
+
+        auto dest = createPointerSizedGEP(IGF, metadataWords,
+                                          Override.Offset);
+        auto *value = IGF.Builder.CreateBitCast(implFn, IGM.Int8PtrTy);
+        IGF.Builder.CreateStore(value, dest);
+      }
     }
 
     // The Objective-C runtime will copy field offsets from the field offset
@@ -3318,14 +3484,28 @@ namespace {
   class ClassMetadataBuilder :
     public ClassMetadataBuilderBase<ClassMetadataBuilder> {
 
+    using super = ClassMetadataBuilderBase<ClassMetadataBuilder>;
+
     bool HasUnfilledSuperclass = false;
     bool HasUnfilledParent = false;
+
+    Size AddressPoint;
+
   public:
     ClassMetadataBuilder(IRGenModule &IGM, ClassDecl *theClass,
                          ConstantStructBuilder &builder,
                          const StructLayout &layout,
                          const ClassLayout &fieldLayout)
       : ClassMetadataBuilderBase(IGM, theClass, builder, layout, fieldLayout) {
+    }
+
+    void noteAddressPoint() {
+      super::noteAddressPoint();
+      AddressPoint = B.getNextOffsetFromGlobal();
+    }
+
+    Size getNextOffsetFromAddressPoint() const {
+      return B.getNextOffsetFromGlobal() - AddressPoint;
     }
 
     void addSuperClass() {
@@ -3711,7 +3891,6 @@ void irgen::emitClassMetadata(IRGenModule &IGM, ClassDecl *classDecl,
   auto init = builder.beginStruct();
   init.setPacked(true);
 
-  // TODO: classes nested within generic types
   bool isPattern;
   bool canBeConstant;
   if (classDecl->isGenericContext()) {
@@ -3874,50 +4053,22 @@ std::pair<llvm::Value *, llvm::Value *>
 irgen::emitClassResilientInstanceSizeAndAlignMask(IRGenFunction &IGF,
                                                   ClassDecl *theClass,
                                                   llvm::Value *metadata) {
-  class FindClassSize
-         : public ClassMetadataScanner<FindClassSize> {
-    using super = ClassMetadataScanner<FindClassSize>;
-  public:
-    FindClassSize(IRGenModule &IGM, ClassDecl *theClass)
-      : ClassMetadataScanner(IGM, theClass) {}
+  auto &layout = IGF.IGM.getMetadataLayout(theClass);
 
-    Size InstanceSize = Size::invalid();
-    Size InstanceAlignMask = Size::invalid();
-        
-    void noteAddressPoint() {
-      assert(InstanceSize.isInvalid() && InstanceAlignMask.isInvalid()
-             && "found size or alignment before address point?!");
-      NextOffset = Size(0);
-    }
-        
-    void addInstanceSize() {
-      InstanceSize = NextOffset;
-      super::addInstanceSize();
-    }
-      
-    void addInstanceAlignMask() {
-      InstanceAlignMask = NextOffset;
-      super::addInstanceAlignMask();
-    }
-  };
-
-  FindClassSize scanner(IGF.IGM, theClass);
-  scanner.layout();
-  assert(!scanner.InstanceSize.isInvalid()
-         && !scanner.InstanceAlignMask.isInvalid()
-         && "didn't find size or alignment in metadata?!");
   Address metadataAsBytes(IGF.Builder.CreateBitCast(metadata, IGF.IGM.Int8PtrTy),
                           IGF.IGM.getPointerAlignment());
 
-  Address slot = IGF.Builder.CreateConstByteArrayGEP(metadataAsBytes,
-                                                     scanner.InstanceSize);
+  Address slot = IGF.Builder.CreateConstByteArrayGEP(
+      metadataAsBytes,
+      layout.getInstanceSizeOffset());
   slot = IGF.Builder.CreateBitCast(slot, IGF.IGM.Int32Ty->getPointerTo());
   llvm::Value *size = IGF.Builder.CreateLoad(slot);
   if (IGF.IGM.SizeTy != IGF.IGM.Int32Ty)
     size = IGF.Builder.CreateZExt(size, IGF.IGM.SizeTy);
 
-  slot = IGF.Builder.CreateConstByteArrayGEP(metadataAsBytes,
-                                             scanner.InstanceAlignMask);
+  slot = IGF.Builder.CreateConstByteArrayGEP(
+      metadataAsBytes,
+      layout.getInstanceAlignMaskOffset());
   slot = IGF.Builder.CreateBitCast(slot, IGF.IGM.Int16Ty->getPointerTo());
   llvm::Value *alignMask = IGF.Builder.CreateLoad(slot);
   alignMask = IGF.Builder.CreateZExt(alignMask, IGF.IGM.SizeTy);
@@ -5100,7 +5251,7 @@ namespace {
       addObjCCompatibilityTables();
       addSize();
       addFlags();
-      addDefaultWitnessTable();
+      addRequirements();
 
       B.suggestType(IGM.ProtocolDescriptorStructTy);
     }
@@ -5187,25 +5338,108 @@ namespace {
       B.addInt32(flags.getIntValue());
     }
 
-    void addDefaultWitnessTable() {
-      // The runtime ignores these fields if the IsResilient flag is not set.
-      if (DefaultWitnesses) {
-        B.addInt16(DefaultWitnesses->getMinimumWitnessTableSize());
-        B.addInt16(DefaultWitnesses->getDefaultWitnessTableSize());
+    void addRequirements() {
+      auto &pi = IGM.getProtocolInfo(Protocol);
 
-        // Unused padding
-        B.addInt32(0);
+      B.addInt16(DefaultWitnesses
+                   ? DefaultWitnesses->getMinimumWitnessTableSize()
+                   : pi.getNumWitnesses());
+      B.addInt16(pi.getNumWitnesses());
 
-        for (auto entry : DefaultWitnesses->getResilientDefaultEntries()) {
-          B.add(IGM.getAddrOfSILFunction(entry.getWitness(), NotForDefinition));
-        }
-      } else {
-        B.addInt16(0);
-        B.addInt16(0);
-
-        // Unused padding
-        B.addInt32(0);
+      // If there are no entries, just add a null reference and return.
+      if (pi.getNumWitnesses() == 0) {
+        B.addInt(IGM.RelativeAddressTy, 0);
+        return;
       }
+
+#ifndef NDEBUG
+      unsigned numDefaultWitnesses = 0;
+#endif
+
+      ConstantInitBuilder reqtBuilder(IGM);
+      auto reqtsArray = reqtBuilder.beginArray(IGM.ProtocolRequirementStructTy);
+      for (auto &entry : pi.getWitnessEntries()) {
+        auto reqt = reqtsArray.beginStruct(IGM.ProtocolRequirementStructTy);
+
+        auto info = getRequirementInfo(entry);
+
+        // Flags.
+        reqt.addInt32(info.Flags.getIntValue());
+
+        // Default implementation.
+        reqt.addRelativeAddressOrNull(info.DefaultImpl);
+#ifndef NDEBUG
+        assert((info.DefaultImpl || numDefaultWitnesses == 0) &&
+               "adding mandatory witness after defaulted witness");
+        if (info.DefaultImpl) numDefaultWitnesses++;
+#endif
+
+        reqt.finishAndAddTo(reqtsArray);
+      }
+
+#ifndef NDEBUG
+      if (DefaultWitnesses) {
+        assert(numDefaultWitnesses
+                 == DefaultWitnesses->getDefaultWitnessTableSize() &&
+               "didn't use all the default witnesses!");
+      } else {
+        assert(numDefaultWitnesses == 0);
+      }
+#endif
+
+      auto global =
+        reqtsArray.finishAndCreateGlobal("", Alignment(4), /*constant*/ true,
+                                         llvm::GlobalVariable::InternalLinkage);
+      global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
+      B.addRelativeOffset(IGM.Int32Ty, global);
+    }
+
+    struct RequirementInfo {
+      ProtocolRequirementFlags Flags;
+      llvm::Constant *DefaultImpl;
+    };
+
+    /// Build the information which will go into a ProtocolRequirement entry.
+    RequirementInfo getRequirementInfo(const WitnessTableEntry &entry) {
+      using Flags = ProtocolRequirementFlags;
+      if (entry.isBase()) {
+        assert(entry.isOutOfLineBase());
+        auto flags = Flags(Flags::Kind::BaseProtocol);
+        return { flags, nullptr };
+      }
+
+      if (entry.isAssociatedType()) {
+        auto flags = Flags(Flags::Kind::AssociatedTypeAccessFunction);
+        return { flags, nullptr };
+      }
+
+      if (entry.isAssociatedConformance()) {
+        auto flags = Flags(Flags::Kind::AssociatedConformanceAccessFunction);
+        return { flags, nullptr };
+      }
+
+      assert(entry.isFunction());
+      auto func = entry.getFunction();
+
+      // Classify the function.
+      auto flags = getMethodDescriptorFlags<Flags>(func);
+
+      // Look for a default witness.
+      llvm::Constant *defaultImpl = findDefaultWitness(func);
+
+      return { flags, defaultImpl };
+    }
+
+    llvm::Constant *findDefaultWitness(AbstractFunctionDecl *func) {
+      if (!DefaultWitnesses) return nullptr;
+
+      for (auto &entry : DefaultWitnesses->getResilientDefaultEntries()) {
+        if (entry.getRequirement().getDecl() != func)
+          continue;
+        return IGM.getAddrOfSILFunction(entry.getWitness(), NotForDefinition);
+      }
+
+      return nullptr;
     }
   };
 } // end anonymous namespace

@@ -1857,13 +1857,12 @@ ParserResult<Stmt> Parser::parseStmtForEach(LabeledStmtInfo LabelInfo) {
     consumeToken(tok::code_complete);
   } else {
     Container = parseExprBasic(diag::expected_foreach_container);
+    Status |= Container;
     if (Container.isNull())
       Container = makeParserErrorResult(new (Context) ErrorExpr(Tok.getLoc()));
     if (Container.isParseError())
       // Recover.
       skipUntilDeclStmtRBrace(tok::l_brace, tok::kw_where);
-
-    Status |= Container;
   }
 
   // Introduce a new scope and place the variables in the pattern into that

@@ -35,9 +35,42 @@ using namespace swift;
 using namespace Lowering;
 
 
-SILVTable::Entry
-SILGenModule::emitVTableMethod(SILDeclRef derived, SILDeclRef base) {
+Optional<SILVTable::Entry>
+SILGenModule::emitVTableMethod(ClassDecl *theClass,
+                               SILDeclRef derived, SILDeclRef base) {
   assert(base.kind == derived.kind);
+
+  auto *baseDecl = base.getDecl();
+  auto *derivedDecl = derived.getDecl();
+
+  // Note: We intentionally don't support extension members here.
+  //
+  // Once extensions can override or introduce new vtable entries, this will
+  // all likely change anyway.
+  auto *baseClass = cast<ClassDecl>(baseDecl->getDeclContext());
+  auto *derivedClass = cast<ClassDecl>(derivedDecl->getDeclContext());
+
+  // Figure out if the vtable entry comes from the superclass, in which
+  // case we won't emit it if building a resilient module.
+  SILVTable::Entry::Kind implKind;
+  if (baseClass == theClass) {
+    // This is a vtable entry for a method of the immediate class.
+    implKind = SILVTable::Entry::Kind::Normal;
+  } else if (derivedClass == theClass) {
+    // This is a vtable entry for a method of a base class, but it is being
+    // overridden in the immediate class.
+    implKind = SILVTable::Entry::Kind::Override;
+  } else {
+    // This vtable entry is copied from the superclass.
+    implKind = SILVTable::Entry::Kind::Inherited;
+
+    // If the override is defined in a class from a different resilience
+    // domain, don't emit the vtable entry.
+    if (!derivedClass->hasFixedLayout(M.getSwiftModule(),
+                                      ResilienceExpansion::Maximal)) {
+      return None;
+    }
+  }
 
   SILFunction *implFn;
   SILLinkage implLinkage;
@@ -45,7 +78,7 @@ SILGenModule::emitVTableMethod(SILDeclRef derived, SILDeclRef base) {
   // If the member is dynamic, reference its dynamic dispatch thunk so that
   // it will be redispatched, funneling the method call through the runtime
   // hook point.
-  if (derived.getDecl()->isDynamic()
+  if (derivedDecl->isDynamic()
       && derived.kind != SILDeclRef::Kind::Allocator) {
     implFn = getDynamicThunk(derived, Types.getConstantInfo(derived));
     implLinkage = SILLinkage::Public;
@@ -56,7 +89,7 @@ SILGenModule::emitVTableMethod(SILDeclRef derived, SILDeclRef base) {
 
   // As a fast path, if there is no override, definitely no thunk is necessary.
   if (derived == base)
-    return {base, implFn, implLinkage};
+    return SILVTable::Entry(base, implFn, implKind, implLinkage);
 
   // Determine the derived thunk type by lowering the derived type against the
   // abstraction pattern of the base.
@@ -72,35 +105,35 @@ SILGenModule::emitVTableMethod(SILDeclRef derived, SILDeclRef base) {
   if (M.Types.checkFunctionForABIDifferences(derivedInfo.SILFnType,
                                              overrideInfo.SILFnType)
       == TypeConverter::ABIDifference::Trivial)
-    return {base, implFn, implLinkage};
+    return SILVTable::Entry(base, implFn, implKind, implLinkage);
 
   // Generate the thunk name.
   std::string name;
   {
     Mangle::ASTMangler mangler;
-    if (isa<FuncDecl>(base.getDecl())) {
+    if (isa<FuncDecl>(baseDecl)) {
       name = mangler.mangleVTableThunk(
-        cast<FuncDecl>(base.getDecl()),
-        cast<FuncDecl>(derived.getDecl()));
+        cast<FuncDecl>(baseDecl),
+        cast<FuncDecl>(derivedDecl));
     } else {
       name = mangler.mangleConstructorVTableThunk(
-        cast<ConstructorDecl>(base.getDecl()),
-        cast<ConstructorDecl>(derived.getDecl()),
+        cast<ConstructorDecl>(baseDecl),
+        cast<ConstructorDecl>(derivedDecl),
         base.kind == SILDeclRef::Kind::Allocator);
     }
   }
 
   // If we already emitted this thunk, reuse it.
   if (auto existingThunk = M.lookUpFunction(name))
-    return {base, existingThunk, implLinkage};
+    return SILVTable::Entry(base, existingThunk, implKind, implLinkage);
 
   // Emit the thunk.
-  auto *derivedDecl = cast<AbstractFunctionDecl>(derived.getDecl());
   SILLocation loc(derivedDecl);
   auto thunk =
       M.createFunction(SILLinkage::Private,
                        name, overrideInfo.SILFnType,
-                       derivedDecl->getGenericEnvironment(), loc, IsBare,
+                       cast<AbstractFunctionDecl>(derivedDecl)->getGenericEnvironment(),
+                       loc, IsBare,
                        IsNotTransparent, IsNotSerialized);
   thunk->setDebugScope(new (M) SILDebugScope(loc, thunk));
 
@@ -109,7 +142,7 @@ SILGenModule::emitVTableMethod(SILDeclRef derived, SILDeclRef base) {
                      overrideInfo.LoweredType,
                      derivedInfo.LoweredType);
 
-  return {base, thunk, implLinkage};
+  return SILVTable::Entry(base, thunk, implKind, implLinkage);
 }
 
 bool SILGenModule::requiresObjCMethodEntryPoint(FuncDecl *method) {
@@ -149,33 +182,51 @@ public:
   { }
 
   void emitVTable() {
-    // Populate the superclass members, if any.
+    // Imported types don't have vtables right now.
+    if (theClass->hasClangNode())
+      return;
+
+    // Populate our list of base methods and overrides.
     visitAncestor(theClass);
 
-    auto *dtor = theClass->getDestructor();
-    assert(dtor);
+    SmallVector<SILVTable::Entry, 8> vtableEntries;
+    vtableEntries.reserve(vtableMethods.size() + 2);
+
+    // For each base method/override pair, emit a vtable thunk or direct
+    // reference to the method implementation.
+    for (auto method : vtableMethods) {
+      SILDeclRef baseRef, derivedRef;
+      std::tie(baseRef, derivedRef) = method;
+
+      auto entry = SGM.emitVTableMethod(theClass, derivedRef, baseRef);
+
+      // We might skip emitting entries if the base class is resilient.
+      if (entry)
+        vtableEntries.push_back(*entry);
+    }
 
     // Add the deallocating destructor to the vtable just for the purpose
     // that it is referenced and cannot be eliminated by dead function removal.
     // In reality, the deallocating destructor is referenced directly from
     // the HeapMetadata for the class.
-    if (!dtor->hasClangNode())
-      addMethod(SILDeclRef(dtor, SILDeclRef::Kind::Deallocator));
-
-    if (SGM.requiresIVarDestroyer(theClass))
-      addMethod(SILDeclRef(theClass, SILDeclRef::Kind::IVarDestroyer));
-
-    SmallVector<SILVTable::Entry, 8> vtableEntries;
-    vtableEntries.reserve(vtableMethods.size());
-
-    for (auto method : vtableMethods) {
-      SILDeclRef baseRef, derivedRef;
-      std::tie(baseRef, derivedRef) = method;
-
-      vtableEntries.push_back(SGM.emitVTableMethod(derivedRef, baseRef));
+    {
+      auto *dtor = theClass->getDestructor();
+      SILDeclRef dtorRef(dtor, SILDeclRef::Kind::Deallocator);
+      auto *dtorFn = SGM.getFunction(dtorRef, NotForDefinition);
+      vtableEntries.push_back({dtorRef, dtorFn,
+                               SILVTable::Entry::Kind::Normal,
+                               dtorFn->getLinkage()});
     }
 
-    // Create the vtable.
+    if (SGM.requiresIVarDestroyer(theClass)) {
+      SILDeclRef dtorRef(theClass, SILDeclRef::Kind::IVarDestroyer);
+      auto *dtorFn = SGM.getFunction(dtorRef, NotForDefinition);
+      vtableEntries.push_back({dtorRef, dtorFn,
+                               SILVTable::Entry::Kind::Normal,
+                               dtorFn->getLinkage()});
+    }
+
+    // Finally, create the vtable.
     SILVTable::create(SGM.M, theClass, vtableEntries);
   }
 

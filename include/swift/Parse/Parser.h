@@ -836,7 +836,8 @@ public:
                        SourceLoc staticLoc, ParsedAccessors &accessors);
   void parseAccessorBodyDelayed(AbstractFunctionDecl *AFD);
   VarDecl *parseDeclVarGetSet(Pattern *pattern, ParseDeclOptions Flags,
-                              SourceLoc StaticLoc, bool hasInitializer,
+                              SourceLoc StaticLoc, SourceLoc VarLoc,
+                              bool hasInitializer,
                               const DeclAttributes &Attributes,
                               SmallVectorImpl<Decl *> &Decls);
   
@@ -1252,8 +1253,10 @@ public:
   ParserResult<Expr> parseExprCallSuffix(ParserResult<Expr> fn,
                                          bool isExprBasic);
   ParserResult<Expr> parseExprCollection(SourceLoc LSquareLoc = SourceLoc());
-  ParserResult<Expr> parseExprArray(SourceLoc LSquareLoc, Expr *FirstExpr);
-  ParserResult<Expr> parseExprDictionary(SourceLoc LSquareLoc, Expr *FirstKey);
+  ParserResult<Expr> parseExprArray(SourceLoc LSquareLoc,
+                                    ParserResult<Expr> FirstExpr);
+  ParserResult<Expr> parseExprDictionary(SourceLoc LSquareLoc,
+                                         ParserResult<Expr> FirstKey);
 
   UnresolvedDeclRefExpr *parseExprOperator();
 

@@ -883,6 +883,7 @@ public:
   friend class OverloadChoice;
   friend class ConstraintGraph;
   friend class DisjunctionChoice;
+  friend class Component;
 
   class SolverScope;
 
@@ -1018,6 +1019,7 @@ private:
     Expr *E;
     TypeChecker &TC;
     DeclContext *DC;
+    llvm::BumpPtrAllocator &Allocator;
 
     // Contextual Information.
     Type CT;
@@ -1026,7 +1028,8 @@ private:
   public:
     Candidate(ConstraintSystem &cs, Expr *expr, Type ct = Type(),
               ContextualTypePurpose ctp = ContextualTypePurpose::CTP_Unused)
-        : E(expr), TC(cs.TC), DC(cs.DC), CT(ct), CTP(ctp) {}
+        : E(expr), TC(cs.TC), DC(cs.DC), Allocator(cs.Allocator), CT(ct),
+          CTP(ctp) {}
 
     /// \brief Return underlying expression.
     Expr *getExpr() const { return E; }
@@ -1038,7 +1041,7 @@ private:
     /// domains have been successfully shrunk so far.
     ///
     /// \returns true on solver failure, false otherwise.
-    bool solve(llvm::SmallDenseSet<Expr *> &shrunkExprs);
+    bool solve(llvm::SmallDenseSet<OverloadSetRefExpr *> &shrunkExprs);
 
     /// \brief Apply solutions found by solver as reduced OSR sets for
     /// for current and all of it's sub-expressions.
@@ -1048,14 +1051,16 @@ private:
     ///
     /// \param shrunkExprs The set of expressions which
     /// domains have been successfully shrunk so far.
-    void applySolutions(llvm::SmallVectorImpl<Solution> &solutions,
-                        llvm::SmallDenseSet<Expr *> &shrunkExprs) const;
+    void applySolutions(
+        llvm::SmallVectorImpl<Solution> &solutions,
+        llvm::SmallDenseSet<OverloadSetRefExpr *> &shrunkExprs) const;
 
     /// Check if attempt at solving of the candidate makes sense given
     /// the current conditions - number of shrunk domains which is related
     /// to the given candidate over the total number of disjunctions present.
-    static bool isTooComplexGiven(ConstraintSystem *const cs,
-                                  llvm::SmallDenseSet<Expr *> &shrunkExprs) {
+    static bool
+    isTooComplexGiven(ConstraintSystem *const cs,
+                      llvm::SmallDenseSet<OverloadSetRefExpr *> &shrunkExprs) {
       SmallVector<Constraint *, 8> disjunctions;
       cs->collectDisjunctions(disjunctions);
 
@@ -1066,7 +1071,11 @@ private:
           continue;
 
         if (auto *anchor = locator->getAnchor()) {
-          if (shrunkExprs.count(anchor) > 0)
+          auto *OSR = dyn_cast<OverloadSetRefExpr>(anchor);
+          if (!OSR)
+            continue;
+
+          if (shrunkExprs.count(OSR) > 0)
             --unsolvedDisjunctions;
         }
       }
@@ -1533,9 +1542,11 @@ public:
   }
   
   TypeBase* getFavoredType(Expr *E) {
+    assert(E != nullptr);
     return this->FavoredTypes[E];
   }
   void setFavoredType(Expr *E, TypeBase *T) {
+    assert(E != nullptr);
     this->FavoredTypes[E] = T;
   }
 
@@ -1544,6 +1555,7 @@ public:
   /// avoid mutating expressions until we know we have successfully
   /// type-checked them.
   void setType(Expr *E, Type T) {
+    assert(E != nullptr && "Expected non-null expression!");
     assert(T && "Expected non-null type!");
 
     // FIXME: We sometimes set the type and then later set it to a
@@ -1562,6 +1574,7 @@ public:
 
   /// Check to see if we have a type for an expression.
   bool hasType(const Expr *E) const {
+    assert(E != nullptr && "Expected non-null expression!");
     return ExprTypes.find(E) != ExprTypes.end();
   }
 
@@ -1585,12 +1598,14 @@ public:
   }
 
   void setContextualType(Expr *E, TypeLoc T, ContextualTypePurpose purpose) {
+    assert(E != nullptr && "Expected non-null expression!");
     contextualTypeNode = E;
     contextualType = T;
     contextualTypePurpose = purpose;
   }
 
   Type getContextualType(Expr *E) const {
+    assert(E != nullptr && "Expected non-null expression!");
     return E == contextualTypeNode ? contextualType.getType() : Type();
   }
   Type getContextualType() const {
@@ -1989,6 +2004,20 @@ public:
   Type getResultType(const AbstractClosureExpr *E);
 
 private:
+  /// Determine if the given constraint represents explicit conversion,
+  /// e.g. coercion constraint "as X" which forms a disjunction.
+  bool isExplicitConversionConstraint(Constraint *constraint) const {
+    if (constraint->getKind() != ConstraintKind::Disjunction)
+      return false;
+
+    if (auto locator = constraint->getLocator()) {
+      if (auto anchor = locator->getAnchor())
+        return isa<CoerceExpr>(anchor);
+    }
+
+    return false;
+  }
+
   /// Introduce the constraints associated with the given type variable
   /// into the worklist.
   void addTypeVariableConstraintsToWorkList(TypeVariableType *typeVar);
@@ -2524,6 +2553,9 @@ private:
     /// The number of defaultable bindings.
     unsigned NumDefaultableBindings = 0;
 
+    /// Is this type variable on the RHS of a BindParam constraint?
+    bool IsRHSOfBindParam = false;
+
     /// Determine whether the set of bindings is non-empty.
     explicit operator bool() const { return !Bindings.empty(); }
 
@@ -2536,12 +2568,14 @@ private:
     /// \c x is a better set of bindings that \c y.
     friend bool operator<(const PotentialBindings &x,
                           const PotentialBindings &y) {
-      return std::make_tuple(!x.hasNonDefaultableBindings(), x.FullyBound,
+      return std::make_tuple(!x.hasNonDefaultableBindings(),
+                             x.FullyBound, x.IsRHSOfBindParam,
                              x.SubtypeOfExistentialType,
                              static_cast<unsigned char>(x.LiteralBinding),
                              x.InvolvesTypeVariables,
                              -(x.Bindings.size() - x.NumDefaultableBindings)) <
-             std::make_tuple(!y.hasNonDefaultableBindings(), y.FullyBound,
+             std::make_tuple(!y.hasNonDefaultableBindings(),
+                             y.FullyBound, y.IsRHSOfBindParam,
                              y.SubtypeOfExistentialType,
                              static_cast<unsigned char>(y.LiteralBinding),
                              y.InvolvesTypeVariables,
@@ -2635,13 +2669,17 @@ private:
   /// \brief Solve the system of constraints after it has already been
   /// simplified.
   ///
+  /// \param disjunction The disjunction to try and solve using simplified
+  /// constraint system.
+  ///
   /// \param solutions The set of solutions to this system of constraints.
   ///
   /// \param allowFreeTypeVariables How to bind free type variables in
   /// the solution.
   ///
   /// \returns true if an error occurred, false otherwise.
-  bool solveSimplified(SmallVectorImpl<Solution> &solutions,
+  bool solveSimplified(Constraint *disjunction,
+                       SmallVectorImpl<Solution> &solutions,
                        FreeTypeVariableBinding allowFreeTypeVariables);
 
   /// \brief Find reduced domains of disjunction constraints for given
@@ -2652,6 +2690,16 @@ private:
   ///
   /// \param expr The expression to find reductions for.
   void shrink(Expr *expr);
+
+  /// \brief Pick a disjunction from the given list, which,
+  /// based on the associated constraints, is the most viable to
+  /// reduce depth of the search tree.
+  ///
+  /// \param disjunctions A collection of disjunctions to examine.
+  ///
+  /// \returns The disjunction with most weight relative to others, based
+  /// on the number of constraints associated with it, or nullptr otherwise.
+  Constraint *selectDisjunction(SmallVectorImpl<Constraint *> &disjunctions);
 
   bool simplifyForConstraintPropagation();
   void collectNeighboringBindOverloadDisjunctions(
@@ -2964,11 +3012,13 @@ void simplifyLocator(Expr *&anchor,
 
 class DisjunctionChoice {
   ConstraintSystem *CS;
+  Constraint *Disjunction;
   Constraint *Choice;
 
 public:
-  DisjunctionChoice(ConstraintSystem *const cs, Constraint *constraint)
-      : CS(cs), Choice(constraint) {}
+  DisjunctionChoice(ConstraintSystem *const cs, Constraint *disjunction,
+                    Constraint *choice)
+      : CS(cs), Disjunction(disjunction), Choice(choice) {}
 
   Constraint *operator&() const { return Choice; }
 
@@ -2989,6 +3039,10 @@ public:
                         FreeTypeVariableBinding allowFreeTypeVariables);
 
 private:
+  /// \brief If associated disjunction is an explicit conversion,
+  /// let's try to propagate its type early to prune search space.
+  void propagateConversionInfo() const;
+
   static ValueDecl *getOperatorDecl(Constraint *constraint) {
     if (constraint->getKind() != ConstraintKind::BindOverload)
       return nullptr;
@@ -3000,6 +3054,60 @@ private:
     auto *decl = choice.getDecl();
     return decl->isOperator() ? decl : nullptr;
   }
+};
+
+/// \brief Constraint System "component" represents
+/// a single solvable unit, but the process of assigning
+/// types in some cases allows it to be further split into
+/// multiple smaller parts.
+///
+/// This helps to abstract away logic of holding and
+/// returning sub-set of the constraints in the system,
+/// as well as its partial solving and result tracking.
+class Component {
+  ConstraintList Constraints;
+  SmallVector<Constraint *, 8> Disjunctions;
+
+public:
+  void reinstateTo(ConstraintList &workList) {
+    workList.splice(workList.end(), Constraints);
+  }
+
+  void record(Constraint *constraint) {
+    Constraints.push_back(constraint);
+    if (constraint->getKind() == ConstraintKind::Disjunction)
+      Disjunctions.push_back(constraint);
+  }
+
+  bool solve(ConstraintSystem &cs, SmallVectorImpl<Solution> &solutions,
+             FreeTypeVariableBinding allowFreeTypeVariables) {
+    // Return constraints from the bucket back into circulation.
+    reinstateTo(cs.InactiveConstraints);
+
+    // Solve for this component. If it fails, we're done.
+    bool failed;
+
+    {
+      // Introduce a scope for this partial solution.
+      ConstraintSystem::SolverScope scope(cs);
+      llvm::SaveAndRestore<ConstraintSystem::SolverScope *>
+          partialSolutionScope(cs.solverState->PartialSolutionScope, &scope);
+
+      failed = cs.solveSimplified(cs.selectDisjunction(Disjunctions), solutions,
+                                  allowFreeTypeVariables);
+    }
+
+    // Put the constraints back into their original bucket.
+    Constraints.splice(Constraints.end(), cs.InactiveConstraints);
+    return failed;
+  }
+
+  bool operator<(const Component &other) const {
+    return disjunctionCount() < other.disjunctionCount();
+  }
+
+private:
+  unsigned disjunctionCount() const { return Disjunctions.size(); }
 };
 } // end namespace constraints
 

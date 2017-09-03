@@ -43,8 +43,9 @@ namespace swift {
     Endianness,
     /// Runtime support (_ObjC or _Native)
     Runtime,
+    /// Conditional import of module
+    CanImport,
   };
-  enum { NumPlatformConditionKind = 4 };
 
   /// Describes which Swift 3 Objective-C inference warnings should be
   /// emitted.
@@ -311,6 +312,15 @@ namespace swift {
       return EffectiveLanguageVersion.isVersion3();
     }
 
+    /// Whether our effective Swift version is at least 'major'.
+    ///
+    /// This is usually the check you want; for example, when introducing
+    /// a new language feature which is only visible in Swift 5, you would
+    /// check for isSwiftVersionAtLeast(5).
+    bool isSwiftVersionAtLeast(unsigned major) const {
+      return EffectiveLanguageVersion.isVersionAtLeast(major);
+    }
+
     /// Returns true if the given platform condition argument represents
     /// a supported target operating system.
     ///
@@ -332,8 +342,7 @@ namespace swift {
     }
 
   private:
-    llvm::SmallVector<std::pair<PlatformConditionKind, std::string>,
-                      NumPlatformConditionKind>
+    llvm::SmallVector<std::pair<PlatformConditionKind, std::string>, 4>
         PlatformConditionValues;
     llvm::SmallVector<std::string, 2> CustomConditionalCompilationFlags;
   };

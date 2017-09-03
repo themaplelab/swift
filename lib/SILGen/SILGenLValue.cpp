@@ -2025,37 +2025,33 @@ LValue SILGenFunction::emitLValue(Expr *e, AccessKind accessKind,
   return r;
 }
 
-LValue SILGenLValue::visitRec(Expr *e, AccessKind accessKind,
-                              LValueOptions options,
-                              AbstractionPattern orig) {
-  // First see if we have an lvalue type. If we do, then quickly handle that and
-  // return.
-  if (e->getType()->is<LValueType>() || e->isSemanticallyInOutExpr()) {
-    auto lv = visit(e, accessKind, options);
-    // If necessary, handle reabstraction with a SubstToOrigComponent that
-    // handles
-    // writeback in the original representation.
-    if (orig.isValid()) {
-      auto &origTL = SGF.getTypeLowering(orig, e->getType()->getRValueType());
-      if (lv.getTypeOfRValue() != origTL.getLoweredType().getObjectType())
-        lv.addSubstToOrigComponent(orig,
-                                   origTL.getLoweredType().getObjectType());
-    }
-    return lv;
+static LValue visitRecInOut(SILGenLValue &SGL, Expr *e, AccessKind accessKind,
+                            LValueOptions options, AbstractionPattern orig) {
+  auto lv = SGL.visit(e, accessKind, options);
+  // If necessary, handle reabstraction with a SubstToOrigComponent that handles
+  // writeback in the original representation.
+  if (orig.isValid()) {
+    auto &origTL = SGL.SGF.getTypeLowering(orig, e->getType()->getRValueType());
+    if (lv.getTypeOfRValue() != origTL.getLoweredType().getObjectType())
+      lv.addSubstToOrigComponent(orig, origTL.getLoweredType().getObjectType());
   }
 
-  // Otherwise we have a non-lvalue type (references, values, metatypes,
-  // etc). These act as the root of a logical lvalue.
-  SGFContext Ctx;
-  ManagedValue rv;
+  return lv;
+}
 
-  // Calls through opaque protocols can be done with +0 rvalues.  This allows
-  // us to avoid materializing copies of existentials.
-  if (SGF.SGM.Types.isIndirectPlusZeroSelfParameter(e->getType()))
-    Ctx = SGFContext::AllowGuaranteedPlusZero;
-  else if (auto *DRE = dyn_cast<DeclRefExpr>(e)) {
+// Otherwise we have a non-lvalue type (references, values, metatypes,
+// etc). These act as the root of a logical lvalue.
+static ManagedValue visitRecNonInOutBase(SILGenLValue &SGL, Expr *e,
+                                         AccessKind accessKind,
+                                         LValueOptions options,
+                                         AbstractionPattern orig) {
+  SGFContext ctx;
+  auto &SGF = SGL.SGF;
+
+  if (auto *DRE = dyn_cast<DeclRefExpr>(e)) {
     // Any reference to "self" can be done at +0 so long as it is a direct
     // access, since we know it is guaranteed.
+    //
     // TODO: it would be great to factor this even lower into SILGen to the
     // point where we can see that the parameter is +0 guaranteed.  Note that
     // this handles the case in initializers where there is actually a stack
@@ -2063,7 +2059,7 @@ LValue SILGenLValue::visitRec(Expr *e, AccessKind accessKind,
     if (isa<ParamDecl>(DRE->getDecl()) &&
         DRE->getDecl()->getFullName() == SGF.getASTContext().Id_self &&
         DRE->getDecl()->isImplicit()) {
-      Ctx = SGFContext::AllowGuaranteedPlusZero;
+      ctx = SGFContext::AllowGuaranteedPlusZero;
       if (SGF.SelfInitDelegationState != SILGenFunction::NormalSelf) {
         // This needs to be inlined since there is a Formal Evaluation Scope
         // in emitRValueForDecl that causing any borrow for this LValue to be
@@ -2072,30 +2068,51 @@ LValue SILGenLValue::visitRec(Expr *e, AccessKind accessKind,
         ManagedValue selfLValue =
             SGF.emitLValueForDecl(DRE, vd, DRE->getType()->getCanonicalType(),
                                   AccessKind::Read, DRE->getAccessSemantics());
-        rv = SGF.emitRValueForSelfInDelegationInit(
-                    e, DRE->getType()->getCanonicalType(),
-                    selfLValue.getLValueAddress(), Ctx)
-                 .getScalarValue();
+        return SGF
+            .emitFormalEvaluationRValueForSelfInDelegationInit(
+                e, DRE->getType()->getCanonicalType(),
+                selfLValue.getLValueAddress(), ctx)
+            .getAsSingleValue(SGF, e);
       }
-    } else if (auto *VD = dyn_cast<VarDecl>(DRE->getDecl())) {
+    }
+
+    if (auto *VD = dyn_cast<VarDecl>(DRE->getDecl())) {
       // All let values are guaranteed to be held alive across their lifetime,
       // and won't change once initialized.  Any loaded value is good for the
       // duration of this expression evaluation.
-      if (VD->isLet())
-        Ctx = SGFContext::AllowGuaranteedPlusZero;
+      if (VD->isLet()) {
+        ctx = SGFContext::AllowGuaranteedPlusZero;
+      }
     }
   }
 
-  if (!rv) {
-    // For an rvalue base, apply the reabstraction (if any) eagerly, since
-    // there's no need for writeback.
-    if (orig.isValid())
-      rv = SGF.emitRValueAsOrig(
-          e, orig, SGF.getTypeLowering(orig, e->getType()->getRValueType()));
-    else
-      rv = SGF.emitRValueAsSingleValue(e, Ctx);
+  if (SGF.SGM.Types.isIndirectPlusZeroSelfParameter(e->getType())) {
+    ctx = SGFContext::AllowGuaranteedPlusZero;
   }
 
+  // For an rvalue base, apply the reabstraction (if any) eagerly, since
+  // there's no need for writeback.
+  if (orig.isValid()) {
+    return SGF.emitRValueAsOrig(
+        e, orig, SGF.getTypeLowering(orig, e->getType()->getRValueType()));
+  }
+
+  // Otherwise, just go through normal emission.
+  return SGF.emitRValueAsSingleValue(e, ctx);
+}
+
+LValue SILGenLValue::visitRec(Expr *e, AccessKind accessKind,
+                              LValueOptions options, AbstractionPattern orig) {
+  // First see if we have an lvalue type. If we do, then quickly handle that and
+  // return.
+  if (e->getType()->is<LValueType>() || e->isSemanticallyInOutExpr()) {
+    return visitRecInOut(*this, e, accessKind, options, orig);
+  }
+
+  // Otherwise we have a non-lvalue type (references, values, metatypes,
+  // etc). These act as the root of a logical lvalue. Compute the root value,
+  // wrap it in a ValueComponent, and return it for our caller.
+  ManagedValue rv = visitRecNonInOutBase(*this, e, accessKind, options, orig);
   CanType formalType = getSubstFormalRValueType(e);
   auto typeData = getValueTypeData(formalType, rv.getValue());
   LValue lv;
@@ -2846,50 +2863,55 @@ static void emitUnloweredStoreOfCopy(SILGenBuilder &B, SILLocation loc,
 SILValue SILGenFunction::emitConversionToSemanticRValue(SILLocation loc,
                                                         SILValue src,
                                                   const TypeLowering &valueTL) {
-  // Weak storage types are handled with their underlying type.
-  assert(!src->getType().is<WeakStorageType>() &&
-         "weak pointers are always the right optional types");
+  auto storageType = src->getType();
+  auto swiftStorageType = storageType.castTo<ReferenceStorageType>();
 
-  // For @unowned(safe) types, we need to generate a strong retain and
-  // strip the unowned box.
-  if (auto unownedType = src->getType().getAs<UnownedStorageType>()) {
+  switch (swiftStorageType->getOwnership()) {
+  case Ownership::Weak:
+    // Weak storage types are handled with their underlying type.
+    llvm_unreachable("weak pointers are always the right optional types");
+  case Ownership::Strong:
+    llvm_unreachable("strong reference storage type should be impossible");
+  case Ownership::Unowned: {
+    // For @unowned(safe) types, we need to generate a strong retain and
+    // strip the unowned box.
+    auto unownedType = storageType.castTo<UnownedStorageType>();
     assert(unownedType->isLoadable(ResilienceExpansion::Maximal));
     (void) unownedType;
 
     return B.createCopyUnownedValue(loc, src);
   }
-
-  // For @unowned(unsafe) types, we need to strip the unmanaged box
-  // and then do an (unsafe) retain.
-  if (auto unmanagedType = src->getType().getAs<UnmanagedStorageType>()) {
+  case Ownership::Unmanaged: {
+    // For @unowned(unsafe) types, we need to strip the unmanaged box
+    // and then do an (unsafe) retain.
+    auto unmanagedType = storageType.castTo<UnmanagedStorageType>();
     auto result = B.createUnmanagedToRef(loc, src,
               SILType::getPrimitiveObjectType(unmanagedType.getReferentType()));
     // SEMANTIC ARC TODO: Does this need a cleanup?
     return B.createCopyValue(loc, result);
   }
-
-  llvm_unreachable("unexpected storage type that differs from type-of-rvalue");
+  }
 }
 
 ManagedValue SILGenFunction::emitConversionToSemanticRValue(
     SILLocation loc, ManagedValue src, const TypeLowering &valueTL) {
-  // Weak storage types are handled with their underlying type.
-  assert(!src.getType().is<WeakStorageType>() &&
-         "weak pointers are always the right optional types");
+  auto swiftStorageType = src.getType().castTo<ReferenceStorageType>();
 
-  // For @unowned(safe) types, we need to generate a strong retain and
-  // strip the unowned box.
-  if (src.getType().is<UnownedStorageType>()) {
+  switch (swiftStorageType->getOwnership()) {
+  case Ownership::Weak:
+    // Weak storage types are handled with their underlying type.
+    llvm_unreachable("weak pointers are always the right optional types");
+  case Ownership::Strong:
+    llvm_unreachable("strong reference storage type should be impossible");
+  case Ownership::Unowned:
+    // For @unowned(safe) types, we need to generate a strong retain and
+    // strip the unowned box.
     return B.createCopyUnownedValue(loc, src);
-  }
-
-  // For @unowned(unsafe) types, we need to strip the unmanaged box
-  // and then do an (unsafe) retain.
-  if (src.getType().is<UnmanagedStorageType>()) {
+  case Ownership::Unmanaged:
+    // For @unowned(unsafe) types, we need to strip the unmanaged box
+    // and then do an (unsafe) retain.
     return B.createUnsafeCopyUnownedValue(loc, src);
   }
-
-  llvm_unreachable("unexpected storage type that differs from type-of-rvalue");
 }
 
 /// Given that the type-of-rvalue differs from the type-of-storage,
@@ -2900,15 +2922,18 @@ static SILValue emitLoadOfSemanticRValue(SILGenFunction &SGF,
                                          SILValue src,
                                          const TypeLowering &valueTL,
                                          IsTake_t isTake) {
-  SILType storageType = src->getType();
+  auto storageType = src->getType();
+  auto swiftStorageType = storageType.castTo<ReferenceStorageType>();
 
-  // For @weak types, we need to create an Optional<T>.
-  // Optional<T> is currently loadable, but it probably won't be forever.
-  if (storageType.is<WeakStorageType>())
+  switch (swiftStorageType->getOwnership()) {
+  case Ownership::Weak: {
+    // For @weak types, we need to create an Optional<T>.
+    // Optional<T> is currently loadable, but it probably won't be forever.
     return SGF.B.createLoadWeak(loc, src, isTake);
-
-  // For @unowned(safe) types, we need to strip the unowned box.
-  if (auto unownedType = storageType.getAs<UnownedStorageType>()) {
+  }
+  case Ownership::Unowned: {
+    // For @unowned(safe) types, we need to strip the unowned box.
+    auto unownedType = storageType.castTo<UnownedStorageType>();
     if (!unownedType->isLoadable(ResilienceExpansion::Maximal)) {
       return SGF.B.createLoadUnowned(loc, src, isTake);
     }
@@ -2928,17 +2953,18 @@ static SILValue emitLoadOfSemanticRValue(SILGenFunction &SGF,
     SGF.B.createDestroyValue(loc, unownedValue);
     return strongValue;
   }
-
-  // For @unowned(unsafe) types, we need to strip the unmanaged box.
-  if (auto unmanagedType = src->getType().getAs<UnmanagedStorageType>()) {
+  case Ownership::Unmanaged: {
+    // For @unowned(unsafe) types, we need to strip the unmanaged box.
+    auto unmanagedType = storageType.castTo<UnmanagedStorageType>();
     auto value = SGF.B.createLoad(loc, src, LoadOwnershipQualifier::Trivial);
     auto result = SGF.B.createUnmanagedToRef(loc, value,
             SILType::getPrimitiveObjectType(unmanagedType.getReferentType()));
     // SEMANTIC ARC TODO: Does this need a cleanup?
     return SGF.B.createCopyValue(loc, result);
   }
-
-  llvm_unreachable("unexpected storage type that differs from type-of-rvalue");
+  case Ownership::Strong:
+    llvm_unreachable("strong reference storage type should be impossible");
+  }
 }
 
 /// Given that the type-of-rvalue differs from the type-of-storage,
@@ -2951,20 +2977,22 @@ static void emitStoreOfSemanticRValue(SILGenFunction &SGF,
                                       const TypeLowering &valueTL,
                                       IsInitialization_t isInit) {
   auto storageType = dest->getType();
+  auto swiftStorageType = storageType.castTo<ReferenceStorageType>();
 
-  // For @weak types, we need to break down an Optional<T> and then
-  // emit the storeWeak ourselves.
-  if (storageType.is<WeakStorageType>()) {
+  switch (swiftStorageType->getOwnership()) {
+  case Ownership::Weak: {
+    // For @weak types, we need to break down an Optional<T> and then
+    // emit the storeWeak ourselves.
     SGF.B.createStoreWeak(loc, value, dest, isInit);
 
     // store_weak doesn't take ownership of the input, so cancel it out.
     SGF.B.emitDestroyValueOperation(loc, value);
     return;
   }
-
-  // For @unowned(safe) types, we need to enter the unowned box by
-  // turning the strong retain into an unowned retain.
-  if (auto unownedType = storageType.getAs<UnownedStorageType>()) {
+  case Ownership::Unowned: {
+    // For @unowned(safe) types, we need to enter the unowned box by
+    // turning the strong retain into an unowned retain.
+    auto unownedType = storageType.castTo<UnownedStorageType>();
     // FIXME: resilience
     if (!unownedType->isLoadable(ResilienceExpansion::Maximal)) {
       SGF.B.createStoreUnowned(loc, value, dest, isInit);
@@ -2981,18 +3009,18 @@ static void emitStoreOfSemanticRValue(SILGenFunction &SGF,
     SGF.B.emitDestroyValueOperation(loc, value);
     return;
   }
-
-  // For @unowned(unsafe) types, we need to enter the unmanaged box and
-  // release the strong retain.
-  if (storageType.is<UnmanagedStorageType>()) {
+  case Ownership::Unmanaged: {
+    // For @unowned(unsafe) types, we need to enter the unmanaged box and
+    // release the strong retain.
     auto unmanagedValue =
       SGF.B.createRefToUnmanaged(loc, value, storageType.getObjectType());
     emitUnloweredStoreOfCopy(SGF.B, loc, unmanagedValue, dest, isInit);
     SGF.B.emitDestroyValueOperation(loc, value);
     return;
   }
-
-  llvm_unreachable("unexpected storage type that differs from type-of-rvalue");
+  case Ownership::Strong:
+    llvm_unreachable("strong reference storage type should be impossible");
+  }
 }
 
 /// Load a value of the type-of-rvalue out of the given address as a
@@ -3069,11 +3097,16 @@ SILValue SILGenFunction::emitConversionFromSemanticValue(SILLocation loc,
   if (semanticValue->getType() == storageType) {
     return semanticValue;
   }
-  
-  // @weak types are never loadable, so we don't need to handle them here.
-  
-  // For @unowned types, place into an unowned box.
-  if (auto unownedType = storageType.getAs<UnownedStorageType>()) {
+
+  auto swiftStorageType = storageType.castTo<ReferenceStorageType>();
+  switch (swiftStorageType->getOwnership()) {
+  case Ownership::Weak:
+    llvm_unreachable("weak types are never loadable");
+  case Ownership::Strong:
+    llvm_unreachable("strong reference storage type should be impossible");
+  case Ownership::Unowned: {
+    // For @unowned types, place into an unowned box.
+    auto unownedType = storageType.castTo<UnownedStorageType>();
     assert(unownedType->isLoadable(ResilienceExpansion::Maximal));
     (void) unownedType;
 
@@ -3082,16 +3115,14 @@ SILValue SILGenFunction::emitConversionFromSemanticValue(SILLocation loc,
     B.emitDestroyValueOperation(loc, semanticValue);
     return unowned;
   }
-
-  // For @unmanaged types, place into an unmanaged box.
-  if (storageType.is<UnmanagedStorageType>()) {
+  case Ownership::Unmanaged: {
+    // For @unmanaged types, place into an unmanaged box.
     SILValue unmanaged =
       B.createRefToUnmanaged(loc, semanticValue, storageType);
     B.emitDestroyValueOperation(loc, semanticValue);
     return unmanaged;
   }
-  
-  llvm_unreachable("unexpected storage type that differs from type-of-rvalue");
+  }
 }
 
 static void emitTsanInoutAccess(SILGenFunction &SGF, SILLocation loc,
