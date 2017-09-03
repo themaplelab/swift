@@ -19,6 +19,10 @@ add_swift_library(swiftFrontendTool STATIC
     swiftWALASupport
     clangAPINotes
     clangBasic
+  C_COMPILE_FLAGS
+    -I$ENV{WALA_HOME}/com.ibm.wala.cast/source/c/include
+    -I$ENV{JAVA_HOME}/include/
+    -I$ENV{JAVA_HOME}/include/darwin 
   LINK_FLAGS
     -L$ENV{WALA_HOME}/com.ibm.wala.cast/target/classes -lcast
 )

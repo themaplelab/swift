@@ -1,4 +1,4 @@
-//===--- WALAWaler.h - frontend utility methods ------------------*- C++ -*-===//
+//===--- WALAWalker.h - frontend utility methods ----------------*- C++ -*-===//
 //
 // This source file is part of the Swift.org open source project
 //
@@ -22,6 +22,9 @@
 #include "swift/SIL/SILModule.h"
 #include "llvm/Support/FileSystem.h"
 
+#include "Exceptions.h"
+#include "CAstWrapper.h"
+
 #ifndef SWIFT_WALAWALKER_H
 #define SWIFT_WALAWALKER_H
 
@@ -31,6 +34,23 @@
 using std::string;
 
 namespace swift {
+
+class WALAIntegration {
+private:
+	JNIEnv *java_env;
+	Exceptions &cpp_ex;
+	jobject xlator;
+	CAstWrapper *CAst;
+
+public:
+	CAstWrapper *operator->();
+	
+	void print(jobject obj);
+	
+	jobject makePosition(int, int, int, int);
+	
+	WALAIntegration(JNIEnv *, Exceptions &, const char *);
+};
 
 class WALAWalker {
 
@@ -66,7 +86,7 @@ public:
 	};
 
 private:
-	bool printStdout = true;
+	bool printStdout = false;
 // 	llvm::raw_fd_ostream &outfile;
 	
 	// Gets the mangled and demangled SILFunction and returns in a FunctionInfo.
@@ -81,10 +101,9 @@ private:
 	ValueKind getInstrValueKindInfo(SILInstruction &instr);
 
 	// Do something per instruction
-	void perInstruction(WALAWalker::InstrInfo *instrInfo);
+	void perInstruction(WALAWalker::InstrInfo *instrInfo, WALAIntegration &);
     
 public:
-	void foo();
 	void analyzeSILModule(SILModule &SM);
 };
     
