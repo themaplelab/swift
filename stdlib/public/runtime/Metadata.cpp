@@ -592,43 +592,21 @@ static void tuple_destroy(OpaqueValue *tuple, const Metadata *_metadata) {
   }
 }
 
-/// Generic tuple value witness for 'destroyArray'.
-template <bool IsPOD, bool IsInline>
-static void tuple_destroyArray(OpaqueValue *array, size_t n,
-                               const Metadata *_metadata) {
-  auto &metadata = *(const TupleTypeMetadata*) _metadata;
-  assert(IsPOD == tuple_getValueWitnesses(&metadata)->isPOD());
-  assert(IsInline == tuple_getValueWitnesses(&metadata)->isValueInline());
-
-  if (IsPOD) return;
-
-  size_t stride = tuple_getValueWitnesses(&metadata)->stride;
-  char *bytes = (char*)array;
-
-  while (n--) {
-    tuple_destroy<IsPOD, IsInline>((OpaqueValue*)bytes, _metadata);
-    bytes += stride;
-  }
-}
-
 // The operation doesn't have to be initializeWithCopy, but they all
 // have basically the same type.
-typedef value_witness_types::initializeWithCopy *
-  ValueWitnessTable::*forEachOperation;
+typedef value_witness_types::initializeWithCopy forEachOperation;
 
 /// Perform an operation for each field of two tuples.
 static OpaqueValue *tuple_forEachField(OpaqueValue *destTuple,
                                        OpaqueValue *srcTuple,
                                        const Metadata *_metatype,
-                                       forEachOperation member) {
+                                       forEachOperation operation) {
   auto &metatype = *(const TupleTypeMetadata*) _metatype;
   for (size_t i = 0, e = metatype.NumElements; i != e; ++i) {
     auto &eltInfo = metatype.getElement(i);
-    auto eltValueWitnesses = eltInfo.Type->getValueWitnesses();
-
     OpaqueValue *destElt = eltInfo.findIn(destTuple);
     OpaqueValue *srcElt = eltInfo.findIn(srcTuple);
-    (eltValueWitnesses->*member)(destElt, srcElt, eltInfo.Type);
+    operation(destElt, srcElt, eltInfo.Type);
   }
 
   return destTuple;
@@ -642,24 +620,6 @@ static OpaqueValue *tuple_memcpy(OpaqueValue *dest,
   return (OpaqueValue*)
     memcpy(dest, src, metatype->getValueWitnesses()->getSize());
 }
-/// Perform a naive memcpy of n tuples from src into dest.
-static OpaqueValue *tuple_memcpy_array(OpaqueValue *dest,
-                                       OpaqueValue *src,
-                                       size_t n,
-                                       const Metadata *metatype) {
-  assert(metatype->getValueWitnesses()->isPOD());
-  return (OpaqueValue*)
-    memcpy(dest, src, metatype->getValueWitnesses()->stride * n);
-}
-/// Perform a naive memmove of n tuples from src into dest.
-static OpaqueValue *tuple_memmove_array(OpaqueValue *dest,
-                                        OpaqueValue *src,
-                                        size_t n,
-                                        const Metadata *metatype) {
-  assert(metatype->getValueWitnesses()->isPOD());
-  return (OpaqueValue*)
-    memmove(dest, src, metatype->getValueWitnesses()->stride * n);
-}
 
 /// Generic tuple value witness for 'initializeWithCopy'.
 template <bool IsPOD, bool IsInline>
@@ -671,32 +631,9 @@ static OpaqueValue *tuple_initializeWithCopy(OpaqueValue *dest,
 
   if (IsPOD) return tuple_memcpy(dest, src, metatype);
   return tuple_forEachField(dest, src, metatype,
-                            &ValueWitnessTable::initializeWithCopy);
-}
-
-/// Generic tuple value witness for 'initializeArrayWithCopy'.
-template <bool IsPOD, bool IsInline>
-static OpaqueValue *tuple_initializeArrayWithCopy(OpaqueValue *dest,
-                                                  OpaqueValue *src,
-                                                  size_t n,
-                                                  const Metadata *metatype) {
-  assert(IsPOD == tuple_getValueWitnesses(metatype)->isPOD());
-  assert(IsInline == tuple_getValueWitnesses(metatype)->isValueInline());
-
-  if (IsPOD) return tuple_memcpy_array(dest, src, n, metatype);
-
-  char *destBytes = (char*)dest;
-  char *srcBytes = (char*)src;
-  size_t stride = tuple_getValueWitnesses(metatype)->stride;
-
-  while (n--) {
-    tuple_initializeWithCopy<IsPOD, IsInline>((OpaqueValue*)destBytes,
-                                              (OpaqueValue*)srcBytes,
-                                              metatype);
-    destBytes += stride; srcBytes += stride;
-  }
-
-  return dest;
+      [](OpaqueValue *dest, OpaqueValue *src, const Metadata *eltType) {
+    return eltType->vw_initializeWithCopy(dest, src);
+  });
 }
 
 /// Generic tuple value witness for 'initializeWithTake'.
@@ -709,59 +646,9 @@ static OpaqueValue *tuple_initializeWithTake(OpaqueValue *dest,
 
   if (IsPOD) return tuple_memcpy(dest, src, metatype);
   return tuple_forEachField(dest, src, metatype,
-                            &ValueWitnessTable::initializeWithTake);
-}
-
-/// Generic tuple value witness for 'initializeArrayWithTakeFrontToBack'.
-template <bool IsPOD, bool IsInline>
-static OpaqueValue *tuple_initializeArrayWithTakeFrontToBack(
-                                             OpaqueValue *dest,
-                                             OpaqueValue *src,
-                                             size_t n,
-                                             const Metadata *metatype) {
-  assert(IsPOD == tuple_getValueWitnesses(metatype)->isPOD());
-  assert(IsInline == tuple_getValueWitnesses(metatype)->isValueInline());
-
-  if (IsPOD) return tuple_memmove_array(dest, src, n, metatype);
-
-  char *destBytes = (char*)dest;
-  char *srcBytes = (char*)src;
-  size_t stride = tuple_getValueWitnesses(metatype)->stride;
-
-  while (n--) {
-    tuple_initializeWithTake<IsPOD, IsInline>((OpaqueValue*)destBytes,
-                                              (OpaqueValue*)srcBytes,
-                                              metatype);
-    destBytes += stride; srcBytes += stride;
-  }
-
-  return dest;
-}
-
-/// Generic tuple value witness for 'initializeArrayWithTakeBackToFront'.
-template <bool IsPOD, bool IsInline>
-static OpaqueValue *tuple_initializeArrayWithTakeBackToFront(
-                                             OpaqueValue *dest,
-                                             OpaqueValue *src,
-                                             size_t n,
-                                             const Metadata *metatype) {
-  assert(IsPOD == tuple_getValueWitnesses(metatype)->isPOD());
-  assert(IsInline == tuple_getValueWitnesses(metatype)->isValueInline());
-
-  if (IsPOD) return tuple_memmove_array(dest, src, n, metatype);
-
-  size_t stride = tuple_getValueWitnesses(metatype)->stride;
-  char *destBytes = (char*)dest + n * stride;
-  char *srcBytes = (char*)src + n * stride;
-
-  while (n--) {
-    destBytes -= stride; srcBytes -= stride;
-    tuple_initializeWithTake<IsPOD, IsInline>((OpaqueValue*)destBytes,
-                                              (OpaqueValue*)srcBytes,
-                                              metatype);
-  }
-
-  return dest;
+      [](OpaqueValue *dest, OpaqueValue *src, const Metadata *eltType) {
+    return eltType->vw_initializeWithTake(dest, src);
+  });
 }
 
 /// Generic tuple value witness for 'assignWithCopy'.
@@ -774,7 +661,9 @@ static OpaqueValue *tuple_assignWithCopy(OpaqueValue *dest,
 
   if (IsPOD) return tuple_memcpy(dest, src, metatype);
   return tuple_forEachField(dest, src, metatype,
-                            &ValueWitnessTable::assignWithCopy);
+      [](OpaqueValue *dest, OpaqueValue *src, const Metadata *eltType) {
+    return eltType->vw_assignWithCopy(dest, src);
+  });
 }
 
 /// Generic tuple value witness for 'assignWithTake'.
@@ -784,7 +673,9 @@ static OpaqueValue *tuple_assignWithTake(OpaqueValue *dest,
                                          const Metadata *metatype) {
   if (IsPOD) return tuple_memcpy(dest, src, metatype);
   return tuple_forEachField(dest, src, metatype,
-                            &ValueWitnessTable::assignWithTake);
+      [](OpaqueValue *dest, OpaqueValue *src, const Metadata *eltType) {
+    return eltType->vw_assignWithTake(dest, src);
+  });
 }
 
 /// Generic tuple value witness for 'initializeBufferWithCopyOfBuffer'.
@@ -848,33 +739,37 @@ static int tuple_getExtraInhabitantIndex(const OpaqueValue *tuple,
 
 /// Various standard witness table for tuples.
 static const ValueWitnessTable tuple_witnesses_pod_inline = {
-#define TUPLE_WITNESS(NAME) &tuple_##NAME<true, true>,
-  FOR_ALL_FUNCTION_VALUE_WITNESSES(TUPLE_WITNESS)
-#undef TUPLE_WITNESS
+#define WANT_ONLY_REQUIRED_VALUE_WITNESSES
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) &tuple_##LOWER_ID<true, true>,
+#define DATA_VALUE_WITNESS(LOWER_ID, UPPER_ID, TYPE)
+#include "swift/ABI/ValueWitness.def"
   0,
   ValueWitnessFlags(),
   0
 };
 static const ValueWitnessTable tuple_witnesses_nonpod_inline = {
-#define TUPLE_WITNESS(NAME) &tuple_##NAME<false, true>,
-  FOR_ALL_FUNCTION_VALUE_WITNESSES(TUPLE_WITNESS)
-#undef TUPLE_WITNESS
+#define WANT_ONLY_REQUIRED_VALUE_WITNESSES
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) &tuple_##LOWER_ID<false, true>,
+#define DATA_VALUE_WITNESS(LOWER_ID, UPPER_ID, TYPE)
+#include "swift/ABI/ValueWitness.def"
   0,
   ValueWitnessFlags(),
   0
 };
 static const ValueWitnessTable tuple_witnesses_pod_noninline = {
-#define TUPLE_WITNESS(NAME) &tuple_##NAME<true, false>,
-  FOR_ALL_FUNCTION_VALUE_WITNESSES(TUPLE_WITNESS)
-#undef TUPLE_WITNESS
+#define WANT_ONLY_REQUIRED_VALUE_WITNESSES
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) &tuple_##LOWER_ID<true, false>,
+#define DATA_VALUE_WITNESS(LOWER_ID, UPPER_ID, TYPE)
+#include "swift/ABI/ValueWitness.def"
   0,
   ValueWitnessFlags(),
   0
 };
 static const ValueWitnessTable tuple_witnesses_nonpod_noninline = {
-#define TUPLE_WITNESS(NAME) &tuple_##NAME<false, false>,
-  FOR_ALL_FUNCTION_VALUE_WITNESSES(TUPLE_WITNESS)
-#undef TUPLE_WITNESS
+#define WANT_ONLY_REQUIRED_VALUE_WITNESSES
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) &tuple_##LOWER_ID<false, false>,
+#define DATA_VALUE_WITNESS(LOWER_ID, UPPER_ID, TYPE)
+#include "swift/ABI/ValueWitness.def"
   0,
   ValueWitnessFlags(),
   0
@@ -1009,10 +904,11 @@ TupleCacheEntry::TupleCacheEntry(const Key &key,
       proposedWitnesses = &tuple_witnesses_nonpod_noninline;
     }
   }
-#define ASSIGN_TUPLE_WITNESS(NAME) \
-  Witnesses.NAME = proposedWitnesses->NAME;
-  FOR_ALL_FUNCTION_VALUE_WITNESSES(ASSIGN_TUPLE_WITNESS)
-#undef ASSIGN_TUPLE_WITNESS
+#define WANT_ONLY_REQUIRED_VALUE_WITNESSES
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) \
+  Witnesses.LOWER_ID = proposedWitnesses->LOWER_ID;
+#define DATA_VALUE_WITNESS(LOWER_ID, UPPER_ID, TYPE)
+#include "swift/ABI/ValueWitness.def"
 
   // We have extra inhabitants if the first element does.
   // FIXME: generalize this.
@@ -1055,7 +951,7 @@ namespace {
   struct pointer_function_cast_impl;
   
   template<typename OutRet, typename...OutArgs>
-  struct pointer_function_cast_impl<OutRet * (OutArgs *...)> {
+  struct pointer_function_cast_impl<OutRet * (*)(OutArgs *...)> {
     template<typename InRet, typename...InArgs>
     static constexpr auto perform(InRet * (*function)(InArgs *...))
       -> OutRet * (*)(OutArgs *...)
@@ -1067,7 +963,7 @@ namespace {
   };
 
   template<typename...OutArgs>
-  struct pointer_function_cast_impl<void (OutArgs *...)> {
+  struct pointer_function_cast_impl<void (*)(OutArgs *...)> {
     template<typename...InArgs>
     static constexpr auto perform(void (*function)(InArgs *...))
       -> void (*)(OutArgs *...)
@@ -1084,7 +980,7 @@ namespace {
 /// In any reasonable calling convention the input and output function types
 /// should be ABI-compatible.
 template<typename Out, typename In>
-static constexpr Out *pointer_function_cast(In *function) {
+static constexpr Out pointer_function_cast(In *function) {
   return pointer_function_cast_impl<Out>::perform(function);
 }
 
@@ -1143,36 +1039,6 @@ static OpaqueValue *pod_direct_initializeWithCopy(OpaqueValue *dest,
 #define pod_direct_assignWithTake pod_direct_initializeWithCopy
 #define pod_indirect_assignWithTake pod_direct_initializeWithCopy
 
-static void pod_direct_destroyArray(OpaqueValue *, size_t, const Metadata *) {
-  // noop
-}
-#define pod_indirect_destroyArray pod_direct_destroyArray
-
-static OpaqueValue *pod_direct_initializeArrayWithCopy(OpaqueValue *dest,
-                                                       OpaqueValue *src,
-                                                       size_t n,
-                                                       const Metadata *self) {
-  auto totalSize = self->getValueWitnesses()->stride * n;
-  memcpy(dest, src, totalSize);
-  return dest;
-}
-#define pod_indirect_initializeArrayWithCopy pod_direct_initializeArrayWithCopy
-
-static OpaqueValue *pod_direct_initializeArrayWithTakeFrontToBack(
-                                                        OpaqueValue *dest,
-                                                        OpaqueValue *src,
-                                                        size_t n,
-                                                        const Metadata *self) {
-  auto totalSize = self->getValueWitnesses()->stride * n;
-  memmove(dest, src, totalSize);
-  return dest;
-}
-#define pod_direct_initializeArrayWithTakeBackToFront \
-  pod_direct_initializeArrayWithTakeFrontToBack
-#define pod_indirect_initializeArrayWithTakeFrontToBack \
-  pod_direct_initializeArrayWithTakeFrontToBack
-#define pod_indirect_initializeArrayWithTakeBackToFront \
-  pod_direct_initializeArrayWithTakeFrontToBack
 
 static constexpr uint64_t sizeWithAlignmentMask(uint64_t size,
                                                 uint64_t alignmentMask) {
@@ -1191,13 +1057,17 @@ void swift::installCommonValueWitnesses(ValueWitnessTable *vwtable) {
       // For uncommon layouts, use value witnesses that work with an arbitrary
       // size and alignment.
       if (flags.isInlineStorage()) {
-  #define INSTALL_POD_DIRECT_WITNESS(NAME) vwtable->NAME = pod_direct_##NAME;
-        FOR_ALL_FUNCTION_VALUE_WITNESSES(INSTALL_POD_DIRECT_WITNESS)
-  #undef INSTALL_POD_DIRECT_WITNESS
+#define WANT_ONLY_REQUIRED_VALUE_WITNESSES
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) \
+        vwtable->LOWER_ID = pod_direct_##LOWER_ID;
+#define DATA_VALUE_WITNESS(LOWER_ID, UPPER_ID, TYPE)
+#include "swift/ABI/ValueWitness.def"
       } else {
-  #define INSTALL_POD_INDIRECT_WITNESS(NAME) vwtable->NAME = pod_indirect_##NAME;
-        FOR_ALL_FUNCTION_VALUE_WITNESSES(INSTALL_POD_INDIRECT_WITNESS)
-  #undef INSTALL_POD_INDIRECT_WITNESS
+#define WANT_ONLY_REQUIRED_VALUE_WITNESSES
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) \
+        vwtable->LOWER_ID = pod_indirect_##LOWER_ID;
+#define DATA_VALUE_WITNESS(LOWER_ID, UPPER_ID, TYPE)
+#include "swift/ABI/ValueWitness.def"
       }
       return;
       
@@ -1223,10 +1093,12 @@ void swift::installCommonValueWitnesses(ValueWitnessTable *vwtable) {
       commonVWT = &VALUE_WITNESS_SYM(Bi512_);
       break;
     }
-    
-  #define INSTALL_POD_COMMON_WITNESS(NAME) vwtable->NAME = commonVWT->NAME;
-    FOR_ALL_FUNCTION_VALUE_WITNESSES(INSTALL_POD_COMMON_WITNESS)
-  #undef INSTALL_POD_COMMON_WITNESS
+
+#define WANT_ONLY_REQUIRED_VALUE_WITNESSES
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) \
+    vwtable->LOWER_ID = commonVWT->LOWER_ID;
+#define DATA_VALUE_WITNESS(LOWER_ID, UPPER_ID, TYPE)
+#include "swift/ABI/ValueWitness.def"
     
     return;
   }
@@ -1237,18 +1109,10 @@ void swift::installCommonValueWitnesses(ValueWitnessTable *vwtable) {
       vwtable->initializeWithTake = pod_direct_initializeWithTake;
       vwtable->initializeBufferWithTakeOfBuffer
         = pod_direct_initializeBufferWithTakeOfBuffer;
-      vwtable->initializeArrayWithTakeFrontToBack
-        = pod_direct_initializeArrayWithTakeFrontToBack;
-      vwtable->initializeArrayWithTakeBackToFront
-        = pod_direct_initializeArrayWithTakeBackToFront;
     } else {
       vwtable->initializeWithTake = pod_indirect_initializeWithTake;
       vwtable->initializeBufferWithTakeOfBuffer
         = pod_indirect_initializeBufferWithTakeOfBuffer;
-      vwtable->initializeArrayWithTakeFrontToBack
-        = pod_indirect_initializeArrayWithTakeFrontToBack;
-      vwtable->initializeArrayWithTakeBackToFront
-        = pod_indirect_initializeArrayWithTakeBackToFront;
     }
     return;
   }
@@ -1330,7 +1194,7 @@ namespace {
     uint32_t Flags;
     uint32_t InstanceStart;
     uint32_t InstanceSize;
-#ifdef __LP64__
+#if __POINTER_WIDTH__ == 64
     uint32_t Reserved;
 #endif
     const uint8_t *IvarLayout;
@@ -1395,15 +1259,15 @@ static ClassMetadata *_swift_initializeSuperclass(ClassMetadata *theClass,
 #endif
 
   const ClassMetadata *theSuperclass = theClass->SuperClass;
-  if (theSuperclass == nullptr)
-    return theClass;
 
   // Relocate the metadata if necessary.
   //
   // For now, we assume that relocation is only required when the parent
   // class has prefix matter we didn't know about.  This isn't consistent
   // with general class resilience, however.
-  if (theSuperclass->isTypeMetadata()) {
+  //
+  // FIXME: This part isn't used right now.
+  if (theSuperclass && theSuperclass->isTypeMetadata()) {
     auto superAP = theSuperclass->getClassAddressPoint();
     auto oldClassAP = theClass->getClassAddressPoint();
     if (superAP > oldClassAP) {
@@ -1434,8 +1298,30 @@ static ClassMetadata *_swift_initializeSuperclass(ClassMetadata *theClass,
     }
   }
 
-  // If any ancestor classes have generic parameters or field offset
-  // vectors, inherit them.
+  // Copy the class's immediate methods from the nominal type descriptor
+  // to the class metadata.
+  {
+    auto &description = theClass->getDescription();
+    auto &genericParams = description->GenericParams;
+
+    auto *classWords = reinterpret_cast<void **>(theClass);
+
+    if (genericParams.Flags.hasVTable()) {
+      auto *vtable = description->getVTableDescriptor();
+      for (unsigned i = 0, e = vtable->VTableSize; i < e; ++i) {
+        classWords[vtable->VTableOffset + i] = vtable->getMethod(i);
+      }
+    }
+  }
+
+  if (theSuperclass == nullptr)
+    return theClass;
+
+  // If any ancestor classes have generic parameters, field offset vectors
+  // or virtual methods, inherit them.
+  //
+  // Note that the caller is responsible for installing overrides of
+  // superclass methods; here we just copy them verbatim.
   auto ancestor = theSuperclass;
   auto *classWords = reinterpret_cast<uintptr_t *>(theClass);
   auto *superWords = reinterpret_cast<const uintptr_t *>(theSuperclass);
@@ -1458,6 +1344,14 @@ static ClassMetadata *_swift_initializeSuperclass(ClassMetadata *theClass,
              numParamWords * sizeof(uintptr_t));
     }
 
+    // Copy the vtable entries.
+    if (genericParams.Flags.hasVTable()) {
+      auto *vtable = description->getVTableDescriptor();
+      memcpy(classWords + vtable->VTableOffset,
+             superWords + vtable->VTableOffset,
+             vtable->VTableSize * sizeof(uintptr_t));
+    }
+
     // Copy the field offsets.
     if (copyFieldOffsetVectors &&
         description->Class.hasFieldOffsetVector()) {
@@ -1474,7 +1368,7 @@ static ClassMetadata *_swift_initializeSuperclass(ClassMetadata *theClass,
   // superclass.
   auto theMetaclass = (ClassMetadata *)object_getClass((id)theClass);
   auto theSuperMetaclass
-    = (const ClassMetadata *)object_getClass((id)theSuperclass);
+    = (const ClassMetadata *)object_getClass(id_const_cast(theSuperclass));
   theMetaclass->SuperClass = theSuperMetaclass;
 #endif
 
@@ -1822,12 +1716,13 @@ ExistentialMetatypeValueWitnessTableCacheEntry(unsigned numWitnessTables) {
   using Box = NonFixedExistentialMetatypeBox;
   using Witnesses = NonFixedValueWitnesses<Box, /*known allocated*/ true>;
 
-#define STORE_VAR_EXISTENTIAL_METATYPE_WITNESS(WITNESS) \
-  Data.WITNESS = Witnesses::WITNESS;
-  FOR_ALL_FUNCTION_VALUE_WITNESSES(STORE_VAR_EXISTENTIAL_METATYPE_WITNESS)
-  STORE_VAR_EXISTENTIAL_METATYPE_WITNESS(storeExtraInhabitant)
-  STORE_VAR_EXISTENTIAL_METATYPE_WITNESS(getExtraInhabitantIndex)
-#undef STORE_VAR_EXISTENTIAL_METATYPE_WITNESS
+#define WANT_REQUIRED_VALUE_WITNESSES 1
+#define WANT_EXTRA_INHABITANT_VALUE_WITNESSES 1
+#define WANT_ENUM_VALUE_WITNESSES 0
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) \
+  Data.LOWER_ID = Witnesses::LOWER_ID;
+#define DATA_VALUE_WITNESS(LOWER_ID, UPPER_ID, TYPE)
+#include "swift/ABI/ValueWitness.def"
 
   Data.size = Box::Container::getSize(numWitnessTables);
   Data.flags = ValueWitnessFlags()
@@ -2015,10 +1910,11 @@ OpaqueExistentialValueWitnessTableCacheEntry(unsigned numWitnessTables) {
   using Witnesses = NonFixedValueWitnesses<Box, /*known allocated*/ true>;
   static_assert(!Witnesses::hasExtraInhabitants, "no extra inhabitants");
 
-#define STORE_VAR_OPAQUE_EXISTENTIAL_WITNESS(WITNESS) \
-  Data.WITNESS = Witnesses::WITNESS;
-  FOR_ALL_FUNCTION_VALUE_WITNESSES(STORE_VAR_OPAQUE_EXISTENTIAL_WITNESS)
-#undef STORE_VAR_OPAQUE_EXISTENTIAL_WITNESS
+#define WANT_ONLY_REQUIRED_VALUE_WITNESSES
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) \
+  Data.LOWER_ID = Witnesses::LOWER_ID;
+#define DATA_VALUE_WITNESS(LOWER_ID, UPPER_ID, TYPE)
+#include "swift/ABI/ValueWitness.def"
 
   Data.size = Box::Container::getSize(numWitnessTables);
   Data.flags = ValueWitnessFlags()
@@ -2071,12 +1967,13 @@ ClassExistentialValueWitnessTableCacheEntry(unsigned numWitnessTables) {
   using Box = NonFixedClassExistentialBox;
   using Witnesses = NonFixedValueWitnesses<Box, /*known allocated*/ true>;
 
-#define STORE_VAR_CLASS_EXISTENTIAL_WITNESS(WITNESS) \
-  Data.WITNESS = Witnesses::WITNESS;
-  FOR_ALL_FUNCTION_VALUE_WITNESSES(STORE_VAR_CLASS_EXISTENTIAL_WITNESS)
-  STORE_VAR_CLASS_EXISTENTIAL_WITNESS(storeExtraInhabitant)
-  STORE_VAR_CLASS_EXISTENTIAL_WITNESS(getExtraInhabitantIndex)
-#undef STORE_VAR_CLASS_EXISTENTIAL_WITNESS
+#define WANT_REQUIRED_VALUE_WITNESSES 1
+#define WANT_EXTRA_INHABITANT_VALUE_WITNESSES 1
+#define WANT_ENUM_VALUE_WITNESSES 0
+#define VALUE_WITNESS(LOWER_ID, UPPER_ID) \
+  Data.LOWER_ID = Witnesses::LOWER_ID;
+#define DATA_VALUE_WITNESS(LOWER_ID, UPPER_ID, TYPE)
+#include "swift/ABI/ValueWitness.def"
 
   Data.size = Box::Container::getSize(numWitnessTables);
   Data.flags = ValueWitnessFlags()
@@ -2669,11 +2566,11 @@ using LazyGenericWitnessTableCache = Lazy<GenericWitnessTableCache>;
 static GenericWitnessTableCache &getCache(GenericWitnessTable *gen) {
   // Keep this assert even if you change the representation above.
   static_assert(sizeof(LazyGenericWitnessTableCache) <=
-                sizeof(GenericWitnessTable::PrivateData),
+                sizeof(GenericWitnessTable::PrivateDataType),
                 "metadata cache is larger than the allowed space");
 
   auto lazyCache =
-    reinterpret_cast<LazyGenericWitnessTableCache*>(gen->PrivateData);
+    reinterpret_cast<LazyGenericWitnessTableCache*>(gen->PrivateData.get());
   return lazyCache->get();
 }
 
@@ -2688,10 +2585,8 @@ static GenericWitnessTableCache &getCache(GenericWitnessTable *gen) {
 static bool doesNotRequireInstantiation(GenericWitnessTable *genericTable) {
   if (genericTable->Instantiator.isNull() &&
       genericTable->WitnessTablePrivateSizeInWords == 0 &&
-      (genericTable->Protocol.isNull() ||
-       genericTable->WitnessTableSizeInWords -
-       genericTable->Protocol->MinimumWitnessTableSizeInWords ==
-       genericTable->Protocol->DefaultWitnessTableSizeInWords)) {
+      genericTable->WitnessTableSizeInWords ==
+        genericTable->Protocol->NumRequirements) {
     return true;
   }
 
@@ -2705,56 +2600,54 @@ allocateWitnessTable(GenericWitnessTable *genericTable,
                      MetadataAllocator &allocator,
                      const void *args[],
                      size_t numGenericArgs) {
-
-  // Number of bytes for any private storage used by the conformance itself.
-  size_t privateSize = genericTable->WitnessTablePrivateSizeInWords * sizeof(void *);
-
-  size_t minWitnessTableSize, expectedWitnessTableSize;
-  size_t actualWitnessTableSize = genericTable->WitnessTableSizeInWords * sizeof(void *);
+  // The number of witnesses provided by the table pattern.
+  size_t numPatternWitnesses = genericTable->WitnessTableSizeInWords;
 
   auto protocol = genericTable->Protocol.get();
 
-  if (protocol != nullptr && protocol->Flags.isResilient()) {
-    // The protocol and conforming type are in different resilience domains.
-    // Allocate the witness table with the correct size, and fill in default
-    // requirements at the end as needed.
-    minWitnessTableSize = (protocol->MinimumWitnessTableSizeInWords *
-                           sizeof(void *));
-    expectedWitnessTableSize = ((protocol->MinimumWitnessTableSizeInWords +
-                                 protocol->DefaultWitnessTableSizeInWords) *
-                                sizeof(void *));
-    assert(actualWitnessTableSize >= minWitnessTableSize &&
-           actualWitnessTableSize <= expectedWitnessTableSize);
-  } else {
-    // The protocol and conforming type are in the same resilience domain.
-    // Trust that the witness table template already has the correct size.
-    minWitnessTableSize = expectedWitnessTableSize = actualWitnessTableSize;
-  }
+  // The number of mandatory requirements, i.e. requirements lacking
+  // default implementations.
+  size_t numMandatoryRequirements = protocol->NumMandatoryRequirements;
+  assert(numPatternWitnesses >= numMandatoryRequirements);
+
+  // The total number of requirements.
+  size_t numRequirements = protocol->NumRequirements;
+  assert(numPatternWitnesses <= numRequirements);
+
+  // Number of bytes for any private storage used by the conformance itself.
+  size_t privateSize =
+    genericTable->WitnessTablePrivateSizeInWords * sizeof(void *);
+
+  // Number of bytes for the full witness table.
+  size_t expectedWitnessTableSize = numRequirements * sizeof(void *);
 
   // Create a new entry for the cache.
   auto entry = WitnessTableCacheEntry::allocate(
       allocator, args, numGenericArgs,
-      privateSize + expectedWitnessTableSize);
+      (privateSize + expectedWitnessTableSize) * sizeof(void *));
 
   char *fullTable = entry->getData<char>();
 
   // Zero out the private storage area.
-  memset(fullTable, 0, privateSize);
+  memset(fullTable, 0, privateSize * sizeof(void *));
 
   // Advance the address point; the private storage area is accessed via
   // negative offsets.
-  auto *table = entry->get(genericTable);
+  auto table = (void **) entry->get(genericTable);
+  auto pattern = (void * const *) &*genericTable->Pattern;
+  auto requirements = protocol->Requirements.get();
 
   // Fill in the provided part of the requirements from the pattern.
-  memcpy(table, (void * const *) &*genericTable->Pattern,
-         actualWitnessTableSize);
+  for (size_t i = 0, e = numPatternWitnesses; i < e; ++i) {
+    table[i] = pattern[i];
+  }
 
-  // If this is a resilient conformance, copy in the rest.
-  if (protocol != nullptr && protocol->Flags.isResilient()) {
-    memcpy((char *) table + actualWitnessTableSize,
-           (char *) protocol->getDefaultWitnesses() +
-              (actualWitnessTableSize - minWitnessTableSize),
-           expectedWitnessTableSize - actualWitnessTableSize);
+  // Fill in any default requirements.
+  for (size_t i = numPatternWitnesses, e = numRequirements; i < e; ++i) {
+    void *defaultImpl = requirements[i].DefaultImplementation.get();
+    assert(defaultImpl &&
+           "no default implementation for missing requirement");
+    table[i] = defaultImpl;
   }
 
   return entry;

@@ -432,7 +432,7 @@ public:
   SILVerifier(const SILFunction &F, bool SingleFunction = true)
       : M(F.getModule().getSwiftModule()), F(F),
         fnConv(F.getLoweredFunctionType(), F.getModule()),
-        TC(F.getModule().Types), OpenedArchetypes(F), Dominance(nullptr),
+        TC(F.getModule().Types), OpenedArchetypes(&F), Dominance(nullptr),
         DEBlocks(&F), SingleFunction(SingleFunction) {
     if (F.isExternalDeclaration())
       return;
@@ -502,13 +502,14 @@ public:
   void checkSILInstruction(SILInstruction *I) {
     const SILBasicBlock *BB = I->getParent();
     require(BB, "Instruction with null parent");
-    require(I->getFunction(), "Instruction not in function");
 
     // Check that non-terminators look ok.
     if (!isa<TermInst>(I)) {
       require(!BB->empty(), "Can't be in a parent block if it is empty");
-      require(&*BB->rbegin() != I,
-              "Non-terminators cannot be the last in a block");
+      if (!I->isStaticInitializerInst()) {
+        require(&*BB->rbegin() != I,
+                "Non-terminators cannot be the last in a block");
+      }
     } else {
       // Skip the check for UnreachableInst, if explicitly asked to do so.
       if (!isa<UnreachableInst>(I) || !SkipUnreachableMustBeLastErrors)
@@ -525,8 +526,13 @@ public:
       auto userI = cast<SILInstruction>(user);
       require(userI->getParent(),
               "instruction used by unparented instruction");
-      require(userI->getFunction() == &F,
-              "instruction used by instruction in different function");
+      if (I->isStaticInitializerInst()) {
+        require(userI->getParent() == BB,
+              "instruction used by instruction not in same static initializer");
+      } else {
+        require(userI->getFunction() == &F,
+                "instruction used by instruction in different function");
+      }
 
       auto operands = userI->getAllOperands();
       require(operands.begin() <= use && use <= operands.end(),
@@ -540,13 +546,20 @@ public:
       if (auto *valueI = dyn_cast<SILInstruction>(operand.get())) {
         require(valueI->getParent(),
                 "instruction uses value of unparented instruction");
-        require(valueI->getFunction() == &F,
-                "instruction uses value of instruction from another function");
-        require(Dominance->properlyDominates(valueI, I),
-                "instruction isn't dominated by its operand");
+        if (I->isStaticInitializerInst()) {
+          require(valueI->getParent() == BB,
+              "instruction uses value which is not in same static initializer");
+        } else {
+          require(valueI->getFunction() == &F,
+                  "instruction uses value of instruction from another function");
+          require(Dominance->properlyDominates(valueI, I),
+                  "instruction isn't dominated by its operand");
+        }
       }
       
       if (auto *valueBBA = dyn_cast<SILArgument>(operand.get())) {
+        require(!I->isStaticInitializerInst(),
+                "static initializer inst cannot refer to SILArgument");
         require(valueBBA->getParent(),
                 "instruction uses value of unparented instruction");
         require(valueBBA->getFunction() == &F,
@@ -1167,20 +1180,34 @@ public:
     }
   }
 
+  void checkGlobalAccessInst(GlobalAccessInst *GAI) {
+    SILGlobalVariable *RefG = GAI->getReferencedGlobal();
+    require(GAI->getType().getObjectType() == RefG->getLoweredType(),
+            "global_addr/value must be the type of the variable it references");
+    if (F.isSerialized()) {
+      require(RefG->isSerialized()
+              || hasPublicVisibility(RefG->getLinkage()),
+              "global_addr/value inside fragile function cannot "
+              "reference a private or hidden symbol");
+    }
+  }
+
   void checkGlobalAddrInst(GlobalAddrInst *GAI) {
     require(GAI->getType().isAddress(),
             "global_addr must have an address result type");
-    require(GAI->getType().getObjectType() ==
-              GAI->getReferencedGlobal()->getLoweredType(),
-            "global_addr must be the address type of the variable it "
-            "references");
-    if (F.isSerialized()) {
-      SILGlobalVariable *RefG = GAI->getReferencedGlobal();
-      require(RefG->isSerialized()
-                || hasPublicVisibility(RefG->getLinkage()),
-              "global_addr inside fragile function cannot "
-              "reference a private or hidden symbol");
-    }
+    require(!GAI->getReferencedGlobal()->isInitializedObject(),
+            "global_addr cannot refer to a statically initialized object");
+    checkGlobalAccessInst(GAI);
+  }
+
+  void checkGlobalValueInst(GlobalValueInst *GVI) {
+    require(GVI->getType().isObject(),
+            "global_value must have an address result type");
+    checkGlobalAccessInst(GVI);
+  }
+
+  void checkObjectInst(ObjectInst *) {
+    require(false, "object instruction is only allowed in a static initializer");
   }
 
   void checkIntegerLiteralInst(IntegerLiteralInst *ILI) {
@@ -2340,8 +2367,8 @@ public:
           break;
         case ValueKind::LoadInst:
           // A 'non-taking' value load is harmless.
-          return cast<LoadInst>(inst)->getOwnershipQualifier() !=
-                 LoadOwnershipQualifier::Copy;
+          return cast<LoadInst>(inst)->getOwnershipQualifier() ==
+                 LoadOwnershipQualifier::Take;
           break;
         case ValueKind::DebugValueAddrInst:
           // Harmless use.
@@ -2353,8 +2380,8 @@ public:
       }
       return false;
     };
-    require(!isMutatingOrConsuming(OEI) ||
-                allowedAccessKind == OpenedExistentialAccess::Mutable,
+    require(allowedAccessKind == OpenedExistentialAccess::Mutable
+            || !isMutatingOrConsuming(OEI),
             "open_existential_addr uses that consumes or mutates but is not "
             "opened for mutation");
   }
@@ -3721,8 +3748,7 @@ public:
           
         case KeyPathPatternComponent::Kind::GettableProperty:
         case KeyPathPatternComponent::Kind::SettableProperty: {
-          require(component.getComputedPropertyIndices().empty(),
-                  "subscripts not implemented");
+          bool hasIndices = !component.getComputedPropertyIndices().empty();
         
           // Getter should be <Sig...> @convention(thin) (@in Base) -> @out Result
           {
@@ -3733,14 +3759,25 @@ public:
                       SILFunctionTypeRepresentation::Thin,
                     "getter should be a thin function");
             
-              // TODO: indexes
-            require(substGetterType->getNumParameters() == 1,
+            require(substGetterType->getNumParameters() == 1 + hasIndices,
                     "getter should have one parameter");
-            auto baseParam = substGetterType->getSelfParameter();
-            require(baseParam.getConvention() == ParameterConvention::Indirect_In,
+            auto baseParam = substGetterType->getParameters()[0];
+            require(baseParam.getConvention() ==
+                      ParameterConvention::Indirect_In,
                     "getter base parameter should be @in");
             require(baseParam.getType() == loweredBaseTy.getSwiftRValueType(),
                     "getter base parameter should match base of component");
+            
+            if (hasIndices) {
+              auto indicesParam = substGetterType->getParameters()[1];
+              require(indicesParam.getConvention()
+                        == ParameterConvention::Direct_Unowned,
+                      "indices pointer should be trivial");
+              require(indicesParam.getType()->getAnyNominal()
+                        == C.getUnsafeRawPointerDecl(),
+                      "indices pointer should be an UnsafeRawPointer");
+            }
+
             require(substGetterType->getNumResults() == 1,
                     "getter should have one result");
             auto result = substGetterType->getResults()[0];
@@ -3761,22 +3798,33 @@ public:
             
             require(substSetterType->getRepresentation() ==
                       SILFunctionTypeRepresentation::Thin,
-                    "getter should be a thin function");
+                    "setter should be a thin function");
             
-            // TODO: indexes
-            require(substSetterType->getNumParameters() == 2,
+            require(substSetterType->getNumParameters() == 2 + hasIndices,
                     "setter should have two parameters");
-            auto baseParam = substSetterType->getSelfParameter();
+
+            auto newValueParam = substSetterType->getParameters()[0];
+            require(newValueParam.getConvention() ==
+                      ParameterConvention::Indirect_In,
+                    "setter value parameter should be @in");
+
+            auto baseParam = substSetterType->getParameters()[1];
             require(baseParam.getConvention() ==
                       ParameterConvention::Indirect_In
                     || baseParam.getConvention() ==
                         ParameterConvention::Indirect_Inout,
                     "setter base parameter should be @in or @inout");
-            auto newValueParam = substSetterType->getParameters()[0];
-            require(newValueParam.getConvention() ==
-                      ParameterConvention::Indirect_In,
-                    "setter value parameter should be @in");
             
+            if (hasIndices) {
+              auto indicesParam = substSetterType->getParameters()[2];
+              require(indicesParam.getConvention()
+                        == ParameterConvention::Direct_Unowned,
+                      "indices pointer should be trivial");
+              require(indicesParam.getType()->getAnyNominal()
+                        == C.getUnsafeRawPointerDecl(),
+                      "indices pointer should be an UnsafeRawPointer");
+            }
+
             require(newValueParam.getType() ==
                       loweredComponentTy.getSwiftRValueType(),
                     "setter value should match the maximal abstraction of the "
@@ -3784,6 +3832,86 @@ public:
             
             require(substSetterType->getNumResults() == 0,
                     "setter should have no results");
+          }
+          
+          for (auto &index : component.getComputedPropertyIndices()) {
+            auto opIndex = index.Operand;
+            auto contextType =
+              index.LoweredType.subst(F.getModule(), patternSubs);
+            requireSameType(contextType,
+                            KPI->getAllOperands()[opIndex].get()->getType(),
+                            "operand must match type required by pattern");
+            require(isLoweringOf(index.LoweredType, index.FormalType),
+                    "pattern index formal type doesn't match lowered type");
+          }
+          
+          if (!component.getComputedPropertyIndices().empty()) {
+            // Equals should be
+            // <Sig...> @convention(thin) (RawPointer, RawPointer) -> Bool
+            {
+              auto equals = component.getComputedPropertyIndexEquals();
+              require(equals, "key path pattern with indexes must have equals "
+                              "operator");
+              
+              auto substEqualsType = equals->getLoweredFunctionType()
+                ->substGenericArgs(F.getModule(), KPI->getSubstitutions());
+              
+              require(substEqualsType->getParameters().size() == 2,
+                      "must have two arguments");
+              for (unsigned i = 0; i < 2; ++i) {
+                auto param = substEqualsType->getParameters()[i];
+                require(param.getConvention()
+                          == ParameterConvention::Direct_Unowned,
+                        "indices pointer should be trivial");
+                require(param.getType()->getAnyNominal()
+                          == C.getUnsafeRawPointerDecl(),
+                        "indices pointer should be an UnsafeRawPointer");
+              }
+              
+              require(substEqualsType->getResults().size() == 1,
+                      "must have one result");
+              
+              require(substEqualsType->getResults()[0].getConvention()
+                        == ResultConvention::Unowned,
+                      "result should be unowned");
+              require(substEqualsType->getResults()[0].getType()->getAnyNominal()
+                        == C.getBoolDecl(),
+                      "result should be Bool");
+            }
+            {
+              // Hash should be
+              // <Sig...> @convention(thin) (RawPointer) -> Int
+              auto hash = component.getComputedPropertyIndexHash();
+              require(hash, "key path pattern with indexes must have hash "
+                            "operator");
+              
+              auto substHashType = hash->getLoweredFunctionType()
+                ->substGenericArgs(F.getModule(), KPI->getSubstitutions());
+              
+              require(substHashType->getParameters().size() == 1,
+                      "must have two arguments");
+              auto param = substHashType->getParameters()[0];
+              require(param.getConvention()
+                        == ParameterConvention::Direct_Unowned,
+                      "indices pointer should be trivial");
+              require(param.getType()->getAnyNominal()
+                        == C.getUnsafeRawPointerDecl(),
+                      "indices pointer should be an UnsafeRawPointer");
+              
+              require(substHashType->getResults().size() == 1,
+                      "must have one result");
+              
+              require(substHashType->getResults()[0].getConvention()
+                        == ResultConvention::Unowned,
+                      "result should be unowned");
+              require(substHashType->getResults()[0].getType()->getAnyNominal()
+                        == C.getIntDecl(),
+                      "result should be Int");
+            }
+          } else {
+            require(!component.getComputedPropertyIndexEquals()
+                    && !component.getComputedPropertyIndexHash(),
+                    "component without indexes must not have equals/hash");
           }
 
           break;
@@ -3846,6 +3974,11 @@ public:
         llvm::errs() << "  argument: "; bbarg->dump();
         llvm::errs() << "  expected: "; mappedTy.dump();
         matched = false;
+      }
+
+      // If we do not have qualified ownership, do not check ownership.
+      if (!F.hasQualifiedOwnership()) {
+        return;
       }
 
       if (bbarg->getOwnershipKind() != ownershipkind) {
@@ -4071,6 +4204,7 @@ public:
       auto *CBI = dyn_cast<CondBranchInst>(TI);
       if (!CBI)
         continue;
+
       if (isCriticalEdgePred(CBI, CondBranchInst::TrueIdx)) {
         require(
             llvm::all_of(CBI->getTrueArgs(),
@@ -4093,7 +4227,7 @@ public:
   }
 
   void verifyOpenedArchetypes(SILFunction *F) {
-    require(&OpenedArchetypes.getFunction() == F,
+    require(OpenedArchetypes.getFunction() == F,
            "Wrong SILFunction provided to verifyOpenedArchetypes");
     // Check that definitions of all opened archetypes from
     // OpenedArchetypesDefs are existing instructions
@@ -4359,9 +4493,18 @@ void SILGlobalVariable::verify() const {
          && "global variable cannot have address type");
 
   // Verify the static initializer.
-  if (InitializerF)
-    assert(SILGlobalVariable::canBeStaticInitializer(InitializerF) &&
+  for (const SILInstruction &I : StaticInitializerBlock) {
+    assert(isValidStaticInitializerInst(&I, getModule()) &&
            "illegal static initializer");
+    if (&I == &StaticInitializerBlock.back()) {
+      assert(I.use_empty() && "Init value must not have another use");
+    } else {
+      assert(!I.use_empty() && "dead instruction in static initializer");
+      assert(!isa<ObjectInst>(&I) &&
+             "object instruction is only allowed for final initial value");
+    }
+    assert(I.getParent() == &StaticInitializerBlock);
+  }
 }
 
 /// Verify the module.
@@ -4373,13 +4516,20 @@ void SILModule::verify() const {
   // Uniquing set to catch symbol name collisions.
   llvm::StringSet<> symbolNames;
 
+  // When merging partial modules, we only link functions from the current
+  // module, without enabling "LinkAll" mode or running the SILLinker pass;
+  // in this case, we need to relax some of the checks.
+  bool SingleFunction = false;
+  if (getOptions().MergePartialModules)
+    SingleFunction = true;
+
   // Check all functions.
   for (const SILFunction &f : *this) {
     if (!symbolNames.insert(f.getName()).second) {
       llvm::errs() << "Symbol redefined: " << f.getName() << "!\n";
       assert(false && "triggering standard assertion failure routine");
     }
-    f.verify(/*SingleFunction=*/false);
+    f.verify(SingleFunction);
   }
 
   // Check all globals.

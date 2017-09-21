@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -parse-as-library -module-name=test -emit-silgen -primary-file %s | %FileCheck %s
+// RUN: %target-swift-frontend -parse-as-library -module-name=test -emit-silgen -enable-sil-ownership -primary-file %s | %FileCheck %s
 
 // Check if we mangle the following constructors, functions, and
 // subscripts correctly.
@@ -20,12 +20,12 @@ public struct Pair {
   public func test(_ t: (Int, Int)) {
   }
 
-  // CHECK: sil @_T04test4PairV9subscriptS2i_Sitcfg :
+  // CHECK: sil @_T04test4PairVS2i_Sitcig :
   public subscript(_:Int, _:Int) -> Int {
       get { return 0 }
   }
 
-  // CHECK: sil @_T04test4PairV9subscriptS2i_Sit_tcfg :
+  // CHECK: sil @_T04test4PairVS2i_Sit_tcig :
   public subscript(_:(Int, Int)) -> Int {
       get { return 0 }
   }

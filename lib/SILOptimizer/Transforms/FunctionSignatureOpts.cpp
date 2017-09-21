@@ -967,18 +967,17 @@ OwnedToGuaranteedFinalizeThunkFunction(SILBuilder &Builder, SILFunction *F) {
 
 static void createArgumentRelease(SILBuilder &Builder, ArgumentDescriptor &AD) {
   auto &F = Builder.getFunction();
-  if (AD.PInfo->getConvention() == ParameterConvention::Direct_Owned) {
-    Builder.createReleaseValue(RegularLocation(SourceLoc()),
-                               F.getArguments()[AD.Index],
-                               Builder.getDefaultAtomicity());
-    return;
-  }
-  if (AD.PInfo->getConvention() == ParameterConvention::Indirect_In) {
+  SILArgument *Arg = F.getArguments()[AD.Index];
+  if (Arg->getType().isAddress()) {
+    assert(AD.PInfo->getConvention() == ParameterConvention::Indirect_In
+           && F.getConventions().useLoweredAddresses());
     Builder.createDestroyAddr(RegularLocation(SourceLoc()),
                               F.getArguments()[AD.Index]);
     return;
   }
-  llvm_unreachable("Parameter convention is not supported");
+  Builder.createReleaseValue(RegularLocation(SourceLoc()),
+                             F.getArguments()[AD.Index],
+                             Builder.getDefaultAtomicity());
 }
 
 /// Set up epilogue work for the thunk arguments based in the given argument.
@@ -1139,6 +1138,11 @@ public:
 
   void run() override {
     auto *F = getFunction();
+
+    // Don't run function signature optimizations at -Os.
+    if (F->getModule().getOptions().Optimization ==
+        SILOptions::SILOptMode::OptimizeForSize)
+      return;
 
     // Don't optimize callees that should not be optimized.
     if (!F->shouldOptimize())

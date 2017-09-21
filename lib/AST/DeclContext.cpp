@@ -147,14 +147,6 @@ static Type computeExtensionType(const ExtensionDecl *ED, DeclTypeKind kind) {
   llvm_unreachable("Unhandled DeclTypeKind in switch.");
 }
 
-Type DeclContext::getDeclaredTypeOfContext() const {
-  if (auto *ED = dyn_cast<ExtensionDecl>(this))
-    return computeExtensionType(ED, DeclTypeKind::DeclaredType);
-  if (auto *NTD = dyn_cast<NominalTypeDecl>(this))
-    return NTD->getDeclaredType();
-  return Type();
-}
-
 Type DeclContext::getDeclaredTypeInContext() const {
   if (auto *ED = dyn_cast<ExtensionDecl>(this))
     return computeExtensionType(ED, DeclTypeKind::DeclaredTypeInContext);
@@ -519,8 +511,10 @@ ResilienceExpansion DeclContext::getResilienceExpansion() const {
   for (const auto *dc = this; dc->isLocalContext(); dc = dc->getParent()) {
     // Default argument initializer contexts have their resilience expansion
     // set when they're type checked.
-    if (auto *DAI = dyn_cast<DefaultArgumentInitializer>(dc))
-      return DAI->getResilienceExpansion();
+    if (isa<DefaultArgumentInitializer>(dc)) {
+      return cast<AbstractFunctionDecl>(dc->getParent())
+          ->getDefaultArgumentResilienceExpansion();
+    }
 
     if (auto *AFD = dyn_cast<AbstractFunctionDecl>(dc)) {
       // If the function is a nested function, we will serialize its body if
@@ -530,7 +524,7 @@ ResilienceExpansion DeclContext::getResilienceExpansion() const {
 
       // FIXME: Make sure this method is never called on decls that have not
       // been fully validated.
-      if (!AFD->hasAccessibility())
+      if (!AFD->hasAccess())
         break;
 
       // If the function is not externally visible, we will not be serializing
@@ -583,7 +577,7 @@ bool DeclContext::isInnermostContextGeneric() const {
 bool
 DeclContext::isCascadingContextForLookup(bool functionsAreNonCascading) const {
   // FIXME: This is explicitly checking for attributes in some cases because
-  // it can be called before accessibility is computed.
+  // it can be called before access control is computed.
   switch (getContextKind()) {
   case DeclContextKind::AbstractClosureExpr:
     break;
@@ -605,15 +599,15 @@ DeclContext::isCascadingContextForLookup(bool functionsAreNonCascading) const {
     if (functionsAreNonCascading)
       return false;
     auto *AFD = cast<AbstractFunctionDecl>(this);
-    if (AFD->hasAccessibility())
-      return AFD->getFormalAccess() > Accessibility::FilePrivate;
+    if (AFD->hasAccess())
+      return AFD->getFormalAccess() > AccessLevel::FilePrivate;
     break;
   }
 
   case DeclContextKind::SubscriptDecl: {
     auto *SD = cast<SubscriptDecl>(this);
-    if (SD->hasAccessibility())
-      return SD->getFormalAccess() > Accessibility::FilePrivate;
+    if (SD->hasAccess())
+      return SD->getFormalAccess() > AccessLevel::FilePrivate;
     break;
   }
       
@@ -623,18 +617,18 @@ DeclContext::isCascadingContextForLookup(bool functionsAreNonCascading) const {
 
   case DeclContextKind::GenericTypeDecl: {
     auto *nominal = cast<GenericTypeDecl>(this);
-    if (nominal->hasAccessibility())
-      return nominal->getFormalAccess() > Accessibility::FilePrivate;
+    if (nominal->hasAccess())
+      return nominal->getFormalAccess() > AccessLevel::FilePrivate;
     break;
   }
 
   case DeclContextKind::ExtensionDecl: {
     auto *extension = cast<ExtensionDecl>(this);
-    if (extension->hasDefaultAccessibility())
-      return extension->getDefaultAccessibility() > Accessibility::FilePrivate;
-    // FIXME: duplicated from computeDefaultAccessibility in TypeCheckDecl.cpp.
-    if (auto *AA = extension->getAttrs().getAttribute<AccessibilityAttr>())
-      return AA->getAccess() > Accessibility::FilePrivate;
+    if (extension->hasDefaultAccessLevel())
+      return extension->getDefaultAccessLevel() > AccessLevel::FilePrivate;
+    // FIXME: duplicated from computeDefaultAccessLevel in TypeCheckDecl.cpp.
+    if (auto *AA = extension->getAttrs().getAttribute<AccessControlAttr>())
+      return AA->getAccess() > AccessLevel::FilePrivate;
     if (Type extendedTy = extension->getExtendedType()) {
 
       // Need to check if extendedTy is ErrorType
@@ -658,7 +652,7 @@ unsigned DeclContext::getSyntacticDepth() const {
 
 unsigned DeclContext::getSemanticDepth() const {
   // For extensions, count the depth of the nominal type being extended.
-  if (auto ext = dyn_cast<ExtensionDecl>(this)) {
+  if (isa<ExtensionDecl>(this)) {
     if (auto nominal = getAsNominalTypeOrNominalTypeExtensionContext())
       return nominal->getSemanticDepth();
 
@@ -1055,16 +1049,16 @@ bool AccessScope::isFileScope() const {
   return DC && isa<FileUnit>(DC);
 }
 
-Accessibility AccessScope::accessibilityForDiagnostics() const {
+AccessLevel AccessScope::accessLevelForDiagnostics() const {
   if (isPublic())
-    return Accessibility::Public;
+    return AccessLevel::Public;
   if (isa<ModuleDecl>(getDeclContext()))
-    return Accessibility::Internal;
+    return AccessLevel::Internal;
   if (getDeclContext()->isModuleScopeContext()) {
-    return isPrivate() ? Accessibility::Private : Accessibility::FilePrivate;
+    return isPrivate() ? AccessLevel::Private : AccessLevel::FilePrivate;
   }
 
-  return Accessibility::Private;
+  return AccessLevel::Private;
 }
 
 bool AccessScope::allowsPrivateAccess(const DeclContext *useDC, const DeclContext *sourceDC) {

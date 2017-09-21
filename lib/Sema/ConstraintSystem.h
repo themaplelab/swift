@@ -120,21 +120,22 @@ public:
 class ExpressionTimer {
   Expr* E;
   unsigned WarnLimit;
-  bool ShouldDump;
   ASTContext &Context;
-  llvm::TimeRecord StartTime = llvm::TimeRecord::getCurrentTime();
+  llvm::TimeRecord StartTime;
+
+  bool PrintDebugTiming;
+  bool PrintWarning;
 
 public:
-  ExpressionTimer(Expr *E, bool shouldDump, unsigned warnLimit,
-                  ASTContext &Context)
-      : E(E), WarnLimit(warnLimit), ShouldDump(shouldDump), Context(Context) {
-  }
+  ExpressionTimer(Expr *E, ConstraintSystem &CS);
 
   ~ExpressionTimer();
 
+  llvm::TimeRecord startedAt() const { return StartTime; }
+
   /// Return the elapsed process time (including fractional seconds)
   /// as a double.
-  double getElapsedProcessTimeInFractionalSeconds() {
+  double getElapsedProcessTimeInFractionalSeconds() const {
     llvm::TimeRecord endTime = llvm::TimeRecord::getCurrentTime(false);
 
     return endTime.getProcessTime() - StartTime.getProcessTime();
@@ -142,7 +143,12 @@ public:
 
   // Disable emission of warnings about expressions that take longer
   // than the warning threshold.
-  void disableWarning() { WarnLimit = 0; }
+  void disableWarning() { PrintWarning = false; }
+
+  bool isExpired(unsigned thresholdInMillis) const {
+    auto elapsed = getElapsedProcessTimeInFractionalSeconds();
+    return unsigned(elapsed) > thresholdInMillis;
+  }
 };
 
 } // end namespace constraints
@@ -883,6 +889,7 @@ public:
   friend class OverloadChoice;
   friend class ConstraintGraph;
   friend class DisjunctionChoice;
+  friend class Component;
 
   class SolverScope;
 
@@ -1020,6 +1027,8 @@ private:
     DeclContext *DC;
     llvm::BumpPtrAllocator &Allocator;
 
+    ConstraintSystem &BaseCS;
+
     // Contextual Information.
     Type CT;
     ContextualTypePurpose CTP;
@@ -1027,8 +1036,8 @@ private:
   public:
     Candidate(ConstraintSystem &cs, Expr *expr, Type ct = Type(),
               ContextualTypePurpose ctp = ContextualTypePurpose::CTP_Unused)
-        : E(expr), TC(cs.TC), DC(cs.DC), Allocator(cs.Allocator), CT(ct),
-          CTP(ctp) {}
+        : E(expr), TC(cs.TC), DC(cs.DC), Allocator(cs.Allocator), BaseCS(cs),
+          CT(ct), CTP(ctp) {}
 
     /// \brief Return underlying expression.
     Expr *getExpr() const { return E; }
@@ -1541,9 +1550,11 @@ public:
   }
   
   TypeBase* getFavoredType(Expr *E) {
+    assert(E != nullptr);
     return this->FavoredTypes[E];
   }
   void setFavoredType(Expr *E, TypeBase *T) {
+    assert(E != nullptr);
     this->FavoredTypes[E] = T;
   }
 
@@ -1552,6 +1563,7 @@ public:
   /// avoid mutating expressions until we know we have successfully
   /// type-checked them.
   void setType(Expr *E, Type T) {
+    assert(E != nullptr && "Expected non-null expression!");
     assert(T && "Expected non-null type!");
 
     // FIXME: We sometimes set the type and then later set it to a
@@ -1570,6 +1582,7 @@ public:
 
   /// Check to see if we have a type for an expression.
   bool hasType(const Expr *E) const {
+    assert(E != nullptr && "Expected non-null expression!");
     return ExprTypes.find(E) != ExprTypes.end();
   }
 
@@ -1593,12 +1606,14 @@ public:
   }
 
   void setContextualType(Expr *E, TypeLoc T, ContextualTypePurpose purpose) {
+    assert(E != nullptr && "Expected non-null expression!");
     contextualTypeNode = E;
     contextualType = T;
     contextualTypePurpose = purpose;
   }
 
   Type getContextualType(Expr *E) const {
+    assert(E != nullptr && "Expected non-null expression!");
     return E == contextualTypeNode ? contextualType.getType() : Type();
   }
   Type getContextualType() const {
@@ -1997,6 +2012,20 @@ public:
   Type getResultType(const AbstractClosureExpr *E);
 
 private:
+  /// Determine if the given constraint represents explicit conversion,
+  /// e.g. coercion constraint "as X" which forms a disjunction.
+  bool isExplicitConversionConstraint(Constraint *constraint) const {
+    if (constraint->getKind() != ConstraintKind::Disjunction)
+      return false;
+
+    if (auto locator = constraint->getLocator()) {
+      if (auto anchor = locator->getAnchor())
+        return isa<CoerceExpr>(anchor);
+    }
+
+    return false;
+  }
+
   /// Introduce the constraints associated with the given type variable
   /// into the worklist.
   void addTypeVariableConstraintsToWorkList(TypeVariableType *typeVar);
@@ -2240,6 +2269,14 @@ public:
                                      ConstraintKind kind,
                                      TypeMatchOptions flags,
                                      ConstraintLocatorBuilder locator);
+
+  /// \brief Subroutine of \c matchTypes(), used to bind a type to a
+  /// type variable.
+  SolutionKind
+  matchTypesBindTypeVar(TypeVariableType *typeVar, Type type,
+                        ConstraintKind kind, TypeMatchOptions flags,
+                        ConstraintLocatorBuilder locator,
+                        std::function<SolutionKind()> formUnsolvedResult);
 
 public: // FIXME: public due to statics in CSSimplify.cpp
   /// \brief Attempt to match up types \c type1 and \c type2, which in effect
@@ -2514,6 +2551,11 @@ private:
   };
 
   struct PotentialBindings {
+    typedef std::tuple<bool, bool, bool, bool, bool,
+                       unsigned char, unsigned int> BindingScore;
+
+    TypeVariableType *TypeVar;
+
     /// The set of potential bindings.
     SmallVector<PotentialBinding, 4> Bindings;
 
@@ -2532,6 +2574,14 @@ private:
     /// The number of defaultable bindings.
     unsigned NumDefaultableBindings = 0;
 
+    /// Is this type variable on the RHS of a BindParam constraint?
+    bool IsRHSOfBindParam = false;
+
+    /// Tracks the position of the last known supertype in the group.
+    Optional<unsigned> lastSupertypeIndex;
+
+    PotentialBindings(TypeVariableType *typeVar) : TypeVar(typeVar) {}
+
     /// Determine whether the set of bindings is non-empty.
     explicit operator bool() const { return !Bindings.empty(); }
 
@@ -2540,20 +2590,21 @@ private:
       return Bindings.size() > NumDefaultableBindings;
     }
 
+    static BindingScore formBindingScore(const PotentialBindings &b) {
+      return std::make_tuple(!b.hasNonDefaultableBindings(),
+                             b.FullyBound,
+                             b.IsRHSOfBindParam,
+                             b.SubtypeOfExistentialType,
+                             b.InvolvesTypeVariables,
+                             static_cast<unsigned char>(b.LiteralBinding),
+                             -(b.Bindings.size() - b.NumDefaultableBindings));
+    }
+
     /// Compare two sets of bindings, where \c x < y indicates that
     /// \c x is a better set of bindings that \c y.
     friend bool operator<(const PotentialBindings &x,
                           const PotentialBindings &y) {
-      return std::make_tuple(!x.hasNonDefaultableBindings(), x.FullyBound,
-                             x.SubtypeOfExistentialType,
-                             static_cast<unsigned char>(x.LiteralBinding),
-                             x.InvolvesTypeVariables,
-                             -(x.Bindings.size() - x.NumDefaultableBindings)) <
-             std::make_tuple(!y.hasNonDefaultableBindings(), y.FullyBound,
-                             y.SubtypeOfExistentialType,
-                             static_cast<unsigned char>(y.LiteralBinding),
-                             y.InvolvesTypeVariables,
-                             -(y.Bindings.size() - y.NumDefaultableBindings));
+      return formBindingScore(x) < formBindingScore(y);
     }
 
     void foundLiteralBinding(ProtocolDecl *proto) {
@@ -2575,54 +2626,102 @@ private:
       }
     }
 
+    /// \brief Add a potential binding to the list of bindings,
+    /// coalescing supertype bounds when we are able to compute the meet.
+    void addPotentialBinding(PotentialBinding binding,
+                             bool allowJoinMeet = true) {
+      assert(!binding.BindingType->is<ErrorType>());
+
+      // If this is a non-defaulted supertype binding,
+      // check whether we can combine it with another
+      // supertype binding by computing the 'join' of the types.
+      if (binding.Kind == AllowedBindingKind::Supertypes &&
+          !binding.BindingType->hasTypeVariable() &&
+          !binding.DefaultedProtocol && !binding.isDefaultableBinding() &&
+          allowJoinMeet) {
+        if (lastSupertypeIndex) {
+          // Can we compute a join?
+          auto &lastBinding = Bindings[*lastSupertypeIndex];
+          auto lastType = lastBinding.BindingType->getWithoutSpecifierType();
+          auto bindingType = binding.BindingType->getWithoutSpecifierType();
+          if (auto join = Type::join(lastType, bindingType)) {
+            // Replace the last supertype binding with the join. We're done.
+            lastBinding.BindingType = join;
+            return;
+          }
+        }
+
+        // Record this as the most recent supertype index.
+        lastSupertypeIndex = Bindings.size();
+      }
+
+      Bindings.push_back(std::move(binding));
+    }
+
+    void dump(llvm::raw_ostream &out,
+              unsigned indent = 0) const LLVM_ATTRIBUTE_USED {
+      out.indent(indent);
+      if (FullyBound)
+        out << "fully_bound ";
+      if (SubtypeOfExistentialType)
+        out << "subtype_of_existential ";
+      if (LiteralBinding != LiteralBindingKind::None)
+        out << "literal=" << static_cast<int>(LiteralBinding) << " ";
+      if (InvolvesTypeVariables)
+        out << "involves_type_vars ";
+      if (NumDefaultableBindings > 0)
+        out << "#defaultable_bindings=" << NumDefaultableBindings << " ";
+
+      out << "bindings=";
+      if (!Bindings.empty()) {
+        interleave(Bindings,
+                   [&](const PotentialBinding &binding) {
+                     auto type = binding.BindingType;
+                     auto &ctx = type->getASTContext();
+                     llvm::SaveAndRestore<bool> debugConstraints(
+                         ctx.LangOpts.DebugConstraintSolver, true);
+                     switch (binding.Kind) {
+                     case AllowedBindingKind::Exact:
+                       break;
+
+                     case AllowedBindingKind::Subtypes:
+                       out << "(subtypes of) ";
+                       break;
+
+                     case AllowedBindingKind::Supertypes:
+                       out << "(supertypes of) ";
+                       break;
+                     }
+                     if (binding.DefaultedProtocol)
+                       out << "(default from "
+                           << (*binding.DefaultedProtocol)->getName() << ") ";
+                     out << type.getString();
+                   },
+                   [&]() { out << " "; });
+      } else {
+        out << "{}";
+      }
+    }
+
+    void dump(ConstraintSystem *cs,
+              unsigned indent = 0) const LLVM_ATTRIBUTE_USED {
+      dump(cs->getASTContext().TypeCheckerDebug->getStream());
+    }
+
     void dump(TypeVariableType *typeVar, llvm::raw_ostream &out,
-              unsigned indent) const {
+              unsigned indent = 0) const LLVM_ATTRIBUTE_USED {
       out.indent(indent);
       out << "(";
       if (typeVar)
         out << "$T" << typeVar->getImpl().getID();
-      if (FullyBound)
-        out << " fully_bound";
-      if (SubtypeOfExistentialType)
-        out << " subtype_of_existential";
-      if (LiteralBinding != LiteralBindingKind::None)
-        out << " literal=" << static_cast<int>(LiteralBinding);
-      if (InvolvesTypeVariables)
-        out << " involves_type_vars";
-      if (NumDefaultableBindings > 0)
-        out << " defaultable_bindings=" << NumDefaultableBindings;
-      out << " bindings=";
-      interleave(Bindings,
-                 [&](const PotentialBinding &binding) {
-                   auto type = binding.BindingType;
-                   auto &ctx = type->getASTContext();
-                   llvm::SaveAndRestore<bool> debugConstraints(
-                       ctx.LangOpts.DebugConstraintSolver, true);
-                   switch (binding.Kind) {
-                   case AllowedBindingKind::Exact:
-                     break;
-
-                   case AllowedBindingKind::Subtypes:
-                     out << "(subtypes of) ";
-                     break;
-
-                   case AllowedBindingKind::Supertypes:
-                     out << "(supertypes of) ";
-                     break;
-                   }
-                   if (binding.DefaultedProtocol)
-                     out << "(default from "
-                         << (*binding.DefaultedProtocol)->getName() << ") ";
-                   out << type.getString();
-                 },
-                 [&]() { out << " "; });
+      dump(out, 1);
       out << ")\n";
     }
   };
 
   Optional<Type> checkTypeOfBinding(TypeVariableType *typeVar, Type type,
                                     bool *isNilLiteral = nullptr);
-  std::pair<PotentialBindings, TypeVariableType *> determineBestBindings();
+  Optional<PotentialBindings> determineBestBindings();
   PotentialBindings getPotentialBindings(TypeVariableType *typeVar);
 
   bool
@@ -2643,13 +2742,17 @@ private:
   /// \brief Solve the system of constraints after it has already been
   /// simplified.
   ///
+  /// \param disjunction The disjunction to try and solve using simplified
+  /// constraint system.
+  ///
   /// \param solutions The set of solutions to this system of constraints.
   ///
   /// \param allowFreeTypeVariables How to bind free type variables in
   /// the solution.
   ///
   /// \returns true if an error occurred, false otherwise.
-  bool solveSimplified(SmallVectorImpl<Solution> &solutions,
+  bool solveSimplified(Constraint *disjunction,
+                       SmallVectorImpl<Solution> &solutions,
                        FreeTypeVariableBinding allowFreeTypeVariables);
 
   /// \brief Find reduced domains of disjunction constraints for given
@@ -2660,6 +2763,16 @@ private:
   ///
   /// \param expr The expression to find reductions for.
   void shrink(Expr *expr);
+
+  /// \brief Pick a disjunction from the given list, which,
+  /// based on the associated constraints, is the most viable to
+  /// reduce depth of the search tree.
+  ///
+  /// \param disjunctions A collection of disjunctions to examine.
+  ///
+  /// \returns The disjunction with most weight relative to others, based
+  /// on the number of constraints associated with it, or nullptr otherwise.
+  Constraint *selectDisjunction(SmallVectorImpl<Constraint *> &disjunctions);
 
   bool simplifyForConstraintPropagation();
   void collectNeighboringBindOverloadDisjunctions(
@@ -2789,15 +2902,13 @@ public:
   /// \brief Determine if we've already explored too many paths in an
   /// attempt to solve this expression.
   bool getExpressionTooComplex(SmallVectorImpl<Solution> const &solutions) {
-    if (Timer.hasValue()) {
-      auto elapsed = Timer->getElapsedProcessTimeInFractionalSeconds();
-      if (unsigned(elapsed) > TC.getExpressionTimeoutThresholdInSeconds()) {
-        // Disable warnings about expressions that go over the warning
-        // threshold since we're arbitrarily ending evaluation and
-        // emitting an error.
-        Timer->disableWarning();
-        return true;
-      }
+    auto timeoutThresholdInMillis = TC.getExpressionTimeoutThresholdInSeconds();
+    if (Timer && Timer->isExpired(timeoutThresholdInMillis)) {
+      // Disable warnings about expressions that go over the warning
+      // threshold since we're arbitrarily ending evaluation and
+      // emitting an error.
+      Timer->disableWarning();
+      return true;
     }
 
     if (!getASTContext().isSwiftVersion3()) {
@@ -2972,11 +3083,13 @@ void simplifyLocator(Expr *&anchor,
 
 class DisjunctionChoice {
   ConstraintSystem *CS;
+  Constraint *Disjunction;
   Constraint *Choice;
 
 public:
-  DisjunctionChoice(ConstraintSystem *const cs, Constraint *constraint)
-      : CS(cs), Choice(constraint) {}
+  DisjunctionChoice(ConstraintSystem *const cs, Constraint *disjunction,
+                    Constraint *choice)
+      : CS(cs), Disjunction(disjunction), Choice(choice) {}
 
   Constraint *operator&() const { return Choice; }
 
@@ -2997,6 +3110,10 @@ public:
                         FreeTypeVariableBinding allowFreeTypeVariables);
 
 private:
+  /// \brief If associated disjunction is an explicit conversion,
+  /// let's try to propagate its type early to prune search space.
+  void propagateConversionInfo() const;
+
   static ValueDecl *getOperatorDecl(Constraint *constraint) {
     if (constraint->getKind() != ConstraintKind::BindOverload)
       return nullptr;
@@ -3008,6 +3125,60 @@ private:
     auto *decl = choice.getDecl();
     return decl->isOperator() ? decl : nullptr;
   }
+};
+
+/// \brief Constraint System "component" represents
+/// a single solvable unit, but the process of assigning
+/// types in some cases allows it to be further split into
+/// multiple smaller parts.
+///
+/// This helps to abstract away logic of holding and
+/// returning sub-set of the constraints in the system,
+/// as well as its partial solving and result tracking.
+class Component {
+  ConstraintList Constraints;
+  SmallVector<Constraint *, 8> Disjunctions;
+
+public:
+  void reinstateTo(ConstraintList &workList) {
+    workList.splice(workList.end(), Constraints);
+  }
+
+  void record(Constraint *constraint) {
+    Constraints.push_back(constraint);
+    if (constraint->getKind() == ConstraintKind::Disjunction)
+      Disjunctions.push_back(constraint);
+  }
+
+  bool solve(ConstraintSystem &cs, SmallVectorImpl<Solution> &solutions,
+             FreeTypeVariableBinding allowFreeTypeVariables) {
+    // Return constraints from the bucket back into circulation.
+    reinstateTo(cs.InactiveConstraints);
+
+    // Solve for this component. If it fails, we're done.
+    bool failed;
+
+    {
+      // Introduce a scope for this partial solution.
+      ConstraintSystem::SolverScope scope(cs);
+      llvm::SaveAndRestore<ConstraintSystem::SolverScope *>
+          partialSolutionScope(cs.solverState->PartialSolutionScope, &scope);
+
+      failed = cs.solveSimplified(cs.selectDisjunction(Disjunctions), solutions,
+                                  allowFreeTypeVariables);
+    }
+
+    // Put the constraints back into their original bucket.
+    Constraints.splice(Constraints.end(), cs.InactiveConstraints);
+    return failed;
+  }
+
+  bool operator<(const Component &other) const {
+    return disjunctionCount() < other.disjunctionCount();
+  }
+
+private:
+  unsigned disjunctionCount() const { return Disjunctions.size(); }
 };
 } // end namespace constraints
 

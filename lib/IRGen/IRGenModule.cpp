@@ -49,6 +49,7 @@
 #include "GenType.h"
 #include "IRGenModule.h"
 #include "IRGenDebugInfo.h"
+#include "StructLayout.h"
 
 #include <initializer_list>
 
@@ -127,9 +128,9 @@ IRGenModule::IRGenModule(IRGenerator &irgen,
       ClangCodeGen(createClangCodeGenerator(Context, LLVMContext, irgen.Opts,
                                             ModuleName)),
       Module(*ClangCodeGen->GetModule()), LLVMContext(Module.getContext()),
-      DataLayout(target->createDataLayout()),
-      Triple(irgen.getEffectiveClangTriple()), TargetMachine(std::move(target)),
-      silConv(irgen.SIL), OutputFilename(OutputFilename),
+      DataLayout(target->createDataLayout()), Triple(Context.LangOpts.Target),
+      TargetMachine(std::move(target)), silConv(irgen.SIL),
+      OutputFilename(OutputFilename),
       TargetInfo(SwiftTargetInfo::get(*this)), DebugInfo(nullptr),
       ModuleHash(nullptr), ObjCInterop(Context.LangOpts.EnableObjCInterop),
       Types(*new TypeConverter(*this)) {
@@ -193,12 +194,18 @@ IRGenModule::IRGenModule(IRGenerator &irgen,
     Int8PtrTy,              // objc properties
     Int32Ty,                // size
     Int32Ty,                // flags
-    Int16Ty,                // minimum witness count
-    Int16Ty,                // default witness count
-    Int32Ty                 // padding
+    Int16Ty,                // mandatory requirement count
+    Int16Ty,                // total requirement count
+    Int32Ty                 // requirements array
   });
   
   ProtocolDescriptorPtrTy = ProtocolDescriptorStructTy->getPointerTo();
+
+  ProtocolRequirementStructTy =
+      createStructType(*this, "swift.protocol_requirement", {
+    Int32Ty,                // flags
+    Int32Ty                 // default implementation
+  });
   
   // A tuple type metadata record has a couple extra fields.
   auto tupleElementTy = createStructType(*this, "swift.tuple_element_type", {
@@ -283,6 +290,12 @@ IRGenModule::IRGenModule(IRGenerator &irgen,
     = llvm::StructType::create(LLVMContext, "swift.type_descriptor");
   NominalTypeDescriptorPtrTy
     = NominalTypeDescriptorTy->getPointerTo(DefaultAS);
+
+  MethodDescriptorStructTy
+    = createStructType(*this, "swift.method_descriptor", {
+      RelativeAddressTy,
+      Int32Ty
+    });
 
   TypeMetadataRecordTy
     = createStructType(*this, "swift.type_metadata_record", {
@@ -415,6 +428,7 @@ namespace RuntimeConstants {
   const auto NoReturn = llvm::Attribute::NoReturn;
   const auto NoUnwind = llvm::Attribute::NoUnwind;
   const auto ZExt = llvm::Attribute::ZExt;
+  const auto FirstParamReturned = llvm::Attribute::Returned;
 } // namespace RuntimeConstants
 
 // We don't use enough attributes to justify generalizing the
@@ -422,6 +436,11 @@ namespace RuntimeConstants {
 // associated with the return type not the function type.
 static bool isReturnAttribute(llvm::Attribute::AttrKind Attr) {
   return Attr == llvm::Attribute::ZExt;
+}
+// Similar to the 'return' attribute we assume that the 'returned' attributed is
+// associated with the first function parameter.
+static bool isReturnedAttribute(llvm::Attribute::AttrKind Attr) {
+  return Attr == llvm::Attribute::Returned;
 }
 
 llvm::Constant *swift::getRuntimeFn(llvm::Module &Module,
@@ -458,15 +477,19 @@ llvm::Constant *swift::getRuntimeFn(llvm::Module &Module,
 
     llvm::AttrBuilder buildFnAttr;
     llvm::AttrBuilder buildRetAttr;
+    llvm::AttrBuilder buildFirstParamAttr;
 
     for (auto Attr : attrs) {
       if (isReturnAttribute(Attr))
         buildRetAttr.addAttribute(Attr);
+      else if (isReturnedAttribute(Attr))
+        buildFirstParamAttr.addAttribute(Attr);
       else
         buildFnAttr.addAttribute(Attr);
     }
     fn->addAttributes(llvm::AttributeList::FunctionIndex, buildFnAttr);
     fn->addAttributes(llvm::AttributeList::ReturnIndex, buildRetAttr);
+    fn->addParamAttrs(0, buildFirstParamAttr);
   }
 
   return cache;
@@ -530,10 +553,14 @@ llvm::Constant *swift::getWrapperFn(llvm::Module &Module,
 
 
     auto fnPtr = Builder.CreateLoad(globalFnPtr, "load");
+
     auto call = Builder.CreateCall(fnPtr, args);
     call->setCallingConv(cc);
     call->setTailCall(true);
-
+    for (auto Attr : attrs)
+      if (isReturnedAttribute(Attr)) {
+        call->addParamAttr(0, llvm::Attribute::Returned);
+      }
     auto VoidTy = llvm::Type::getVoidTy(Module.getContext());
     if (retTypes.size() == 1 && *retTypes.begin() == VoidTy)
       Builder.CreateRetVoid();
@@ -723,11 +750,11 @@ bool IRGenerator::canEmitWitnessTableLazily(SILWitnessTable *wt) {
     wt->getConformance()->getType()->getNominalOrBoundGenericNominal();
 
   switch (ConformingTy->getEffectiveAccess()) {
-    case Accessibility::Private:
-    case Accessibility::FilePrivate:
+    case AccessLevel::Private:
+    case AccessLevel::FilePrivate:
       return true;
 
-    case Accessibility::Internal:
+    case AccessLevel::Internal:
       return PrimaryIGM->getSILModule().isWholeModule();
 
     default:
@@ -805,6 +832,8 @@ void IRGenModule::constructInitialFnAttributes(llvm::AttrBuilder &Attrs) {
     });
     Attrs.addAttribute("target-features", allFeatures);
   }
+  if (IRGen.Opts.OptimizeForSize)
+    Attrs.addAttribute(llvm::Attribute::OptimizeForSize);
 }
 
 llvm::AttributeList IRGenModule::constructInitialAttributes() {
@@ -1155,11 +1184,4 @@ IRGenModule *IRGenerator::getGenModule(SILFunction *f) {
     return IGM;
 
   return getPrimaryIGM();
-}
-
-llvm::Triple IRGenerator::getEffectiveClangTriple() {
-  auto CI = static_cast<ClangImporter *>(
-      &*SIL.getASTContext().getClangModuleLoader());
-  assert(CI && "no clang module loader");
-  return llvm::Triple(CI->getTargetInfo().getTargetOpts().Triple);
 }

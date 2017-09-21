@@ -296,11 +296,7 @@ deriveEquatable_enum_eq(TypeChecker &tc, Decl *parentDecl, EnumDecl *enumDecl) {
                                     FunctionType::ExtInfo());
   }
   eqDecl->setInterfaceType(interfaceTy);
-
-  // Since we can't insert the == operator into the same FileUnit as the enum,
-  // itself, we have to give it at least internal access.
-  eqDecl->setAccessibility(std::max(enumDecl->getFormalAccess(),
-                                    Accessibility::Internal));
+  copyFormalAccess(eqDecl, enumDecl);
 
   // If the enum was not imported, the derived conformance is either from the
   // enum itself or an extension, in which case we will emit the declaration
@@ -430,8 +426,7 @@ deriveHashable_enum_hashValue(TypeChecker &tc, Decl *parentDecl,
                                       AnyFunctionType::ExtInfo());
   
   getterDecl->setInterfaceType(interfaceType);
-  getterDecl->setAccessibility(std::max(Accessibility::Internal,
-                                        enumDecl->getFormalAccess()));
+  copyFormalAccess(getterDecl, enumDecl);
 
   // If the enum was not imported, the derived conformance is either from the
   // enum itself or an extension, in which case we will emit the declaration
@@ -447,7 +442,7 @@ deriveHashable_enum_hashValue(TypeChecker &tc, Decl *parentDecl,
   hashValueDecl->setInterfaceType(intType);
   hashValueDecl->makeComputed(SourceLoc(), getterDecl,
                               nullptr, nullptr, SourceLoc());
-  hashValueDecl->setAccessibility(getterDecl->getFormalAccess());
+  copyFormalAccess(hashValueDecl, enumDecl);
 
   Pattern *hashValuePat = new (C) NamedPattern(hashValueDecl, /*implicit*/true);
   hashValuePat->setType(intType);

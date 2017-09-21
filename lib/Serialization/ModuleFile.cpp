@@ -21,9 +21,9 @@
 #include "swift/AST/USRGeneration.h"
 #include "swift/Basic/Range.h"
 #include "swift/ClangImporter/ClangImporter.h"
+#include "swift/ClangImporter/ClangModule.h"
 #include "swift/Serialization/BCReadingExtras.h"
 #include "swift/Serialization/SerializedModuleLoader.h"
-
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/OnDiskHashTable.h"
@@ -1555,16 +1555,27 @@ void ModuleFile::loadExtensions(NominalTypeDecl *nominal) {
   if (iter == ExtensionDecls->end())
     return;
 
-  if (nominal->hasAccessibility() &&
-      nominal->getEffectiveAccess() < Accessibility::Internal) {
+  if (nominal->hasAccess() &&
+      nominal->getEffectiveAccess() < AccessLevel::Internal) {
     if (nominal->getModuleScopeContext() != getFile())
       return;
   }
 
   if (nominal->getParent()->isModuleScopeContext()) {
-    Identifier moduleName = nominal->getParentModule()->getName();
+    auto parentModule = nominal->getParentModule();
+    StringRef moduleName = parentModule->getName().str();
+
+    // If the originating module is a private module whose interface is
+    // re-exported via public module, check the name of the public module.
+    std::string exportedModuleName;
+    if (auto clangModuleUnit =
+            dyn_cast<ClangModuleUnit>(parentModule->getFiles().front())) {
+      exportedModuleName = clangModuleUnit->getExportedModuleName();
+      moduleName = exportedModuleName;
+    }
+
     for (auto item : *iter) {
-      if (item.first != moduleName.str())
+      if (item.first != moduleName)
         continue;
       Expected<Decl *> declOrError = getDeclChecked(item.second);
       if (!declOrError) {

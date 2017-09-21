@@ -64,7 +64,7 @@ internal struct _ThreadLocalStorage {
   static internal func getPointer()
     -> UnsafeMutablePointer<_ThreadLocalStorage>
   {
-    let tlsRawPtr = _swift_stdlib_pthread_getspecific(_tlsKey)
+    let tlsRawPtr = _swift_stdlib_thread_getspecific(_tlsKey)
     if _fastPath(tlsRawPtr != nil) {
       return tlsRawPtr._unsafelyUnwrappedUnchecked.assumingMemoryBound(
         to: _ThreadLocalStorage.self)
@@ -93,7 +93,7 @@ internal struct _ThreadLocalStorage {
     var err = __swift_stdlib_U_ZERO_ERROR
     __swift_stdlib_ubrk_setText(
       brkIter, bufPtr.baseAddress!, Int32(bufPtr.count), &err)
-    _precondition(err.isSuccess, "unexpected ubrk_setUText failure")
+    _precondition(err.isSuccess, "Unexpected ubrk_setUText failure")
 
     return brkIter
   }
@@ -116,10 +116,10 @@ internal func _destroyTLS(_ ptr: UnsafeMutableRawPointer?) {
 }
 
 // Lazily created global key for use with pthread TLS
-internal let _tlsKey: __swift_pthread_key_t = {
-  let sentinelValue = __swift_pthread_key_t.max
-  var key: __swift_pthread_key_t = sentinelValue
-  let success = _swift_stdlib_pthread_key_create(&key, _destroyTLS)
+internal let _tlsKey: __swift_thread_key_t = {
+  let sentinelValue = __swift_thread_key_t.max
+  var key: __swift_thread_key_t = sentinelValue
+  let success = _swift_stdlib_thread_key_create(&key, _destroyTLS)
   _sanityCheck(success == 0, "somehow failed to create TLS key")
   _sanityCheck(key != sentinelValue, "Didn't make a new key")
   return key
@@ -129,7 +129,7 @@ internal let _tlsKey: __swift_pthread_key_t = {
 internal func _initializeThreadLocalStorage()
   -> UnsafeMutablePointer<_ThreadLocalStorage>
 {
-  _sanityCheck(_swift_stdlib_pthread_getspecific(_tlsKey) == nil,
+  _sanityCheck(_swift_stdlib_thread_getspecific(_tlsKey) == nil,
     "already initialized")
 
   // Create and initialize one.
@@ -137,7 +137,7 @@ internal func _initializeThreadLocalStorage()
   let newUBreakIterator = __swift_stdlib_ubrk_open(
       /*type:*/ __swift_stdlib_UBRK_CHARACTER, /*locale:*/ nil,
       /*text:*/ nil, /*textLength:*/ 0, /*status:*/ &err)
-  _precondition(err.isSuccess, "unexpected ubrk_open failure")
+  _precondition(err.isSuccess, "Unexpected ubrk_open failure")
 
   let tlsPtr: UnsafeMutablePointer<_ThreadLocalStorage>
     = UnsafeMutablePointer<_ThreadLocalStorage>.allocate(
@@ -146,7 +146,7 @@ internal func _initializeThreadLocalStorage()
   tlsPtr.initialize(
     to: _ThreadLocalStorage(_uBreakIterator: newUBreakIterator)
   )
-  let success = _swift_stdlib_pthread_setspecific(_tlsKey, tlsPtr)
+  let success = _swift_stdlib_thread_setspecific(_tlsKey, tlsPtr)
   _sanityCheck(success == 0, "setspecific failed")
   return tlsPtr
 }

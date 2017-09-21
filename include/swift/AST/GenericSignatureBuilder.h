@@ -317,6 +317,15 @@ private:
                                              const RequirementSource *Source);
 
 public:
+  /// "Expand" the conformance of the given \c pa to the protocol \c proto,
+  /// adding the requirements from its requirement signature, rooted at
+  /// the given requirement \c source.
+  ConstraintResult expandConformanceRequirement(
+                                      PotentialArchetype *pa,
+                                      ProtocolDecl *proto,
+                                      const RequirementSource *source,
+                                      bool onlySameTypeConstraints);
+
   /// \brief Add a new same-type requirement between two fully resolved types
   /// (output of \c GenericSignatureBuilder::resolve).
   ///
@@ -373,6 +382,9 @@ private:
                           UnresolvedType constraint,
                           FloatingRequirementSource source,
                           UnresolvedHandlingKind unresolvedHandling);
+
+  /// Note that we have added the nested type nestedPA
+  void addedNestedType(PotentialArchetype *nestedPA);
 
   /// \brief Add a new conformance requirement specifying that the given
   /// potential archetypes are equivalent.
@@ -676,6 +688,21 @@ private:
                             ArchetypeResolutionKind resolutionKind);
 
 public:
+  /// \brief Resolve the equivalence class for the given type parameter,
+  /// which provides information about that type.
+  ///
+  /// The \c resolutionKind parameter describes how resolution should be
+  /// performed. If the potential archetype named by the given dependent type
+  /// already exists, it will be always returned. If it doesn't exist yet,
+  /// the \c resolutionKind dictates whether the potential archetype will
+  /// be created or whether null will be returned.
+  ///
+  /// For any type that cannot refer to an equivalence class, this routine
+  /// returns null.
+  EquivalenceClass *resolveEquivalenceClass(
+                      Type type,
+                      ArchetypeResolutionKind resolutionKind);
+
   /// \brief Resolve the given type to the potential archetype it names.
   ///
   /// The \c resolutionKind parameter describes how resolution should be
@@ -806,6 +833,11 @@ public:
     /// A requirement that was resolved based on structural derivation from
     /// another requirement.
     Derived,
+
+    /// A requirement that was provided for another potential archetype in the
+    /// same equivalence class, but which we want to "re-root" on a new
+    /// potential archetype.
+    EquivalentType,
   };
 
   /// The kind of requirement source.
@@ -864,6 +896,7 @@ private:
     case Parent:
     case Concrete:
     case Derived:
+    case EquivalentType:
       return 0;
     }
 
@@ -909,6 +942,7 @@ private:
     case Parent:
     case Concrete:
     case Derived:
+    case EquivalentType:
       return false;
     }
 
@@ -993,6 +1027,18 @@ public:
            "RequirementSource kind/storageKind mismatch");
   }
 
+  RequirementSource(Kind kind, const RequirementSource *parent,
+                    PotentialArchetype *newPA)
+    : kind(kind), storageKind(StorageKind::RootArchetype),
+      hasTrailingWrittenRequirementLoc(false),
+      usesRequirementSignature(false), parent(parent) {
+    assert((static_cast<bool>(parent) != isRootKind(kind)) &&
+           "Root RequirementSource should not have parent (or vice versa)");
+    assert(isAcceptableStorageKind(kind, storageKind) &&
+           "RequirementSource kind/storageKind mismatch");
+    storage.rootArchetype = newPA;
+  }
+
 public:
   /// Retrieve an abstract requirement source.
   static const RequirementSource *forAbstract(PotentialArchetype *root);
@@ -1034,7 +1080,6 @@ private:
                              bool inferred,
                              WrittenRequirementLoc writtenLoc =
                                WrittenRequirementLoc()) const;
-
 public:
   /// A requirement source that describes that a requirement that is resolved
   /// via a superclass requirement.
@@ -1058,6 +1103,11 @@ public:
   /// A constraint source that describes a constraint that is structurally
   /// derived from another constraint but does not require further information.
   const RequirementSource *viaDerived(GenericSignatureBuilder &builder) const;
+
+  /// A constraint source that describes a constraint that is structurally
+  /// derived from another constraint but does not require further information.
+  const RequirementSource *viaEquivalentType(GenericSignatureBuilder &builder,
+                                             PotentialArchetype *newPA) const;
 
   /// Form a new requirement source without the subpath [start, end).
   ///
@@ -1142,19 +1192,21 @@ public:
   /// if they are equivalent in length.
   int compare(const RequirementSource *other) const;
 
+  /// Retrieve the written requirement location, if there is one.
+  WrittenRequirementLoc getWrittenRequirementLoc() const {
+    if (!hasTrailingWrittenRequirementLoc) return WrittenRequirementLoc();
+    return getTrailingObjects<WrittenRequirementLoc>()[0];
+  }
+
   /// Retrieve the type representation for this requirement, if there is one.
   const TypeRepr *getTypeRepr() const {
-    if (!hasTrailingWrittenRequirementLoc) return nullptr;
-    return getTrailingObjects<WrittenRequirementLoc>()[0]
-             .dyn_cast<const TypeRepr *>();
+    return getWrittenRequirementLoc().dyn_cast<const TypeRepr *>();
   }
 
   /// Retrieve the requirement representation for this requirement, if there is
   /// one.
   const RequirementRepr *getRequirementRepr() const {
-    if (!hasTrailingWrittenRequirementLoc) return nullptr;
-    return getTrailingObjects<WrittenRequirementLoc>()[0]
-             .dyn_cast<const RequirementRepr *>();
+    return getWrittenRequirementLoc().dyn_cast<const RequirementRepr *>();
   }
 
   /// Retrieve the type stored in this requirement.
@@ -1295,9 +1347,8 @@ public:
   }
 
   static FloatingRequirementSource forNestedTypeNameMatch(
-                                     const RequirementSource *base,
                                      Identifier nestedName) {
-    FloatingRequirementSource result{ NestedTypeNameMatch, base };
+    FloatingRequirementSource result{ NestedTypeNameMatch, Storage() };
     result.nestedName = nestedName;
     return result;
   };
@@ -1409,10 +1460,12 @@ class GenericSignatureBuilder::PotentialArchetype {
   {
   }
 
+public:
   /// \brief Retrieve the representative for this archetype, performing
   /// path compression on the way.
   PotentialArchetype *getRepresentative() const;
 
+private:
   /// Retrieve the generic signature builder with which this archetype is
   /// associated.
   GenericSignatureBuilder *getBuilder() const {
@@ -1425,11 +1478,11 @@ class GenericSignatureBuilder::PotentialArchetype {
   friend class GenericSignatureBuilder;
   friend class GenericSignature;
 
-  /// \brief Retrieve the debug name of this potential archetype.
-  std::string getDebugName() const;
-
 public:
   ~PotentialArchetype();
+
+  /// \brief Retrieve the debug name of this potential archetype.
+  std::string getDebugName() const;
 
   /// Retrieve the parent of this potential archetype, which will be non-null
   /// when this potential archetype is an associated type.
@@ -1677,6 +1730,12 @@ public:
   UnresolvedType lhs;
   RequirementRHS rhs;
   FloatingRequirementSource source;
+
+  /// Dump a debugging representation of this delayed requirement class.
+  void dump(llvm::raw_ostream &out) const;
+
+  LLVM_ATTRIBUTE_DEPRECATED(void dump() const,
+                            "only for use in the debugger");
 };
 
 /// Whether the given constraint result signals an error.

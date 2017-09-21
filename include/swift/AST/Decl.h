@@ -305,10 +305,16 @@ class alignas(1 << DeclAlignInBits) Decl {
     /// Whether we are overridden later
     unsigned Overridden : 1;
 
+    /// Whether the getter is mutating.
+    unsigned IsGetterMutating : 1;
+
+    /// Whether the setter is mutating.
+    unsigned IsSetterMutating : 1;
+
     /// The storage kind.
     unsigned StorageKind : 4;
   };
-  enum { NumAbstractStorageDeclBits = NumValueDeclBits + 5 };
+  enum { NumAbstractStorageDeclBits = NumValueDeclBits + 7 };
   static_assert(NumAbstractStorageDeclBits <= 32, "fits in an unsigned");
 
   class VarDeclBitfields {
@@ -361,7 +367,7 @@ class alignas(1 << DeclAlignInBits) Decl {
     unsigned BodyKind : 3;
 
     /// Number of curried parameter lists.
-    unsigned NumParameterLists : 6;
+    unsigned NumParameterLists : 5;
 
     /// Whether we are overridden later.
     unsigned Overridden : 1;
@@ -374,6 +380,9 @@ class alignas(1 << DeclAlignInBits) Decl {
 
     /// Whether NeedsNewVTableEntry is valid.
     unsigned HasComputedNeedsNewVTableEntry : 1;
+
+    /// The ResilienceExpansion to use for default arguments.
+    unsigned DefaultArgumentResilienceExpansion : 1;
   };
   enum { NumAbstractFunctionDeclBits = NumValueDeclBits + 13 };
   static_assert(NumAbstractFunctionDeclBits <= 32, "fits in an unsigned");
@@ -887,7 +896,7 @@ public:
     return getClangNodeImpl().getAsMacro();
   }
 
-  bool isPrivateStdlibDecl(bool whitelistProtocols=true) const;
+  bool isPrivateStdlibDecl(bool treatNonBuiltinProtocolsAsPublic = true) const;
 
   /// Whether this declaration is weak-imported.
   bool isWeakImported(ModuleDecl *fromModule) const;
@@ -1681,48 +1690,46 @@ public:
     ExtensionDeclBits.CheckedInheritanceClause = checked;
   }
 
-  bool hasDefaultAccessibility() const {
+  bool hasDefaultAccessLevel() const {
     return ExtensionDeclBits.DefaultAndMaxAccessLevel != 0;
   }
 
-  Accessibility getDefaultAccessibility() const {
-    assert(hasDefaultAccessibility() && "not computed yet");
+  AccessLevel getDefaultAccessLevel() const {
+    assert(hasDefaultAccessLevel() && "not computed yet");
     if (ExtensionDeclBits.DefaultAndMaxAccessLevel &
-        (1 << (static_cast<unsigned>(Accessibility::FilePrivate) - 1)))
-      return Accessibility::FilePrivate;
+        (1 << (static_cast<unsigned>(AccessLevel::FilePrivate) - 1)))
+      return AccessLevel::FilePrivate;
     if (ExtensionDeclBits.DefaultAndMaxAccessLevel &
-        (1 << (static_cast<unsigned>(Accessibility::Internal) - 1)))
-      return Accessibility::Internal;
-    return Accessibility::Public;
+        (1 << (static_cast<unsigned>(AccessLevel::Internal) - 1)))
+      return AccessLevel::Internal;
+    return AccessLevel::Public;
   }
 
-  Accessibility getMaxAccessibility() const {
-    assert(hasDefaultAccessibility() && "not computed yet");
+  AccessLevel getMaxAccessLevel() const {
+    assert(hasDefaultAccessLevel() && "not computed yet");
     if (ExtensionDeclBits.DefaultAndMaxAccessLevel &
-        (1 << (static_cast<unsigned>(Accessibility::Public) - 1)))
-      return Accessibility::Public;
+        (1 << (static_cast<unsigned>(AccessLevel::Public) - 1)))
+      return AccessLevel::Public;
     if (ExtensionDeclBits.DefaultAndMaxAccessLevel &
-        (1 << (static_cast<unsigned>(Accessibility::Internal) - 1)))
-      return Accessibility::Internal;
-    return Accessibility::FilePrivate;
+        (1 << (static_cast<unsigned>(AccessLevel::Internal) - 1)))
+      return AccessLevel::Internal;
+    return AccessLevel::FilePrivate;
   }
 
-  void setDefaultAndMaxAccessibility(Accessibility defaultAccess,
-                                     Accessibility maxAccess) {
-    assert(!hasDefaultAccessibility() && "default accessibility already set");
+  void setDefaultAndMaxAccess(AccessLevel defaultAccess,
+                              AccessLevel maxAccess) {
+    assert(!hasDefaultAccessLevel() && "default access level already set");
     assert(maxAccess >= defaultAccess);
-    assert(maxAccess != Accessibility::Private && "private not valid");
-    assert(defaultAccess != Accessibility::Private && "private not valid");
+    assert(maxAccess != AccessLevel::Private && "private not valid");
+    assert(defaultAccess != AccessLevel::Private && "private not valid");
     ExtensionDeclBits.DefaultAndMaxAccessLevel =
         (1 << (static_cast<unsigned>(defaultAccess) - 1)) |
         (1 << (static_cast<unsigned>(maxAccess) - 1));
-    assert(getDefaultAccessibility() == defaultAccess && "not enough bits");
-    assert(getMaxAccessibility() == maxAccess && "not enough bits");
+    assert(getDefaultAccessLevel() == defaultAccess && "not enough bits");
+    assert(getMaxAccessLevel() == maxAccess && "not enough bits");
   }
 
   void setConformanceLoader(LazyMemberLoader *resolver, uint64_t contextData);
-
-  DeclRange getMembers() const;
 
   /// Determine whether this is a constrained extension, which adds additional
   /// requirements beyond those of the nominal type.
@@ -1953,6 +1960,23 @@ public:
   
   /// Does this binding declare something that requires storage?
   bool hasStorage() const;
+
+  /// Determines whether this binding either has an initializer expression, or is
+  /// default initialized, without performing any type checking on it.
+  ///
+  /// This is only valid to check for bindings which have storage.
+  bool isDefaultInitializable() const {
+    assert(hasStorage());
+
+    for (unsigned i = 0, e = getNumPatternEntries(); i < e; ++i)
+      if (!isDefaultInitializable(i))
+        return false;
+
+    return true;
+  }
+
+  /// Can the pattern at index i be default initialized?
+  bool isDefaultInitializable(unsigned i) const;
   
   /// When the pattern binding contains only a single variable with no
   /// destructuring, retrieve that variable.
@@ -2078,7 +2102,7 @@ public:
 class ValueDecl : public Decl {
   DeclName Name;
   SourceLoc NameLoc;
-  llvm::PointerIntPair<Type, 3, OptionalEnum<Accessibility>> TypeAndAccess;
+  llvm::PointerIntPair<Type, 3, OptionalEnum<AccessLevel>> TypeAndAccess;
 
 protected:
   ValueDecl(DeclKind K,
@@ -2149,12 +2173,12 @@ public:
   SourceLoc getNameLoc() const { return NameLoc; }
   SourceLoc getLoc() const { return NameLoc; }
 
-  bool hasAccessibility() const {
+  bool hasAccess() const {
     return TypeAndAccess.getInt().hasValue();
   }
 
   /// \see getFormalAccess
-  Accessibility getFormalAccessImpl(const DeclContext *useDC) const;
+  AccessLevel getFormalAccessImpl(const DeclContext *useDC) const;
 
   bool isVersionedInternalDecl() const;
 
@@ -2167,18 +2191,18 @@ public:
   /// taken into account.
   ///
   /// \sa getFormalAccessScope
-  Accessibility getFormalAccess(const DeclContext *useDC = nullptr,
-                                bool respectVersionedAttr = false) const {
-    assert(hasAccessibility() && "accessibility not computed yet");
-    Accessibility result = TypeAndAccess.getInt().getValue();
+  AccessLevel getFormalAccess(const DeclContext *useDC = nullptr,
+                              bool respectVersionedAttr = false) const {
+    assert(hasAccess() && "access not computed yet");
+    AccessLevel result = TypeAndAccess.getInt().getValue();
     if (respectVersionedAttr &&
-        result == Accessibility::Internal &&
+        result == AccessLevel::Internal &&
         isVersionedInternalDecl()) {
       assert(!useDC);
-      return Accessibility::Public;
+      return AccessLevel::Public;
     }
-    if (useDC && (result == Accessibility::Internal ||
-                  result == Accessibility::Public))
+    if (useDC && (result == AccessLevel::Internal ||
+                  result == AccessLevel::Public))
       return getFormalAccessImpl(useDC);
     return result;
   }
@@ -2205,16 +2229,17 @@ public:
   ///
   /// This is the access used when making optimization and code generation
   /// decisions. It should not be used at the AST or semantic level.
-  Accessibility getEffectiveAccess() const;
+  AccessLevel getEffectiveAccess() const;
 
-  void setAccessibility(Accessibility access) {
-    assert(!hasAccessibility() && "accessibility already set");
-    overwriteAccessibility(access);
+  void setAccess(AccessLevel access) {
+    assert(!hasAccess() && "access already set");
+    overwriteAccess(access);
   }
 
-  /// Overwrite the accessibility of this declaration.
-  // This is needed in the LLDB REPL.
-  void overwriteAccessibility(Accessibility access) {
+  /// Overwrite the access of this declaration.
+  ///
+  /// This is needed in the LLDB REPL.
+  void overwriteAccess(AccessLevel access) {
     TypeAndAccess.setInt(access);
   }
 
@@ -2775,7 +2800,6 @@ protected:
 public:
   using GenericTypeDecl::getASTContext;
 
-  DeclRange getMembers() const;
   SourceRange getBraces() const { return Braces; }
   
   void setBraces(SourceRange braces) { Braces = braces; }
@@ -2967,7 +2991,7 @@ public:
 ///
 /// The type of the decl itself is a MetatypeType; use getDeclaredType()
 /// to get the declared type ("Bool" or "Optional" in the above example).
-class EnumDecl : public NominalTypeDecl {
+class EnumDecl final : public NominalTypeDecl {
   SourceLoc EnumLoc;
 
   struct {
@@ -3123,7 +3147,7 @@ public:
 ///
 /// The type of the decl itself is a MetatypeType; use getDeclaredType()
 /// to get the declared type ("Complex" in the above example).
-class StructDecl : public NominalTypeDecl {
+class StructDecl final : public NominalTypeDecl {
   SourceLoc StructLoc;
 
 public:
@@ -3193,7 +3217,7 @@ enum class ObjCClassKind : uint8_t {
 ///
 /// The type of the decl itself is a MetatypeType; use getDeclaredType()
 /// to get the declared type ("Complex" in the above example).
-class ClassDecl : public NominalTypeDecl {
+class ClassDecl final : public NominalTypeDecl {
   class ObjCMethodLookupTable;
 
   SourceLoc ClassLoc;
@@ -3488,11 +3512,8 @@ private:
 ///   protocol Drawable {
 ///     func draw()
 ///   }
-class ProtocolDecl : public NominalTypeDecl {
+class ProtocolDecl final : public NominalTypeDecl {
   SourceLoc ProtocolLoc;
-
-  /// The location of the 'class' keyword for class-bound protocols.
-  SourceLoc ClassRequirementLoc;
 
   /// The syntactic representation of the where clause in a protocol like
   /// `protocol ... where ... { ... }`.
@@ -3572,17 +3593,6 @@ public:
     ProtocolDeclBits.RequiresClassValid = true;
     ProtocolDeclBits.RequiresClass = requiresClass;
   }
-
-  /// Specify that this protocol is class-bounded, recording the location of
-  /// the 'class' keyword.
-  void setClassBounded(SourceLoc loc) {
-    ClassRequirementLoc = loc;
-    ProtocolDeclBits.RequiresClassValid = true;
-    ProtocolDeclBits.RequiresClass = true;
-  }
-
-  /// Retrieve the source location of the 'class' keyword.
-  SourceLoc getClassBoundedLoc() const { return ClassRequirementLoc; }
 
   /// Determine whether an existential conforming to this protocol can be
   /// matched with a generic type parameter constrained to this protocol.
@@ -3964,8 +3974,8 @@ private:
   void configureObservingRecord(ObservingRecord *record,
                                 FuncDecl *willSet, FuncDecl *didSet);
 
-  llvm::PointerIntPair<GetSetRecord*, 3, OptionalEnum<Accessibility>> GetSetInfo;
-  llvm::PointerIntPair<BehaviorRecord*, 3, OptionalEnum<Accessibility>>
+  llvm::PointerIntPair<GetSetRecord*, 3, OptionalEnum<AccessLevel>> GetSetInfo;
+  llvm::PointerIntPair<BehaviorRecord*, 3, OptionalEnum<AccessLevel>>
     BehaviorInfo;
 
   ObservingRecord &getDidSetInfo() const {
@@ -3986,6 +3996,8 @@ protected:
                       SourceLoc NameLoc)
     : ValueDecl(Kind, DC, Name, NameLoc), OverriddenDecl(nullptr) {
     AbstractStorageDeclBits.StorageKind = Stored;
+    AbstractStorageDeclBits.IsGetterMutating = false;
+    AbstractStorageDeclBits.IsSetterMutating = true;
     AbstractStorageDeclBits.Overridden = false;
   }
 public:
@@ -4088,13 +4100,23 @@ public:
     llvm_unreachable("bad storage kind");
   }
   
-  /// \brief Return true if the 'getter' is 'mutating', i.e. that it requires an
-  /// lvalue base to be accessed.
-  bool isGetterMutating() const;
+  /// \brief Return true if reading this storage requires the ability to
+  /// modify the base value.
+  bool isGetterMutating() const {
+    return AbstractStorageDeclBits.IsGetterMutating;
+  }
+  void setIsGetterMutating(bool isMutating) {
+    AbstractStorageDeclBits.IsGetterMutating = isMutating;
+  }
   
-  /// \brief Return true if the 'setter' is 'nonmutating', i.e. that it can be
-  /// called even on an immutable base value.
-  bool isSetterNonMutating() const;
+  /// \brief Return true if modifying this storage requires the ability to
+  /// modify the base value.
+  bool isSetterMutating() const {
+    return AbstractStorageDeclBits.IsSetterMutating;
+  }
+  void setIsSetterMutating(bool isMutating) {
+    AbstractStorageDeclBits.IsSetterMutating = isMutating;
+  }
 
   FuncDecl *getAccessorFunction(AccessorKind accessor) const;
 
@@ -4182,18 +4204,18 @@ public:
     return nullptr;
   }
 
-  Accessibility getSetterAccessibility() const {
-    assert(hasAccessibility());
+  AccessLevel getSetterFormalAccess() const {
+    assert(hasAccess());
     assert(GetSetInfo.getInt().hasValue());
     return GetSetInfo.getInt().getValue();
   }
 
-  void setSetterAccessibility(Accessibility accessLevel) {
+  void setSetterAccess(AccessLevel accessLevel) {
     assert(!GetSetInfo.getInt().hasValue());
-    overwriteSetterAccessibility(accessLevel);
+    overwriteSetterAccess(accessLevel);
   }
 
-  void overwriteSetterAccessibility(Accessibility accessLevel);
+  void overwriteSetterAccess(AccessLevel accessLevel);
 
   /// \brief Retrieve the materializeForSet function, if this
   /// declaration has one.
@@ -4857,6 +4879,8 @@ protected:
     AbstractFunctionDeclBits.Throws = Throws;
     AbstractFunctionDeclBits.NeedsNewVTableEntry = false;
     AbstractFunctionDeclBits.HasComputedNeedsNewVTableEntry = false;
+    AbstractFunctionDeclBits.DefaultArgumentResilienceExpansion =
+        unsigned(ResilienceExpansion::Maximal);
 
     // Verify no bitfield truncation.
     assert(AbstractFunctionDeclBits.NumParameterLists == NumParameterLists);
@@ -5074,6 +5098,21 @@ public:
   /// Resolved during type checking
   void setIsOverridden() { AbstractFunctionDeclBits.Overridden = true; }
 
+  /// The ResilienceExpansion for default arguments.
+  ///
+  /// In Swift 4 mode, default argument expressions are serialized, and must
+  /// obey the restrictions imposed upon inlineable function bodies.
+  ResilienceExpansion getDefaultArgumentResilienceExpansion() const {
+    return ResilienceExpansion(
+        AbstractFunctionDeclBits.DefaultArgumentResilienceExpansion);
+  }
+
+  /// Set the ResilienceExpansion for default arguments.
+  void setDefaultArgumentResilienceExpansion(ResilienceExpansion expansion) {
+    AbstractFunctionDeclBits.DefaultArgumentResilienceExpansion =
+        unsigned(expansion);
+  }
+
   /// Set information about the foreign error convention used by this
   /// declaration.
   void setForeignErrorConvention(const ForeignErrorConvention &convention);
@@ -5110,7 +5149,13 @@ public:
 
 class OperatorDecl;
 
-
+/// Note: These align with '%select's in diagnostics.
+enum class SelfAccessKind : uint8_t {
+  NonMutating = 0,
+  Mutating    = 1,
+  __Consuming = 2,
+};
+  
 /// FuncDecl - 'func' declaration.
 class FuncDecl final : public AbstractFunctionDecl,
     private llvm::TrailingObjects<FuncDecl, ParameterList *> {
@@ -5129,9 +5174,9 @@ class FuncDecl final : public AbstractFunctionDecl,
   /// Whether this function has a dynamic Self return type.
   unsigned HasDynamicSelf : 1;
 
-  /// Whether this function is a 'mutating' method.
-  unsigned Mutating : 1;
-
+  /// Backing bits for 'self' access kind.
+  unsigned SelfAccess : 2;
+      
   /// \brief If this FuncDecl is an accessor for a property, this indicates
   /// which property and what kind of accessor.
   llvm::PointerIntPair<AbstractStorageDecl*, 3, AccessorKind> AccessorDecl;
@@ -5160,9 +5205,9 @@ class FuncDecl final : public AbstractFunctionDecl,
     FuncDeclBits.StaticSpelling = static_cast<unsigned>(StaticSpelling);
     assert(NumParameterLists > 0 && "Must have at least an empty tuple arg");
 
-    Mutating = false;
     HasDynamicSelf = false;
     ForcedStaticDispatch = false;
+    SelfAccess = static_cast<unsigned>(SelfAccessKind::NonMutating);
   }
 
   static FuncDecl *createImpl(ASTContext &Context, SourceLoc StaticLoc,
@@ -5213,13 +5258,28 @@ public:
   void setStatic(bool IsStatic = true) {
     FuncDeclBits.IsStatic = IsStatic;
   }
+      
   bool isMutating() const {
-    return Mutating;
+    return getSelfAccessKind() == SelfAccessKind::Mutating;
   }
-  void setMutating(bool mutating = true) {
-    Mutating = mutating;
+  bool isNonMutating() const {
+    return getSelfAccessKind() == SelfAccessKind::NonMutating;
+  }
+  bool isConsuming() const {
+    return getSelfAccessKind() == SelfAccessKind::__Consuming;
+  }
+
+  TypeLoc getReturnTypeLoc() const {
+    return FnRetType;
   }
   
+  SelfAccessKind getSelfAccessKind() const {
+    return static_cast<SelfAccessKind>(SelfAccess);
+  }
+  void setSelfAccessKind(SelfAccessKind mod) {
+    SelfAccess = static_cast<unsigned>(mod);
+  }
+      
   /// \brief Returns the parameter lists(s) for the function definition.
   ///
   /// The number of "top-level" elements will match the number of argument names
@@ -6049,8 +6109,6 @@ public:
     return { getLowerThanBuffer(), NumLowerThan };
   }
 
-  void collectOperatorKeywordRanges(SmallVectorImpl<CharSourceRange> &Ranges);
-
   static bool classof(const Decl *D) {
     return D->getKind() == DeclKind::PrecedenceGroup;
   }
@@ -6259,12 +6317,12 @@ NominalTypeDecl::ToStoredProperty::operator()(Decl *decl) const {
 }
 
 inline void
-AbstractStorageDecl::overwriteSetterAccessibility(Accessibility accessLevel) {
+AbstractStorageDecl::overwriteSetterAccess(AccessLevel accessLevel) {
   GetSetInfo.setInt(accessLevel);
   if (auto setter = getSetter())
-    setter->overwriteAccessibility(accessLevel);
+    setter->overwriteAccess(accessLevel);
   if (auto materializeForSet = getMaterializeForSetFunc())
-    materializeForSet->overwriteAccessibility(accessLevel);
+    materializeForSet->overwriteAccess(accessLevel);
 }
 
 inline bool AbstractStorageDecl::isStatic() const {

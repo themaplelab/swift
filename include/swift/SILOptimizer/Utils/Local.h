@@ -29,6 +29,7 @@
 namespace swift {
 
 class DominanceInfo;
+template <class T> class NullablePtr;
 
 /// Transform a Use Range (Operand*) into a User Range (SILInstruction*)
 using UserTransform = std::function<SILInstruction *(Operand *)>;
@@ -45,10 +46,12 @@ inline ValueBaseUserRange makeUserRange(
 using DeadInstructionSet = llvm::SmallSetVector<SILInstruction *, 8>;
 
 /// \brief Create a retain of \p Ptr before the \p InsertPt.
-SILInstruction *createIncrementBefore(SILValue Ptr, SILInstruction *InsertPt);
+NullablePtr<SILInstruction> createIncrementBefore(SILValue Ptr,
+                                                  SILInstruction *InsertPt);
 
 /// \brief Create a release of \p Ptr before the \p InsertPt.
-SILInstruction *createDecrementBefore(SILValue Ptr, SILInstruction *InsertPt);
+NullablePtr<SILInstruction> createDecrementBefore(SILValue Ptr,
+                                                  SILInstruction *InsertPt);
 
 /// \brief For each of the given instructions, if they are dead delete them
 /// along with their dead operands.
@@ -156,7 +159,6 @@ SILLinkage getSpecializedLinkage(SILFunction *F, SILLinkage L);
 /// Tries to optimize a given apply instruction if it is a concatenation of
 /// string literals. Returns a new instruction if optimization was possible.
 SILInstruction *tryToConcatenateStrings(ApplyInst *AI, SILBuilder &B);
-
 
 /// Tries to perform jump-threading on all checked_cast_br instruction in
 /// function \p Fn.
@@ -662,6 +664,10 @@ ignore_expect_uses(ValueBase *V) {
 /// aggregate and reforming it, the reformed aggregate may have extract
 /// operations from it. These can be simplified and removed.
 bool simplifyUsers(SILInstruction *I);
+
+///  True if a type can be expanded
+/// without a significant increase to code size.
+bool shouldExpand(SILModule &Module, SILType Ty);
 
 /// Check if a given type is a simple type, i.e. a builtin
 /// integer or floating point type or a struct/tuple whose members

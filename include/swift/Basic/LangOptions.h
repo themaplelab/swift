@@ -43,8 +43,9 @@ namespace swift {
     Endianness,
     /// Runtime support (_ObjC or _Native)
     Runtime,
+    /// Conditional import of module
+    CanImport,
   };
-  enum { NumPlatformConditionKind = 4 };
 
   /// Describes which Swift 3 Objective-C inference warnings should be
   /// emitted.
@@ -173,7 +174,7 @@ namespace swift {
 
     /// \brief The upper bound to number of sub-expressions unsolved
     /// before termination of the shrink phrase of the constraint solver.
-    unsigned SolverShrinkUnsolvedThreshold = 5;
+    unsigned SolverShrinkUnsolvedThreshold = 10;
 
     /// The maximum depth to which to test decl circularity.
     unsigned MaxCircularityDepth = 500;
@@ -235,14 +236,16 @@ namespace swift {
     /// Diagnose uses of NSCoding with classes that have unstable mangled names.
     bool EnableNSKeyedArchiverDiagnostics = true;
     
-    /// Enable keypath components that aren't fully implemented.
-    bool EnableExperimentalKeyPathComponents = false;
-
     /// When a conversion from String to Substring fails, emit a fix-it to append
     /// the void subscript '[]'.
     /// FIXME: Remove this flag when void subscripts are implemented.
     /// This is used to guard preemptive testing for the fix-it.
     bool FixStringToSubstringConversions = false;
+
+    /// Whether to keep track of a refined token stream in SourceFile while
+    /// parsing. This is set true usually for tooling purposes like semantic
+    /// coloring.
+    bool KeepTokensInSourceFile = false;
 
     /// Sets the target we are building for and updates platform conditions
     /// to match.
@@ -287,6 +290,9 @@ namespace swift {
     /// Returns the value for the given platform condition or an empty string.
     StringRef getPlatformConditionValue(PlatformConditionKind Kind) const;
 
+    /// Check whether the given platform condition matches the given value.
+    bool checkPlatformCondition(PlatformConditionKind Kind, StringRef Value) const;
+
     /// Explicit conditional compilation flags, initialized via the '-D'
     /// compiler flag.
     void addCustomConditionalCompilationFlag(StringRef Name) {
@@ -311,6 +317,15 @@ namespace swift {
       return EffectiveLanguageVersion.isVersion3();
     }
 
+    /// Whether our effective Swift version is at least 'major'.
+    ///
+    /// This is usually the check you want; for example, when introducing
+    /// a new language feature which is only visible in Swift 5, you would
+    /// check for isSwiftVersionAtLeast(5).
+    bool isSwiftVersionAtLeast(unsigned major) const {
+      return EffectiveLanguageVersion.isVersionAtLeast(major);
+    }
+
     /// Returns true if the given platform condition argument represents
     /// a supported target operating system.
     ///
@@ -332,8 +347,7 @@ namespace swift {
     }
 
   private:
-    llvm::SmallVector<std::pair<PlatformConditionKind, std::string>,
-                      NumPlatformConditionKind>
+    llvm::SmallVector<std::pair<PlatformConditionKind, std::string>, 4>
         PlatformConditionValues;
     llvm::SmallVector<std::string, 2> CustomConditionalCompilationFlags;
   };

@@ -44,6 +44,7 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/ValueSymbolTable.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/SubtargetFeature.h"
@@ -120,8 +121,7 @@ static void addSanitizerCoveragePass(const PassManagerBuilder &Builder,
       BuilderWrapper.IRGOpts.SanitizeCoverage));
 }
 
-std::tuple<llvm::TargetOptions, std::string, std::vector<std::string>,
-           std::string>
+std::tuple<llvm::TargetOptions, std::string, std::vector<std::string>>
 swift::getIRTargetOptions(IRGenOptions &Opts, ASTContext &Ctx) {
   // Things that maybe we should collect from the command line:
   //   - relocation model
@@ -135,7 +135,7 @@ swift::getIRTargetOptions(IRGenOptions &Opts, ASTContext &Ctx) {
 
   auto *Clang = static_cast<ClangImporter *>(Ctx.getClangModuleLoader());
   clang::TargetOptions &ClangOpts = Clang->getTargetInfo().getTargetOpts();
-  return std::make_tuple(TargetOpts, ClangOpts.CPU, ClangOpts.Features, ClangOpts.Triple);
+  return std::make_tuple(TargetOpts, ClangOpts.CPU, ClangOpts.Features);
 }
 
 void setModuleFlags(IRGenModule &IGM) {
@@ -355,6 +355,25 @@ static bool needsRecompile(StringRef OutputFilename, ArrayRef<uint8_t> HashData,
   return true;
 }
 
+static void countStatsPostIRGen(UnifiedStatsReporter &Stats,
+                                const llvm::Module& Module) {
+  auto &C = Stats.getFrontendCounters();
+  // FIXME: calculate these in constant time if possible.
+  C.NumIRGlobals += Module.getGlobalList().size();
+  C.NumIRFunctions += Module.getFunctionList().size();
+  C.NumIRAliases += Module.getAliasList().size();
+  C.NumIRIFuncs += Module.getIFuncList().size();
+  C.NumIRNamedMetaData += Module.getNamedMDList().size();
+  C.NumIRValueSymbols += Module.getValueSymbolTable().size();
+  C.NumIRComdatSymbols += Module.getComdatSymbolTable().size();
+  for (auto const &Func : Module) {
+    for (auto const &BB : Func) {
+      C.NumIRBasicBlocks++;
+      C.NumIRInsts += BB.size();
+    }
+  }
+}
+
 /// Run the LLVM passes. In multi-threaded compilation this will be done for
 /// multiple LLVM modules in parallel.
 bool swift::performLLVM(IRGenOptions &Opts, DiagnosticEngine *Diags,
@@ -466,6 +485,14 @@ bool swift::performLLVM(IRGenOptions &Opts, DiagnosticEngine *Diags,
   }
   }
 
+  if (Stats) {
+    if (DiagMutex)
+      DiagMutex->lock();
+    countStatsPostIRGen(*Stats, *Module);
+    if (DiagMutex)
+      DiagMutex->unlock();
+  }
+
   EmitPasses.run(*Module);
 
   if (Stats && RawOS.hasValue()) {
@@ -480,17 +507,23 @@ bool swift::performLLVM(IRGenOptions &Opts, DiagnosticEngine *Diags,
 
 std::unique_ptr<llvm::TargetMachine>
 swift::createTargetMachine(IRGenOptions &Opts, ASTContext &Ctx) {
+  const llvm::Triple &Triple = Ctx.LangOpts.Target;
+  std::string Error;
+  const Target *Target = TargetRegistry::lookupTarget(Triple.str(), Error);
+  if (!Target) {
+    Ctx.Diags.diagnose(SourceLoc(), diag::no_llvm_target, Triple.str(), Error);
+    return nullptr;
+  }
+
   CodeGenOpt::Level OptLevel = Opts.Optimize ? CodeGenOpt::Default // -Os
                                              : CodeGenOpt::None;
 
   // Set up TargetOptions and create the target features string.
   TargetOptions TargetOpts;
   std::string CPU;
-  std::string EffectiveClangTriple;
   std::vector<std::string> targetFeaturesArray;
-  std::tie(TargetOpts, CPU, targetFeaturesArray, EffectiveClangTriple)
+  std::tie(TargetOpts, CPU, targetFeaturesArray)
     = getIRTargetOptions(Opts, Ctx);
-  const llvm::Triple &EffectiveTriple = llvm::Triple(EffectiveClangTriple);
   std::string targetFeatures;
   if (!targetFeaturesArray.empty()) {
     llvm::SubtargetFeatures features;
@@ -499,31 +532,21 @@ swift::createTargetMachine(IRGenOptions &Opts, ASTContext &Ctx) {
     targetFeatures = features.getString();
   }
 
-  std::string Error;
-  const Target *Target =
-      TargetRegistry::lookupTarget(EffectiveTriple.str(), Error);
-  if (!Target) {
-    Ctx.Diags.diagnose(SourceLoc(), diag::no_llvm_target, EffectiveTriple.str(),
-                       Error);
-    return nullptr;
-  }
-
-
   // Create a target machine.
   auto cmodel = CodeModel::Default;
 
   // On Windows 64 bit, dlls are loaded above the max address for 32 bits.
   // This means that a default CodeModel causes generated code to segfault
   // when run.
-  if (EffectiveTriple.isArch64Bit() && EffectiveTriple.isOSWindows())
+  if (Triple.isArch64Bit() && Triple.isOSWindows())
     cmodel = CodeModel::Large;
 
   llvm::TargetMachine *TargetMachine =
-      Target->createTargetMachine(EffectiveTriple.str(), CPU, targetFeatures,
-                                  TargetOpts, Reloc::PIC_, cmodel, OptLevel);
+      Target->createTargetMachine(Triple.str(), CPU, targetFeatures, TargetOpts,
+                                  Reloc::PIC_, cmodel, OptLevel);
   if (!TargetMachine) {
     Ctx.Diags.diagnose(SourceLoc(), diag::no_llvm_target,
-                       EffectiveTriple.str(), "no LLVM target machine");
+                       Triple.str(), "no LLVM target machine");
     return nullptr;
   }
   return std::unique_ptr<llvm::TargetMachine>(TargetMachine);
@@ -791,7 +814,7 @@ static std::unique_ptr<llvm::Module> performIRGeneration(IRGenOptions &Opts,
     if (performLLVM(Opts, &IGM.Context.Diags, nullptr, IGM.ModuleHash,
                     IGM.getModule(), IGM.TargetMachine.get(),
                     IGM.Context.LangOpts.EffectiveLanguageVersion,
-                    IGM.OutputFilename))
+                    IGM.OutputFilename, IGM.Context.Stats))
       return nullptr;
   }
 
@@ -811,7 +834,7 @@ static void ThreadEntryPoint(IRGenerator *irgen,
     performLLVM(irgen->Opts, &IGM->Context.Diags, DiagMutex, IGM->ModuleHash,
                 IGM->getModule(), IGM->TargetMachine.get(),
                 IGM->Context.LangOpts.EffectiveLanguageVersion,
-                IGM->OutputFilename);
+                IGM->OutputFilename, IGM->Context.Stats);
     if (IGM->Context.Diags.hadAnyError())
       return;
   }

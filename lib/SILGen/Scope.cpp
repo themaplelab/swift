@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Scope.h"
+#include "swift/Basic/Range.h"
 
 using namespace swift;
 using namespace Lowering;
@@ -71,8 +72,18 @@ RValue Scope::popPreservingValue(RValue &&rv) {
   auto &SGF = cleanups.SGF;
   assert(rv.isPlusOne(SGF) && "Can only push plus one rvalues through a scope");
 
-  // First gather all of the data that we need to recreate the RValue in the
-  // outer scope.
+  // Perform a quick check if we have an incontext value. If so, just pop and
+  // return rv.
+  if (rv.isInContext()) {
+    pop();
+    return std::move(rv);
+  }
+
+  // After this point, we should have /no/ special states.
+  assert(!rv.isInSpecialState());
+
+  // Ok, we have a normal RValue. Gather all of the data that we need to
+  // recreate the RValue in the outer scope.
   CanType type = rv.type;
   unsigned numEltsRemaining = rv.elementsToBeAdded;
   CleanupCloner cloner(SGF, rv);
@@ -88,9 +99,13 @@ RValue Scope::popPreservingValue(RValue &&rv) {
   pop();
 
   // Then create cleanups for any lifetime extending boxes that we may have to
-  // ensure that the boxes are cleaned up /after/ the value stored in the box.
+  // ensure that the boxes are cleaned up /after/ the value stored in the
+  // box. We assume that our values will be destroyed via a destroy_addr or the
+  // like /before/ the end of our box's lifetime, implying that the value inside
+  // the box should be uninitialized when the box is destroyed, so it is
+  // important that we use a dealloc_box.
   for (auto v : lifetimeExtendingBoxes) {
-    SGF.emitManagedRValueWithCleanup(v);
+    SGF.enterDeallocBoxCleanup(v);
   }
 
   // Reconstruct the managed values from the underlying sil values in the outer
@@ -102,6 +117,31 @@ RValue Scope::popPreservingValue(RValue &&rv) {
 
   // And then assemble the managed values into a rvalue.
   return RValue(SGF, std::move(managedValues), type, numEltsRemaining);
+}
+
+void Scope::popPreservingValues(ArrayRef<ManagedValue> innerValues,
+                                MutableArrayRef<ManagedValue> outerValues) {
+  auto &SGF = cleanups.SGF;
+  assert(innerValues.size() == outerValues.size());
+
+  // Record the cleanup information for each preserved value and deactivate its
+  // cleanup.
+  SmallVector<CleanupCloner, 4> cleanups;
+  cleanups.reserve(innerValues.size());
+  for (auto &mv : innerValues) {
+    cleanups.emplace_back(SGF, mv);
+    mv.forward(SGF);
+  }
+
+  // Pop any unpreserved cleanups.
+  pop();
+
+  // Create a managed value for each preserved value, cloning its cleanup.
+  // Since the CleanupCloner does not remember its SILValue, grab it from the
+  // original, now-deactivated managed value.
+  for (auto index : indices(innerValues)) {
+    outerValues[index] = cleanups[index].clone(innerValues[index].getValue());
+  }
 }
 
 void Scope::popImpl() {

@@ -129,13 +129,11 @@ open class JSONEncoder {
     /// - throws: An error if any value throws an error during encoding.
     open func encode<T : Encodable>(_ value: T) throws -> Data {
         let encoder = _JSONEncoder(options: self.options)
-        try value.encode(to: encoder)
 
-        guard encoder.storage.count > 0 else {
+        guard let topLevel = try encoder.box_(value) else {
             throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: [], debugDescription: "Top-level \(T.self) did not encode any values."))
         }
 
-        let topLevel = encoder.storage.popContainer()
         if topLevel is NSNull {
             throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: [], debugDescription: "Top-level \(T.self) encoded as null JSON fragment."))
         } else if topLevel is NSNumber {
@@ -468,77 +466,77 @@ extension _JSONEncoder : SingleValueEncodingContainer {
 
     public func encode(_ value: Bool) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: Int) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: Int8) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: Int16) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: Int32) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: Int64) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: UInt) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: UInt8) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: UInt16) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: UInt32) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: UInt64) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: String) throws {
         assertCanEncodeNewValue()
-        self.storage.push(container: box(value))
+        self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: Float) throws {
         assertCanEncodeNewValue()
-        try self.storage.push(container: box(value))
+        try self.storage.push(container: self.box(value))
     }
 
     public func encode(_ value: Double) throws {
         assertCanEncodeNewValue()
-        try self.storage.push(container: box(value))
+        try self.storage.push(container: self.box(value))
     }
 
     public func encode<T : Encodable>(_ value: T) throws {
         assertCanEncodeNewValue()
-        try self.storage.push(container: box(value))
+        try self.storage.push(container: self.box(value))
     }
 }
 
@@ -661,28 +659,32 @@ extension _JSONEncoder {
     }
 
     fileprivate func box<T : Encodable>(_ value: T) throws -> NSObject {
-        if T.self == Date.self {
+        return try self.box_(value) ?? NSDictionary()
+    }
+
+    // This method is called "box_" instead of "box" to disambiguate it from the overloads. Because the return type here is different from all of the "box" overloads (and is more general), any "box" calls in here would call back into "box" recursively instead of calling the appropriate overload, which is not what we want.
+    fileprivate func box_<T : Encodable>(_ value: T) throws -> NSObject? {
+        if T.self == Date.self || T.self == NSDate.self {
             // Respect Date encoding strategy
             return try self.box((value as! Date))
-        } else if T.self == Data.self {
+        } else if T.self == Data.self || T.self == NSData.self {
             // Respect Data encoding strategy
             return try self.box((value as! Data))
-        } else if T.self == URL.self {
+        } else if T.self == URL.self || T.self == NSURL.self {
             // Encode URLs as single strings.
             return self.box((value as! URL).absoluteString)
-        } else if T.self == Decimal.self {
+        } else if T.self == Decimal.self || T.self == NSDecimalNumber.self {
             // JSONSerialization can natively handle NSDecimalNumber.
-            return (value as! Decimal) as NSDecimalNumber
+            return (value as! NSDecimalNumber)
         }
 
         // The value should request a container from the _JSONEncoder.
-        let topContainer = self.storage.containers.last
+        let depth = self.storage.count
         try value.encode(to: self)
 
         // The top container should be a new container.
-        guard self.storage.containers.last! !== topContainer else {
-            // If the value didn't request a container at all, encode the default container instead.
-            return NSDictionary()
+        guard self.storage.count > depth else {
+            return nil
         }
 
         return self.storage.popContainer()
@@ -865,7 +867,11 @@ open class JSONDecoder {
         }
 
         let decoder = _JSONDecoder(referencing: topLevel, options: self.options)
-        return try T(from: decoder)
+        guard let value = try decoder.unbox(topLevel, as: T.self) else {
+            throw DecodingError.valueNotFound(T.self, DecodingError.Context(codingPath: [], debugDescription: "The given data did not contain a top-level value."))
+        }
+
+        return value
     }
 }
 
@@ -1761,7 +1767,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: Int.Type) throws -> Int? {
         guard !(value is NSNull) else { return nil }
 
-        guard let number = value as? NSNumber else {
+        guard let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse else {
             throw DecodingError._typeMismatch(at: self.codingPath, expectation: type, reality: value)
         }
 
@@ -1776,7 +1782,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: Int8.Type) throws -> Int8? {
         guard !(value is NSNull) else { return nil }
 
-        guard let number = value as? NSNumber else {
+        guard let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse else {
             throw DecodingError._typeMismatch(at: self.codingPath, expectation: type, reality: value)
         }
 
@@ -1791,7 +1797,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: Int16.Type) throws -> Int16? {
         guard !(value is NSNull) else { return nil }
 
-        guard let number = value as? NSNumber else {
+        guard let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse else {
             throw DecodingError._typeMismatch(at: self.codingPath, expectation: type, reality: value)
         }
 
@@ -1806,7 +1812,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: Int32.Type) throws -> Int32? {
         guard !(value is NSNull) else { return nil }
 
-        guard let number = value as? NSNumber else {
+        guard let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse else {
             throw DecodingError._typeMismatch(at: self.codingPath, expectation: type, reality: value)
         }
 
@@ -1821,7 +1827,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: Int64.Type) throws -> Int64? {
         guard !(value is NSNull) else { return nil }
 
-        guard let number = value as? NSNumber else {
+        guard let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse else {
             throw DecodingError._typeMismatch(at: self.codingPath, expectation: type, reality: value)
         }
 
@@ -1836,7 +1842,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: UInt.Type) throws -> UInt? {
         guard !(value is NSNull) else { return nil }
 
-        guard let number = value as? NSNumber else {
+        guard let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse else {
             throw DecodingError._typeMismatch(at: self.codingPath, expectation: type, reality: value)
         }
 
@@ -1851,7 +1857,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: UInt8.Type) throws -> UInt8? {
         guard !(value is NSNull) else { return nil }
 
-        guard let number = value as? NSNumber else {
+        guard let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse else {
             throw DecodingError._typeMismatch(at: self.codingPath, expectation: type, reality: value)
         }
 
@@ -1866,7 +1872,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: UInt16.Type) throws -> UInt16? {
         guard !(value is NSNull) else { return nil }
 
-        guard let number = value as? NSNumber else {
+        guard let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse else {
             throw DecodingError._typeMismatch(at: self.codingPath, expectation: type, reality: value)
         }
 
@@ -1881,7 +1887,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: UInt32.Type) throws -> UInt32? {
         guard !(value is NSNull) else { return nil }
 
-        guard let number = value as? NSNumber else {
+        guard let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse else {
             throw DecodingError._typeMismatch(at: self.codingPath, expectation: type, reality: value)
         }
 
@@ -1896,7 +1902,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: UInt64.Type) throws -> UInt64? {
         guard !(value is NSNull) else { return nil }
 
-        guard let number = value as? NSNumber else {
+        guard let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse else {
             throw DecodingError._typeMismatch(at: self.codingPath, expectation: type, reality: value)
         }
 
@@ -1911,7 +1917,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: Float.Type) throws -> Float? {
         guard !(value is NSNull) else { return nil }
 
-        if let number = value as? NSNumber {
+        if let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse {
             // We are willing to return a Float by losing precision:
             // * If the original value was integral,
             //   * and the integral value was > Float.greatestFiniteMagnitude, we will fail
@@ -1957,7 +1963,7 @@ extension _JSONDecoder {
     fileprivate func unbox(_ value: Any, as type: Double.Type) throws -> Double? {
         guard !(value is NSNull) else { return nil }
 
-        if let number = value as? NSNumber {
+        if let number = value as? NSNumber, number !== kCFBooleanTrue, number !== kCFBooleanFalse {
             // We are always willing to return the number as a Double:
             // * If the original value was integral, it is guaranteed to fit in a Double; we are willing to lose precision past 2^53 if you encoded a UInt64 but requested a Double
             // * If it was a Float or Double, you will get back the precise value
@@ -2088,13 +2094,13 @@ extension _JSONDecoder {
 
     fileprivate func unbox<T : Decodable>(_ value: Any, as type: T.Type) throws -> T? {
         let decoded: T
-        if T.self == Date.self {
+        if T.self == Date.self || T.self == NSDate.self {
             guard let date = try self.unbox(value, as: Date.self) else { return nil }
             decoded = date as! T
-        } else if T.self == Data.self {
+        } else if T.self == Data.self || T.self == NSData.self {
             guard let data = try self.unbox(value, as: Data.self) else { return nil }
             decoded = data as! T
-        } else if T.self == URL.self {
+        } else if T.self == URL.self || T.self == NSURL.self {
             guard let urlString = try self.unbox(value, as: String.self) else {
                 return nil
             }
@@ -2105,7 +2111,7 @@ extension _JSONDecoder {
             }
 
             decoded = (url as! T)
-        } else if T.self == Decimal.self {
+        } else if T.self == Decimal.self || T.self == NSDecimalNumber.self {
             guard let decimal = try self.unbox(value, as: Decimal.self) else { return nil }
             decoded = decimal as! T
         } else {

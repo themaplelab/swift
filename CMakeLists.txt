@@ -108,7 +108,7 @@ set_property(CACHE SWIFT_ANALYZE_CODE_COVERAGE PROPERTY
 # SWIFT_VERSION is deliberately /not/ cached so that an existing build directory
 # can be reused when a new version of Swift comes out (assuming the user hasn't
 # manually set it as part of their own CMake configuration).
-set(SWIFT_VERSION "4.0")
+set(SWIFT_VERSION "4.1")
 
 set(SWIFT_VENDOR "" CACHE STRING
     "The vendor name of the Swift compiler")
@@ -751,7 +751,17 @@ endif()
 # Should we cross-compile the standard library for Windows?
 is_sdk_requested(WINDOWS swift_build_windows)
 if(swift_build_windows AND NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
-  configure_sdk_windows(WINDOWS "Windows" "msvc" i686)
+  if("${SWIFT_HOST_VARIANT_ARCH}" STREQUAL "aarch64")
+    configure_sdk_windows(WINDOWS "Windows" "msvc" aarch64)
+  elseif("${SWIFT_HOST_VARIANT_ARCH}" STREQUAL "armv7")
+    configure_sdk_windows(WINDOWS "Windows" "msvc" armv7)
+  elseif("${SWIFT_HOST_VARIANT_ARCH}" STREQUAL "i686")
+    configure_sdk_windows(WINDOWS "Windows" "msvc" i686)
+  elseif("${SWIFT_HOST_VARIANT_ARCH}" STREQUAL "x86_64")
+    configure_sdk_windows(WINDOWS "Windows" "msvc" x86_64)
+  else()
+    message(FATAL_ERROR "unable to calculate triple for Windows host on ${SWIFT_HOST_VARIANT_ARCH}")
+  endif()
 endif()
 
 if("${SWIFT_SDKS}" STREQUAL "")

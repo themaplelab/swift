@@ -827,6 +827,7 @@ public:
   void visitFunctionRefInst(FunctionRefInst *i);
   void visitAllocGlobalInst(AllocGlobalInst *i);
   void visitGlobalAddrInst(GlobalAddrInst *i);
+  void visitGlobalValueInst(GlobalValueInst *i);
 
   void visitIntegerLiteralInst(IntegerLiteralInst *i);
   void visitFloatLiteralInst(FloatLiteralInst *i);
@@ -865,6 +866,9 @@ public:
   void visitDestroyValueInst(DestroyValueInst *i);
   void visitAutoreleaseValueInst(AutoreleaseValueInst *i);
   void visitSetDeallocatingInst(SetDeallocatingInst *i);
+  void visitObjectInst(ObjectInst *i)  {
+    llvm_unreachable("object instruction cannot appear in a function");
+  }
   void visitStructInst(StructInst *i);
   void visitTupleInst(TupleInst *i);
   void visitEnumInst(EnumInst *i);
@@ -1097,8 +1101,8 @@ IRGenSILFunction::IRGenSILFunction(IRGenModule &IGM,
                   f->getDebugScope(), f->getLocation()),
     CurSILFn(f) {
   // Apply sanitizer attributes to the function.
-  // TODO: Check if the function is ASan black listed either in the external
-  // file or via annotations.
+  // TODO: Check if the function is supposed to be excluded from ASan either by
+  // being in the external file or via annotations.
   if (IGM.IRGen.Opts.Sanitizers & SanitizerKind::Address)
     CurFn->addFnAttr(llvm::Attribute::SanitizeAddress);
   if (IGM.IRGen.Opts.Sanitizers & SanitizerKind::Thread) {
@@ -1754,6 +1758,30 @@ void IRGenSILFunction::visitGlobalAddrInst(GlobalAddrInst *i) {
   addr = emitProjectValueInBuffer(*this, loweredTy, addr);
   
   setLoweredAddress(i, addr);
+}
+
+void IRGenSILFunction::visitGlobalValueInst(GlobalValueInst *i) {
+  SILGlobalVariable *var = i->getReferencedGlobal();
+  assert(var->isInitializedObject() &&
+         "global_value only supported for statically initialized objects");
+  SILType loweredTy = var->getLoweredType();
+  assert(loweredTy == i->getType());
+  auto &ti = getTypeInfo(loweredTy);
+  assert(ti.isFixedSize(IGM.getResilienceExpansionForLayout(var)));
+
+  llvm::Value *Ref = IGM.getAddrOfSILGlobalVariable(var, ti,
+                                                NotForDefinition).getAddress();
+
+  CanType ClassType = loweredTy.getSwiftRValueType();
+  llvm::Value *Metadata =
+    emitClassHeapMetadataRef(*this, ClassType, MetadataValueType::TypeMetadata);
+  llvm::Value *CastAddr = Builder.CreateBitCast(Ref, IGM.RefCountedPtrTy);
+  llvm::Value *InitRef = emitInitStaticObjectCall(Metadata, CastAddr, "staticref");
+  InitRef = Builder.CreateBitCast(InitRef, Ref->getType());
+
+  Explosion e;
+  e.add(InitRef);
+  setLoweredExplosion(i, e);
 }
 
 void IRGenSILFunction::visitMetatypeInst(swift::MetatypeInst *i) {
@@ -4128,7 +4156,8 @@ visitUncheckedRefCastAddrInst(swift::UncheckedRefCastAddrInst *i) {
   Address dest = getLoweredAddress(i->getDest());
   Address src = getLoweredAddress(i->getSrc());
   emitCheckedCast(*this, src, i->getSourceType(), dest, i->getTargetType(),
-                  i->getConsumptionKind(), CheckedCastMode::Unconditional);
+                  CastConsumptionKind::TakeAlways,
+                  CheckedCastMode::Unconditional);
 }
 
 void IRGenSILFunction::visitUncheckedAddrCastInst(
@@ -4496,7 +4525,8 @@ void IRGenSILFunction::visitUnconditionalCheckedCastAddrInst(
   Address dest = getLoweredAddress(i->getDest());
   Address src = getLoweredAddress(i->getSrc());
   emitCheckedCast(*this, src, i->getSourceType(), dest, i->getTargetType(),
-                  i->getConsumptionKind(), CheckedCastMode::Unconditional);
+                  CastConsumptionKind::TakeAlways,
+                  CheckedCastMode::Unconditional);
 }
 
 void IRGenSILFunction::visitUnconditionalCheckedCastValueInst(
@@ -4567,25 +4597,76 @@ void IRGenSILFunction::visitKeyPathInst(swift::KeyPathInst *I) {
   auto pattern = IGM.getAddrOfKeyPathPattern(I->getPattern(), I->getLoc());
   // Build up the argument vector to instantiate the pattern here.
   llvm::Value *args;
-  if (!I->getSubstitutions().empty()) {
+  if (!I->getSubstitutions().empty() || !I->getAllOperands().empty()) {
     auto sig = I->getPattern()->getGenericSignature();
-    auto subs = sig->getSubstitutionMap(I->getSubstitutions());
+    SubstitutionMap subs;
+    if (sig)
+      subs = sig->getSubstitutionMap(I->getSubstitutions());
 
     SmallVector<GenericRequirement, 4> requirements;
     enumerateGenericSignatureRequirements(sig,
             [&](GenericRequirement reqt) { requirements.push_back(reqt); });
 
-    auto argsBufTy = llvm::ArrayType::get(IGM.TypeMetadataPtrTy,
-                                          requirements.size());
-    auto argsBuf = createAlloca(argsBufTy, IGM.getPointerAlignment(),
-                                "keypath_args");
-    emitInitOfGenericRequirementsBuffer(*this, requirements, argsBuf,
-      [&](GenericRequirement reqt) -> llvm::Value * {
-        return emitGenericRequirementFromSubstitutions(*this, sig,
-                                         *IGM.getSwiftModule(),
-                                         reqt, subs);
-      });
-    args = Builder.CreateBitCast(argsBuf.getAddress(), IGM.Int8PtrTy);
+    llvm::Value *argsBufSize;
+    llvm::Value *argsBufAlign;
+    
+    if (!I->getSubstitutions().empty()) {
+      argsBufSize = llvm::ConstantInt::get(IGM.SizeTy,
+                       IGM.getPointerSize().getValue() * requirements.size());
+      argsBufAlign = llvm::ConstantInt::get(IGM.SizeTy,
+                       IGM.getPointerAlignment().getMaskValue());
+    } else {
+      argsBufSize = llvm::ConstantInt::get(IGM.SizeTy, 0);
+      argsBufAlign = llvm::ConstantInt::get(IGM.SizeTy, 0);
+    }
+    
+    SmallVector<llvm::Value *, 4> operandOffsets;
+    for (unsigned i : indices(I->getAllOperands())) {
+      auto operand = I->getAllOperands()[i].get();
+      auto &ti = getTypeInfo(operand->getType());
+      auto ty = operand->getType();
+      auto alignMask = ti.getAlignmentMask(*this, ty);
+      if (i != 0) {
+        auto notAlignMask = Builder.CreateNot(alignMask);
+        argsBufSize = Builder.CreateAdd(argsBufSize, alignMask);
+        argsBufSize = Builder.CreateAnd(argsBufSize, notAlignMask);
+      }
+      operandOffsets.push_back(argsBufSize);
+      auto size = ti.getSize(*this, ty);
+      argsBufSize = Builder.CreateAdd(argsBufSize, size);
+      argsBufAlign = Builder.CreateOr(argsBufAlign, alignMask);
+    }
+
+    auto argsBufInst = Builder.CreateAlloca(IGM.Int8Ty, argsBufSize);
+    // TODO: over-alignment?
+    argsBufInst->setAlignment(16);
+    
+    Address argsBuf(argsBufInst, Alignment(16));
+    
+    if (!I->getSubstitutions().empty()) {
+      emitInitOfGenericRequirementsBuffer(*this, requirements, argsBuf,
+        [&](GenericRequirement reqt) -> llvm::Value * {
+          return emitGenericRequirementFromSubstitutions(*this, sig,
+                                           *IGM.getSwiftModule(),
+                                           reqt, subs);
+        });
+    }
+    
+    for (unsigned i : indices(I->getAllOperands())) {
+      auto operand = I->getAllOperands()[i].get();
+      auto &ti = getTypeInfo(operand->getType());
+      auto ptr = Builder.CreateInBoundsGEP(argsBufInst, operandOffsets[i]);
+      auto addr = ti.getAddressForPointer(
+        Builder.CreateBitCast(ptr, ti.getStorageType()->getPointerTo()));
+      if (operand->getType().isAddress()) {
+        ti.initializeWithTake(*this, addr, getLoweredAddress(operand),
+                              operand->getType());
+      } else {
+        Explosion operandValue = getLoweredExplosion(operand);
+        cast<LoadableTypeInfo>(ti).initialize(*this, operandValue, addr);
+      }
+    }
+    args = argsBufInst;
   } else {
     // No arguments necessary, so the argument ought to be ignored by any
     // callbacks in the pattern.
@@ -5074,7 +5155,8 @@ void IRGenSILFunction::visitClassMethodInst(swift::ClassMethodInst *i) {
 void IRGenModule::emitSILStaticInitializers() {
   SmallVector<SILFunction *, 8> StaticInitializers;
   for (SILGlobalVariable &Global : getSILModule().getSILGlobals()) {
-    if (!Global.getInitializer())
+    SILInstruction *InitValue = Global.getStaticInitializerValue();
+    if (!InitValue)
       continue;
 
     auto *IRGlobal =
@@ -5085,7 +5167,15 @@ void IRGenModule::emitSILStaticInitializers() {
     if (!IRGlobal || !IRGlobal->hasInitializer())
       continue;
 
-    auto *InitValue = Global.getValueOfStaticInitializer();
+    if (auto *OI = dyn_cast<ObjectInst>(InitValue)) {
+      StructLayout *Layout = StaticObjectLayouts[&Global].get();
+      llvm::Constant *InitVal = emitConstantObject(*this, OI, Layout);
+      auto *ContainerTy = cast<llvm::StructType>(IRGlobal->getValueType());
+      auto *zero = llvm::ConstantAggregateZero::get(ContainerTy->getElementType(0));
+      IRGlobal->setInitializer(llvm::ConstantStruct::get(ContainerTy,
+                                                         {zero , InitVal}));
+      continue;
+    }
 
     // Set the IR global's initializer to the constant for this SIL
     // struct.

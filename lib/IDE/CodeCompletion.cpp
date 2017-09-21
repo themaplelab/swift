@@ -284,7 +284,7 @@ void getSwiftDocKeyword(const Decl* D, CommandWordsPairs &Words) {
 
 static bool shouldHideDeclFromCompletionResults(const ValueDecl *D) {
   // Hide private stdlib declarations.
-  if (D->isPrivateStdlibDecl(/*whitelistProtocols*/false) ||
+  if (D->isPrivateStdlibDecl(/*treatNonBuiltinProtocolsAsPublic*/false) ||
       // ShowInInterfaceAttr is for decls to show in interface as exception but
       // they are not intended to be used directly.
       D->getAttrs().hasAttribute<ShowInInterfaceAttr>())
@@ -1307,36 +1307,33 @@ class CodeCompletionCallbacksImpl : public CodeCompletionCallbacks {
     auto *DC = CurDeclContext->getInnermostTypeContext();
     if (!DC)
       return;
-    Type DT = DC->getDeclaredTypeOfContext();
-    if (DT.isNull() || DT->is<ErrorType>())
+    auto *CD = DC->getAsClassOrClassExtensionContext();
+    if (CD == nullptr)
       return;
-    Type ST = DT->getSuperclass();
+    Type ST = CD->getSuperclass();
     if (ST.isNull() || ST->is<ErrorType>())
       return;
-    if (ST->getNominalOrBoundGenericNominal()) {
-      CodeCompletionResultBuilder Builder(Sink,
-                                          CodeCompletionResult::ResultKind::Keyword,
-                                          SemanticContextKind::CurrentNominal,
-                                          {});
-      Builder.setKeywordKind(CodeCompletionKeywordKind::kw_super);
-      Builder.addTextChunk("super");
-      ST = ST->getReferenceStorageReferent();
-      assert(!ST->isVoid() && "Cannot get type name.");
-      Builder.addTypeAnnotation(ST.getString());
-    }
+
+    CodeCompletionResultBuilder Builder(Sink,
+                                        CodeCompletionResult::ResultKind::Keyword,
+                                        SemanticContextKind::CurrentNominal,
+                                        {});
+    Builder.setKeywordKind(CodeCompletionKeywordKind::kw_super);
+    Builder.addTextChunk("super");
+    Builder.addTypeAnnotation(ST.getString());
   }
 
   /// \brief Set to true when we have delivered code completion results
   /// to the \c Consumer.
   bool DeliveredResults = false;
 
-  bool typecheckContextImpl(DeclContext *DC) {
+  bool typecheckContext(DeclContext *DC) {
     // Nothing to type check in module context.
     if (DC->isModuleScopeContext())
       return true;
 
     // Type check the parent context.
-    if (!typecheckContextImpl(DC->getParent()))
+    if (!typecheckContext(DC->getParent()))
       return false;
 
     // Type-check this context.
@@ -1371,17 +1368,6 @@ class CodeCompletionCallbacksImpl : public CodeCompletionCallbacks {
     }
 
     llvm_unreachable("Unhandled DeclContextKind in switch.");
-  }
-
-  /// \returns true on success, false on failure.
-  bool typecheckContext() {
-    return typecheckContextImpl(CurDeclContext);
-  }
-
-  /// \returns true on success, false on failure.
-  bool typecheckParsedDecl() {
-    assert(ParsedDecl && "should have a parsed decl");
-    return typeCheckCompletionDecl(ParsedDecl);
   }
 
   Optional<std::pair<Type, ConcreteDeclRef>> typeCheckParsedExpr() {
@@ -2044,7 +2030,7 @@ public:
       if (auto NTD = BaseTy->getAnyNominal()) {
         auto *Module = NTD->getParentModule();
         auto Conformance = Module->lookupConformance(
-            BaseTy, ATD->getProtocol(), TypeResolver.get());
+            BaseTy, ATD->getProtocol());
         if (Conformance && Conformance->isConcrete()) {
           return Conformance->getConcrete()
               ->getTypeWitness(const_cast<AssociatedTypeDecl *>(ATD),
@@ -2057,7 +2043,7 @@ public:
 
   void addVarDeclRef(const VarDecl *VD, DeclVisibilityKind Reason) {
     if (!VD->hasName() ||
-        (VD->hasAccessibility() && !VD->isAccessibleFrom(CurrDeclContext)) ||
+        (VD->hasAccess() && !VD->isAccessibleFrom(CurrDeclContext)) ||
         shouldHideDeclFromCompletionResults(VD))
       return;
 
@@ -2213,7 +2199,7 @@ public:
 
         case DefaultArgumentKind::Normal:
         case DefaultArgumentKind::Inherited:
-        case DefaultArgumentKind::Nil:
+        case DefaultArgumentKind::NilLiteral:
         case DefaultArgumentKind::EmptyArray:
         case DefaultArgumentKind::EmptyDictionary:
           return !includeDefaultArgs;
@@ -2540,7 +2526,7 @@ public:
     }
 
     // If we won't be able to provide a result, bail out.
-    if (MemberType->is<ErrorType>() && addName.empty() && !needInit)
+    if (MemberType->hasError() && addName.empty() && !needInit)
       return;
 
     // Add the constructor, possibly including any default arguments.
@@ -2711,7 +2697,7 @@ public:
                          DeclVisibilityKind Reason,
                          bool HasTypeContext) {
     if (!EED->hasName() ||
-        (EED->hasAccessibility() && !EED->isAccessibleFrom(CurrDeclContext)) ||
+        (EED->hasAccess() && !EED->isAccessibleFrom(CurrDeclContext)) ||
         shouldHideDeclFromCompletionResults(EED))
       return;
 
@@ -4148,12 +4134,12 @@ public:
   void addAccessControl(const ValueDecl *VD,
                         CodeCompletionResultBuilder &Builder) {
     assert(CurrDeclContext->getAsNominalTypeOrNominalTypeExtensionContext());
-    auto AccessibilityOfContext =
+    auto AccessOfContext =
       CurrDeclContext->getAsNominalTypeOrNominalTypeExtensionContext()
         ->getFormalAccess();
-    auto Access = std::min(VD->getFormalAccess(), AccessibilityOfContext);
+    auto Access = std::min(VD->getFormalAccess(), AccessOfContext);
     // Only emit 'public', not needed otherwise.
-    if (Access >= Accessibility::Public)
+    if (Access >= AccessLevel::Public)
       Builder.addAccessControlKeyword(Access);
   }
 
@@ -5118,14 +5104,13 @@ void CodeCompletionCallbacksImpl::doneParsing() {
   // Add keywords even if type checking fails completely.
   addKeywords(CompletionContext.getResultSink(), MaybeFuncBody);
 
-  if (!typecheckContext())
-    return;
+  if (auto *DC = dyn_cast_or_null<DeclContext>(ParsedDecl)) {
+    if (DC->isChildContextOf(CurDeclContext))
+      CurDeclContext = DC;
+  }
 
-  if (ParsedDecl && !typecheckParsedDecl())
+  if (!typecheckContext(CurDeclContext))
     return;
-
-  if (auto *DC = dyn_cast_or_null<DeclContext>(ParsedDecl))
-    CurDeclContext = DC;
 
   Optional<Type> ExprType;
   ConcreteDeclRef ReferencedDecl = nullptr;

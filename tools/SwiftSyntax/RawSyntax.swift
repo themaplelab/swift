@@ -49,8 +49,8 @@ indirect enum RawSyntax: Codable {
   /// The source presence of this node.
   var presence: SourcePresence {
     switch self {
-      case .node(_, _, let presence),
-           .token(_, _, _, let presence): return presence
+    case .node(_, _, let presence): return presence
+    case .token(_, _, _, let presence): return presence
     }
   }
 
@@ -162,7 +162,7 @@ indirect enum RawSyntax: Codable {
   ///   - newChild: The new child that should occupy that index in the node.
   func replacingChild(_ index: Int,
                       with newChild: RawSyntax) -> RawSyntax {
-    precondition(index < layout.count, "cursor \(index) reached past layout")
+    precondition(index < layout.count, "Cursor \(index) reached past layout")
     var newLayout = layout
     newLayout[index] = newChild
     return replacingLayout(newLayout)

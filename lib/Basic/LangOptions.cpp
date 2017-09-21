@@ -98,6 +98,10 @@ checkPlatformConditionSupported(PlatformConditionKind Kind, StringRef Value,
   case PlatformConditionKind::Runtime:
     return contains(SupportedConditionalCompilationRuntimes, Value,
                     suggestions);
+  case PlatformConditionKind::CanImport:
+    // All importable names are valid.
+    // FIXME: Perform some kind of validation of the string?
+    return true;
   }
   llvm_unreachable("Unhandled enum value");
 }
@@ -110,6 +114,21 @@ LangOptions::getPlatformConditionValue(PlatformConditionKind Kind) const {
       return Opt.second;
   }
   return StringRef();
+}
+
+bool LangOptions::
+checkPlatformCondition(PlatformConditionKind Kind, StringRef Value) const {
+  // Check a special case that "macOS" is an alias of "OSX".
+  if (Kind == PlatformConditionKind::OS && Value == "macOS")
+    return checkPlatformCondition(Kind, "OSX");
+
+  for (auto &Opt : reversed(PlatformConditionValues)) {
+    if (Opt.first == Kind)
+      if (Opt.second == Value)
+        return true;
+  }
+
+  return false;
 }
 
 bool LangOptions::isCustomConditionalCompilationFlagSet(StringRef Name) const {

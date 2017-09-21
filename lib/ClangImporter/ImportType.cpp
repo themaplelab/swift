@@ -1591,7 +1591,7 @@ Type ClangImporter::Implementation::importFunctionReturnType(
      clangDecl->hasAttr<clang::CFReturnsRetainedAttr>() ||
      clangDecl->hasAttr<clang::CFReturnsNotRetainedAttr>());
 
-  // Check if we know more about the type from our whitelists.
+  // Fix up optionality.
   OptionalTypeKind OptionalityOfReturn;
   if (clangDecl->hasAttr<clang::ReturnsNonNullAttr>()) {
     OptionalityOfReturn = OTK_None;
@@ -1691,7 +1691,7 @@ ParameterList *ClangImporter::Implementation::importFunctionParameterList(
     // It doesn't actually matter which DeclContext we use, so just use the
     // imported header unit.
     auto paramInfo = createDeclWithClangNode<ParamDecl>(
-        param, Accessibility::Private,
+        param, AccessLevel::Private,
         VarDecl::Specifier::Owned, SourceLoc(), SourceLoc(), name,
         importSourceLoc(param->getLocation()), bodyName,
         dc->mapTypeIntoContext(swiftParamTy),
@@ -1745,7 +1745,7 @@ DefaultArgumentKind ClangImporter::Implementation::inferDefaultArgument(
     // Nullable trailing closure parameters default to 'nil'.
     if (isLastParameter &&
         (type->isFunctionPointerType() || type->isBlockPointerType()))
-      return DefaultArgumentKind::Nil;
+      return DefaultArgumentKind::NilLiteral;
 
     // NSZone parameters default to 'nil'.
     if (auto ptrType = type->getAs<clang::PointerType>()) {
@@ -1753,7 +1753,7 @@ DefaultArgumentKind ClangImporter::Implementation::inferDefaultArgument(
             = ptrType->getPointeeType()->getAs<clang::RecordType>()) {
         if (recType->isStructureOrClassType() &&
             recType->getDecl()->getName() == "_NSZone")
-          return DefaultArgumentKind::Nil;
+          return DefaultArgumentKind::NilLiteral;
       }
     }
   }
@@ -1765,7 +1765,7 @@ DefaultArgumentKind ClangImporter::Implementation::inferDefaultArgument(
   // Option sets default to "[]" if they have "Options" in their name.
   if (const clang::EnumType *enumTy = type->getAs<clang::EnumType>()) {
     const clang::EnumDecl *enumDef = enumTy->getDecl()->getDefinition();
-    if (nameImporter.getEnumKind(enumDef) == EnumKind::Options) {
+    if (enumDef && nameImporter.getEnumKind(enumDef) == EnumKind::Options) {
       auto enumName = enumDef->getName();
       for (auto word : reversed(camel_case::getWords(enumName))) {
         if (camel_case::sameWordIgnoreFirstCase(word, "options"))
@@ -1786,7 +1786,7 @@ DefaultArgumentKind ClangImporter::Implementation::inferDefaultArgument(
 
         auto emptyDictionaryKind = DefaultArgumentKind::EmptyDictionary;
         if (clangOptionality == OTK_Optional)
-          emptyDictionaryKind = DefaultArgumentKind::Nil;
+          emptyDictionaryKind = DefaultArgumentKind::NilLiteral;
 
         bool sawInfo = false;
         for (auto word : reversed(camel_case::getWords(searchStr))) {
@@ -2128,7 +2128,7 @@ Type ClangImporter::Implementation::importMethodType(
 
     // Set up the parameter info.
     auto paramInfo
-      = createDeclWithClangNode<ParamDecl>(param, Accessibility::Private,
+      = createDeclWithClangNode<ParamDecl>(param, AccessLevel::Private,
                                            VarDecl::Specifier::Owned,
                                            SourceLoc(), SourceLoc(), name,
                                            importSourceLoc(param->getLocation()),
@@ -2247,7 +2247,7 @@ Type ClangImporter::Implementation::importAccessorMethodType(
     SourceLoc nameLoc = importSourceLoc(param->getLocation());
     Identifier argLabel = functionName.getDeclName().getArgumentNames().front();
     auto paramInfo
-      = createDeclWithClangNode<ParamDecl>(param, Accessibility::Private,
+      = createDeclWithClangNode<ParamDecl>(param, AccessLevel::Private,
                                            VarDecl::Specifier::Owned,
                                            /*let loc*/SourceLoc(),
                                            /*label loc*/SourceLoc(),

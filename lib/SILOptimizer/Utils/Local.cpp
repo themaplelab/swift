@@ -35,11 +35,18 @@
 
 using namespace swift;
 
+static llvm::cl::opt<bool> EnableExpandAll("enable-expand-all",
+                                           llvm::cl::init(false));
+
 /// Creates an increment on \p Ptr before insertion point \p InsertPt that
 /// creates a strong_retain if \p Ptr has reference semantics itself or a
 /// retain_value if \p Ptr is a non-trivial value without reference-semantics.
-SILInstruction *
+NullablePtr<SILInstruction>
 swift::createIncrementBefore(SILValue Ptr, SILInstruction *InsertPt) {
+  // If we have a trivial type, just bail, there is no work to do.
+  if (Ptr->getType().isTrivial(InsertPt->getModule()))
+    return nullptr;
+
   // Set up the builder we use to insert at our insertion point.
   SILBuilder B(InsertPt);
   auto Loc = RegularLocation(SourceLoc());
@@ -56,8 +63,11 @@ swift::createIncrementBefore(SILValue Ptr, SILInstruction *InsertPt) {
 /// Creates a decrement on \p Ptr before insertion point \p InsertPt that
 /// creates a strong_release if \p Ptr has reference semantics itself or
 /// a release_value if \p Ptr is a non-trivial value without reference-semantics.
-SILInstruction *
+NullablePtr<SILInstruction>
 swift::createDecrementBefore(SILValue Ptr, SILInstruction *InsertPt) {
+  if (Ptr->getType().isTrivial(InsertPt->getModule()))
+    return nullptr;
+
   // Setup the builder we will use to insert at our insertion point.
   SILBuilder B(InsertPt);
   auto Loc = RegularLocation(SourceLoc());
@@ -222,9 +232,10 @@ void swift::recursivelyDeleteTriviallyDeadInstructions(SILInstruction *I,
 
 void swift::eraseUsesOfInstruction(SILInstruction *Inst,
                                    CallbackTy Callback) {
-  for (auto UI = Inst->use_begin(), E = Inst->use_end(); UI != E;) {
+  while (!Inst->use_empty()) {
+    auto UI = Inst->use_begin();
     auto *User = UI->getUser();
-    UI++;
+    assert(User && "User should never be NULL!");
 
     // If the instruction itself has any uses, recursively zap them so that
     // nothing uses this instruction.
@@ -327,10 +338,9 @@ void swift::replaceDeadApply(ApplySite Old, ValueBase *New) {
 
 bool swift::hasArchetypes(SubstitutionList Subs) {
   // Check whether any of the substitutions are dependent.
-  for (auto &sub : Subs)
-    if (sub.getReplacement()->hasArchetype())
-      return true;
-  return false;
+  return llvm::any_of(Subs, [](const Substitution &S) {
+    return S.getReplacement()->hasArchetype();
+  });
 }
 
 bool swift::mayBindDynamicSelf(SILFunction *F) {
@@ -1459,7 +1469,7 @@ optimizeBridgedObjCToSwiftCast(SILInstruction *Inst,
   auto BridgedProto =
       M.getASTContext().getProtocol(KnownProtocolKind::ObjectiveCBridgeable);
   auto Conf =
-      *M.getSwiftModule()->lookupConformance(Target, BridgedProto, nullptr);
+      *M.getSwiftModule()->lookupConformance(Target, BridgedProto);
 
   auto ParamTypes = BridgedFunc->getLoweredFunctionType()->getParameters();
 
@@ -1513,11 +1523,8 @@ optimizeBridgedObjCToSwiftCast(SILInstruction *Inst,
   auto *AI = Builder.createApply(Loc, FuncRef, Subs, Args, false);
 
   // If the source of a cast should be destroyed, emit a release.
-  if (auto *UCCAI = dyn_cast<UnconditionalCheckedCastAddrInst>(Inst)) {
-    assert(UCCAI->getConsumptionKind() == CastConsumptionKind::TakeAlways);
-    if (UCCAI->getConsumptionKind() == CastConsumptionKind::TakeAlways) {
-      Builder.createReleaseValue(Loc, SrcOp, Builder.getDefaultAtomicity());
-    }
+  if (isa<UnconditionalCheckedCastAddrInst>(Inst)) {
+    Builder.createReleaseValue(Loc, SrcOp, Builder.getDefaultAtomicity());
   }
 
   if (auto *CCABI = dyn_cast<CheckedCastAddrBranchInst>(Inst)) {
@@ -1590,7 +1597,7 @@ optimizeBridgedSwiftToObjCCast(SILInstruction *Inst,
       M.getASTContext().getProtocol(KnownProtocolKind::ObjectiveCBridgeable);
 
   auto Conf =
-      M.getSwiftModule()->lookupConformance(Source, BridgedProto, nullptr);
+      M.getSwiftModule()->lookupConformance(Source, BridgedProto);
 
   assert(Conf && "_ObjectiveCBridgeable conformance should exist");
   (void) Conf;
@@ -1998,10 +2005,17 @@ simplifyCheckedCastAddrBranchInst(CheckedCastAddrBranchInst *Inst) {
     // Since it is an addr cast, only address types are handled here.
     if (!Src->getType().isAddress() || !Dest->getType().isAddress()) {
       return nullptr;
-    } else if (!emitSuccessfulIndirectUnconditionalCast(
-                   Builder, Mod.getSwiftModule(), Loc,
-                   Inst->getConsumptionKind(), Src, SourceType, Dest,
-                   TargetType, Inst)) {
+    }
+    // For CopyOnSuccess casts, we could insert an explicit copy here, but this
+    // case does not happen in practice.
+    // Both TakeOnSuccess and TakeAlways can be reduced to an
+    // UnconditionalCheckedCast, since the failure path is irrelevant.
+    if (Inst->getConsumptionKind() == CastConsumptionKind::CopyOnSuccess)
+      return nullptr;
+
+    if (!emitSuccessfulIndirectUnconditionalCast(
+          Builder, Mod.getSwiftModule(), Loc, Src, SourceType, Dest,
+          TargetType, Inst)) {
       // No optimization was possible.
       return nullptr;
     }
@@ -2210,7 +2224,7 @@ SILInstruction *CastOptimizer::simplifyCheckedCastValueBranchInst(
     }
     if (!CastedValue)
       CastedValue = Builder.createUnconditionalCheckedCastValue(
-          Loc, CastConsumptionKind::TakeAlways, Op, LoweredTargetType);
+          Loc, Op, LoweredTargetType);
   } else {
     // No need to cast.
     CastedValue = Op;
@@ -2613,7 +2627,7 @@ static bool optimizeStaticallyKnownProtocolConformance(
 
     auto Proto = dyn_cast<ProtocolDecl>(TargetType->getAnyNominal());
     if (Proto) {
-      auto Conformance = SM->lookupConformance(SourceType, Proto, nullptr);
+      auto Conformance = SM->lookupConformance(SourceType, Proto);
       if (Conformance.hasValue()) {
         // SourceType is a non-existential type conforming to a
         // protocol represented by the TargetType.
@@ -2636,17 +2650,13 @@ static bool optimizeStaticallyKnownProtocolConformance(
               Conformances);
           B.createCopyAddr(
               Loc, Src, ExistentialAddr,
-              (Inst->getConsumptionKind() != CastConsumptionKind::CopyOnSuccess)
-                  ? IsTake_t::IsTake
-                  : IsTake_t::IsNotTake,
+              IsTake_t::IsTake,
               IsInitialization_t::IsInitialization);
           break;
         }
         case ExistentialRepresentation::Class: {
           auto Value = B.createLoad(Loc, Src,
                                     swift::LoadOwnershipQualifier::Unqualified);
-          if (Inst->getConsumptionKind() == CastConsumptionKind::CopyOnSuccess)
-            B.createRetainValue(Loc, Value, B.getDefaultAtomicity());
           auto Existential =
               B.createInitExistentialRef(Loc, Dest->getType().getObjectType(),
                                          SourceType, Value, Conformances);
@@ -2661,8 +2671,6 @@ static bool optimizeStaticallyKnownProtocolConformance(
               B.createProjectExistentialBox(Loc, Src->getType(), AllocBox);
           auto Value = B.createLoad(Loc, Src,
                                     swift::LoadOwnershipQualifier::Unqualified);
-          if (Inst->getConsumptionKind() == CastConsumptionKind::CopyOnSuccess)
-            B.createRetainValue(Loc, Value, B.getDefaultAtomicity());
           B.createStore(Loc, Value, Projection,
                         swift::StoreOwnershipQualifier::Unqualified);
           B.createStore(Loc, AllocBox, Dest,
@@ -2754,16 +2762,8 @@ optimizeUnconditionalCheckedCastAddrInst(UnconditionalCheckedCastAddrInst *Inst)
     }
 
     if (ResultNotUsed) {
-      switch (Inst->getConsumptionKind()) {
-        case CastConsumptionKind::TakeAlways:
-        case CastConsumptionKind::TakeOnSuccess: {
-          SILBuilder B(Inst);
-          B.createDestroyAddr(Inst->getLoc(), Inst->getSrc());
-          break;
-        }
-        case CastConsumptionKind::CopyOnSuccess:
-          break;
-      }
+      SILBuilder B(Inst);
+      B.createDestroyAddr(Inst->getLoc(), Inst->getSrc());
       if (DestroyDestInst)
         EraseInstAction(DestroyDestInst);
       EraseInstAction(Inst);
@@ -2772,7 +2772,7 @@ optimizeUnconditionalCheckedCastAddrInst(UnconditionalCheckedCastAddrInst *Inst)
     }
 
     // Try to apply the bridged casts optimizations.
-    auto NewI = optimizeBridgedCasts(Inst, Inst->getConsumptionKind(),
+    auto NewI = optimizeBridgedCasts(Inst, CastConsumptionKind::TakeAlways,
                                      false, Src, Dest, SourceType,
                                      TargetType, nullptr, nullptr);
     if (NewI) {
@@ -2795,9 +2795,9 @@ optimizeUnconditionalCheckedCastAddrInst(UnconditionalCheckedCastAddrInst *Inst)
       return nullptr;
 
     SILBuilderWithScope Builder(Inst);
-    if (!emitSuccessfulIndirectUnconditionalCast(
-            Builder, Mod.getSwiftModule(), Loc, Inst->getConsumptionKind(), Src,
-            SourceType, Dest, TargetType, Inst)) {
+    if (!emitSuccessfulIndirectUnconditionalCast(Builder, Mod.getSwiftModule(),
+                                                 Loc, Src, SourceType, Dest,
+                                                 TargetType, Inst)) {
       // No optimization was possible.
       return nullptr;
     }
@@ -2829,6 +2829,22 @@ bool swift::simplifyUsers(SILInstruction *I) {
   }
 
   return Changed;
+}
+
+/// True if a type can be expanded
+/// without a significant increase to code size.
+bool swift::shouldExpand(SILModule &Module, SILType Ty) {
+  if (EnableExpandAll) {
+    return true;
+  }
+  if (Ty.isAddressOnly(Module)) {
+    return false;
+  }
+  unsigned numFields = Module.Types.countNumberOfFields(Ty);
+  if (numFields > 6) {
+    return false;
+  }
+  return true;
 }
 
 /// Some support functions for the global-opt and let-properties-opts
@@ -2964,32 +2980,32 @@ bool swift::calleesAreStaticallyKnowable(SILModule &M, SILDeclRef Decl) {
   if (AFD->isDynamic())
     return false;
 
-  if (!AFD->hasAccessibility())
+  if (!AFD->hasAccess())
     return false;
 
   // Only consider 'private' members, unless we are in whole-module compilation.
   switch (AFD->getEffectiveAccess()) {
-  case Accessibility::Open:
+  case AccessLevel::Open:
     return false;
-  case Accessibility::Public:
+  case AccessLevel::Public:
     if (isa<ConstructorDecl>(AFD)) {
       // Constructors are special: a derived class in another module can
       // "override" a constructor if its class is "open", although the
       // constructor itself is not open.
       auto *ND = AFD->getDeclContext()
           ->getAsNominalTypeOrNominalTypeExtensionContext();
-      if (ND->getEffectiveAccess() == Accessibility::Open)
+      if (ND->getEffectiveAccess() == AccessLevel::Open)
         return false;
     }
     LLVM_FALLTHROUGH;
-  case Accessibility::Internal:
+  case AccessLevel::Internal:
     return M.isWholeModule();
-  case Accessibility::FilePrivate:
-  case Accessibility::Private:
+  case AccessLevel::FilePrivate:
+  case AccessLevel::Private:
     return true;
   }
 
-  llvm_unreachable("Unhandled Accessibility in switch.");
+  llvm_unreachable("Unhandled access level in switch.");
 }
 
 void swift::hoistAddressProjections(Operand &Op, SILInstruction *InsertBefore,

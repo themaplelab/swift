@@ -181,7 +181,7 @@ getBuiltinFunction(Identifier Id, ArrayRef<Type> argTypes, Type ResType,
                              TypeLoc::withoutLoc(ResType), DC);
   FD->setInterfaceType(FnType);
   FD->setImplicit();
-  FD->setAccessibility(Accessibility::Public);
+  FD->setAccess(AccessLevel::Public);
   return FD;
 }
 
@@ -246,7 +246,7 @@ getBuiltinGenericFunction(Identifier Id,
   func->setInterfaceType(InterfaceType);
   func->setGenericEnvironment(Env);
   func->setImplicit();
-  func->setAccessibility(Accessibility::Public);
+  func->setAccess(AccessLevel::Public);
 
   return func;
 }
@@ -1649,8 +1649,13 @@ ValueDecl *swift::getBuiltinValueDecl(ASTContext &Context, Identifier Id) {
     return getDestroyArrayOperation(Context, Id);
       
   case BuiltinValueKind::CopyArray:
+  case BuiltinValueKind::TakeArrayNoAlias:
   case BuiltinValueKind::TakeArrayFrontToBack:
   case BuiltinValueKind::TakeArrayBackToFront:
+  case BuiltinValueKind::AssignCopyArrayNoAlias:
+  case BuiltinValueKind::AssignCopyArrayFrontToBack:
+  case BuiltinValueKind::AssignCopyArrayBackToFront:
+  case BuiltinValueKind::AssignTakeArray:
     if (!Types.empty()) return nullptr;
     return getTransferArrayOperation(Context, Id);
 

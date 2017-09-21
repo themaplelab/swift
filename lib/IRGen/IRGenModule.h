@@ -111,6 +111,7 @@ namespace irgen {
   class ForeignFunctionInfo;
   class FormalType;
   class HeapLayout;
+  class StructLayout;
   class IRGenDebugInfo;
   class IRGenFunction;
   class LinkEntity;
@@ -350,9 +351,6 @@ public:
     }
     return nullptr;
   }
-
-  /// Return the effective triple used by clang.
-  llvm::Triple getEffectiveClangTriple();
 };
 
 class ConstantReference {
@@ -391,7 +389,7 @@ public:
   llvm::Module &Module;
   llvm::LLVMContext &LLVMContext;
   const llvm::DataLayout DataLayout;
-  const llvm::Triple Triple;
+  const llvm::Triple &Triple;
   std::unique_ptr<llvm::TargetMachine> TargetMachine;
   ModuleDecl *getSwiftModule() const;
   Lowering::TypeConverter &getSILTypes() const;
@@ -467,6 +465,7 @@ public:
   llvm::PointerType *FullTypeMetadataPtrTy;/// %swift.full_type*
   llvm::StructType *ProtocolDescriptorStructTy; /// %swift.protocol = type { ... }
   llvm::PointerType *ProtocolDescriptorPtrTy; /// %swift.protocol*
+  llvm::StructType *ProtocolRequirementStructTy; /// %swift.protocol_requirement
   union {
     llvm::PointerType *ObjCPtrTy;        /// %objc_object*
     llvm::PointerType *UnknownRefCountedPtrTy;
@@ -484,6 +483,7 @@ public:
   llvm::PointerType *ProtocolConformanceRecordPtrTy;
   llvm::StructType *NominalTypeDescriptorTy;
   llvm::PointerType *NominalTypeDescriptorPtrTy;
+  llvm::StructType *MethodDescriptorStructTy; /// %swift.method_descriptor
   llvm::StructType *TypeMetadataRecordTy;
   llvm::PointerType *TypeMetadataRecordPtrTy;
   llvm::StructType *FieldDescriptorTy;
@@ -491,7 +491,11 @@ public:
   llvm::PointerType *ErrorPtrTy;       /// %swift.error*
   llvm::StructType *OpenedErrorTripleTy; /// { %swift.opaque*, %swift.type*, i8** }
   llvm::PointerType *OpenedErrorTriplePtrTy; /// { %swift.opaque*, %swift.type*, i8** }*
-  
+
+  /// Used to create unique names for class layout types with tail allocated
+  /// elements.
+  unsigned TailElemTypeID = 0;
+
   unsigned InvariantMetadataID; /// !invariant.load
   unsigned DereferenceableID;   /// !dereferenceable
   llvm::MDNode *InvariantNode;
@@ -787,6 +791,10 @@ private:
   friend struct ::llvm::DenseMapInfo<swift::irgen::IRGenModule::FixedLayoutKey>;
   llvm::DenseMap<FixedLayoutKey, llvm::Constant *> PrivateFixedLayouts;
 
+  /// A cache for layouts of statically initialized objects.
+  llvm::DenseMap<SILGlobalVariable *, std::unique_ptr<StructLayout>>
+    StaticObjectLayouts;
+
   /// A mapping from order numbers to the LLVM functions which we
   /// created for the SIL functions with those orders.
   SuccessorMap<unsigned, llvm::Function*> EmittedFunctionsByOrder;
@@ -928,7 +936,7 @@ public:
   void emitStructDecl(StructDecl *D);
   void emitClassDecl(ClassDecl *D);
   void emitExtension(ExtensionDecl *D);
-  Address emitSILGlobalVariable(SILGlobalVariable *gv);
+  void emitSILGlobalVariable(SILGlobalVariable *gv);
   void emitCoverageMapping();
   void emitSILFunction(SILFunction *f);
   void emitSILWitnessTable(SILWitnessTable *wt);

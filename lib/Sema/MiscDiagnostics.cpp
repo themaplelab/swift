@@ -717,7 +717,7 @@ static void diagSyntacticUseRestrictions(TypeChecker &TC, const Expr *E,
       // - member references T.foo, T.Type, T.self, etc.
       // - constructor calls T()
       if (auto *ParentExpr = Parent.getAsExpr()) {
-        // This is the white-list of accepted syntactic forms.
+        // This is an exhaustive list of the accepted syntactic forms.
         if (isa<ErrorExpr>(ParentExpr) ||
             isa<DotSelfExpr>(ParentExpr) ||               // T.self
             isa<CallExpr>(ParentExpr) ||                  // T()
@@ -2494,7 +2494,7 @@ void VarDeclUsageChecker::
 markBaseOfAbstractStorageDeclStore(Expr *base, ConcreteDeclRef decl) {
   // If the base is a class or an rvalue, then this store just loads the base.
   if (base->getType()->isAnyClassReferenceType() ||
-      !(base->getType()->hasLValueType() || base->getType()->is<InOutType>())) {
+      !(base->getType()->hasLValueType() || base->isSemanticallyInOutExpr())) {
     base->walk(*this);
     return;
   }
@@ -2502,7 +2502,7 @@ markBaseOfAbstractStorageDeclStore(Expr *base, ConcreteDeclRef decl) {
   // If the store is to a non-mutating member, then this is just a load, even
   // if the base is an inout expr.
   auto *ASD = cast<AbstractStorageDecl>(decl.getDecl());
-  if (ASD->isSettable(nullptr) && ASD->isSetterNonMutating()) {
+  if (ASD->isSettable(nullptr) && !ASD->isSetterMutating()) {
     // Sema conservatively converts the base to inout expr when it is an lvalue.
     // Look through it because we know it isn't actually doing a load/store.
     if (auto *ioe = dyn_cast<InOutExpr>(base))
@@ -2561,6 +2561,9 @@ void VarDeclUsageChecker::markStoredOrInOutExpr(Expr *E, unsigned Flags) {
     if (KPA->getKeyPath()->getType()->getAnyNominal()
           == C.getWritableKeyPathDecl())
       markStoredOrInOutExpr(KPA->getBase(), RK_Written|RK_Read);
+    if (KPA->getKeyPath()->getType()->getAnyNominal()
+          == C.getReferenceWritableKeyPathDecl())
+      markStoredOrInOutExpr(KPA->getBase(), RK_Read);
     return;
   }
   
@@ -2995,7 +2998,9 @@ public:
       if (!ctor) return { true, expr };
 
       // Make sure the constructor is within Selector.
-      auto ctorContextType = ctor->getDeclContext()->getDeclaredTypeOfContext();
+      auto ctorContextType = ctor->getDeclContext()
+          ->getAsNominalTypeOrNominalTypeExtensionContext()
+          ->getDeclaredType();
       if (!ctorContextType || !ctorContextType->isEqual(SelectorTy))
         return { true, expr };
 
@@ -3322,6 +3327,10 @@ static void diagnoseUnintendedOptionalBehavior(TypeChecker &TC, const Expr *E,
       if (!E || isa<ErrorExpr>(E) || !E->getType())
         return { false, E };
 
+      if (auto *CE = dyn_cast<AbstractClosureExpr>(E))
+        if (!CE->hasSingleExpressionBody())
+          return { false, E };
+
       if (auto *coercion = dyn_cast<CoerceExpr>(E)) {
         if (E->getType()->isAny() && isa<ErasureExpr>(coercion->getSubExpr()))
           ErasureCoercedToAny.insert(coercion->getSubExpr());
@@ -3425,35 +3434,35 @@ void swift::performStmtDiagnostics(TypeChecker &TC, const Stmt *S) {
 // Utility functions
 //===----------------------------------------------------------------------===//
 
-void swift::fixItAccessibility(InFlightDiagnostic &diag, ValueDecl *VD,
-                               Accessibility desiredAccess, bool isForSetter) {
+void swift::fixItAccess(InFlightDiagnostic &diag, ValueDecl *VD,
+                        AccessLevel desiredAccess, bool isForSetter) {
   StringRef fixItString;
   switch (desiredAccess) {
-  case Accessibility::Private:      fixItString = "private ";      break;
-  case Accessibility::FilePrivate:  fixItString = "fileprivate ";  break;
-  case Accessibility::Internal:     fixItString = "internal ";     break;
-  case Accessibility::Public:       fixItString = "public ";       break;
-  case Accessibility::Open:         fixItString = "open ";         break;
+  case AccessLevel::Private:      fixItString = "private ";      break;
+  case AccessLevel::FilePrivate:  fixItString = "fileprivate ";  break;
+  case AccessLevel::Internal:     fixItString = "internal ";     break;
+  case AccessLevel::Public:       fixItString = "public ";       break;
+  case AccessLevel::Open:         fixItString = "open ";         break;
   }
 
   DeclAttributes &attrs = VD->getAttrs();
-  AbstractAccessibilityAttr *attr;
+  AbstractAccessControlAttr *attr;
   if (isForSetter) {
-    attr = attrs.getAttribute<SetterAccessibilityAttr>();
-    cast<AbstractStorageDecl>(VD)->overwriteSetterAccessibility(desiredAccess);
+    attr = attrs.getAttribute<SetterAccessAttr>();
+    cast<AbstractStorageDecl>(VD)->overwriteSetterAccess(desiredAccess);
   } else {
-    attr = attrs.getAttribute<AccessibilityAttr>();
-    VD->overwriteAccessibility(desiredAccess);
+    attr = attrs.getAttribute<AccessControlAttr>();
+    VD->overwriteAccess(desiredAccess);
 
     if (auto *ASD = dyn_cast<AbstractStorageDecl>(VD)) {
       if (auto *getter = ASD->getGetter())
-        getter->overwriteAccessibility(desiredAccess);
+        getter->overwriteAccess(desiredAccess);
 
-      if (auto *setterAttr = attrs.getAttribute<SetterAccessibilityAttr>()) {
+      if (auto *setterAttr = attrs.getAttribute<SetterAccessAttr>()) {
         if (setterAttr->getAccess() > desiredAccess)
-          fixItAccessibility(diag, VD, desiredAccess, true);
+          fixItAccess(diag, VD, desiredAccess, true);
       } else {
-        ASD->overwriteSetterAccessibility(desiredAccess);
+        ASD->overwriteSetterAccess(desiredAccess);
       }
     }
   }

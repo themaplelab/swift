@@ -578,13 +578,8 @@ getNormalInvocationArguments(std::vector<std::string> &invocationArgStrs,
   }
 
   const std::string &moduleCachePath = importerOpts.ModuleCachePath;
-
-  // Set the module and API notes cache paths to the same location.
   if (!moduleCachePath.empty()) {
     invocationArgStrs.push_back("-fmodules-cache-path=");
-    invocationArgStrs.back().append(moduleCachePath);
-
-    invocationArgStrs.push_back("-fapinotes-cache-path=");
     invocationArgStrs.back().append(moduleCachePath);
   }
 
@@ -1655,7 +1650,7 @@ ClangImporter::Implementation::Implementation(ASTContext &ctx,
       BridgingHeaderExplicitlyRequested(!opts.BridgingHeader.empty()),
       DisableAdapterModules(opts.DisableAdapterModules),
       IsReadingBridgingPCH(false),
-      CurrentVersion(nameVersionFromOptions(ctx.LangOpts)),
+      CurrentVersion(ImportNameVersion::fromOptions(ctx.LangOpts)),
       BridgingHeaderLookupTable(new SwiftLookupTable(nullptr)),
       platformAvailability(ctx.LangOpts),
       nameImporter() {}
@@ -2066,13 +2061,12 @@ public:
   }
 };
 
-/// A hack to blacklist particular types in the Darwin module on
-/// Apple platforms.
-class DarwinBlacklistDeclConsumer : public swift::VisibleDeclConsumer {
+/// A hack to hide particular types in the "Darwin" module on Apple platforms.
+class DarwinLegacyFilterDeclConsumer : public swift::VisibleDeclConsumer {
   swift::VisibleDeclConsumer &NextConsumer;
   clang::ASTContext &ClangASTContext;
 
-  bool isBlacklisted(ValueDecl *VD) {
+  bool shouldDiscard(ValueDecl *VD) {
     if (!VD->hasClangNode())
       return false;
 
@@ -2104,7 +2098,7 @@ class DarwinBlacklistDeclConsumer : public swift::VisibleDeclConsumer {
 
     if (clangModule->Parent &&
         clangModule->Parent->Name == "OSServices") {
-      // Note that this is a blacklist rather than a whitelist.
+      // Note that this is a list of things to /drop/ rather than to /keep/.
       // We're more likely to see new, modern headers added to OSServices.
       return llvm::StringSwitch<bool>(clangModule->Name)
           .Cases("IconStorage", "KeychainCore", "Power", true)
@@ -2117,17 +2111,17 @@ class DarwinBlacklistDeclConsumer : public swift::VisibleDeclConsumer {
   }
 
 public:
-  DarwinBlacklistDeclConsumer(swift::VisibleDeclConsumer &consumer,
-                              clang::ASTContext &clangASTContext)
+  DarwinLegacyFilterDeclConsumer(swift::VisibleDeclConsumer &consumer,
+                                 clang::ASTContext &clangASTContext)
       : NextConsumer(consumer), ClangASTContext(clangASTContext) {}
 
-  static bool needsBlacklist(const clang::Module *topLevelModule) {
+  static bool needsFiltering(const clang::Module *topLevelModule) {
     return topLevelModule && (topLevelModule->Name == "Darwin" ||
                               topLevelModule->Name == "CoreServices");
   }
 
   void foundDecl(ValueDecl *VD, DeclVisibilityKind Reason) override {
-    if (!isBlacklisted(VD))
+    if (!shouldDiscard(VD))
       NextConsumer.foundDecl(VD, Reason);
   }
 };
@@ -2280,13 +2274,13 @@ void ClangModuleUnit::lookupVisibleDecls(ModuleDecl::AccessPathTy accessPath,
   // FIXME: Respect the access path.
   FilteringVisibleDeclConsumer filterConsumer(consumer, this);
 
-  DarwinBlacklistDeclConsumer darwinBlacklistConsumer(filterConsumer,
+  DarwinLegacyFilterDeclConsumer darwinFilterConsumer(filterConsumer,
                                                       getClangASTContext());
 
   swift::VisibleDeclConsumer *actualConsumer = &filterConsumer;
   if (lookupKind == NLKind::UnqualifiedLookup &&
-      DarwinBlacklistDeclConsumer::needsBlacklist(clangModule)) {
-    actualConsumer = &darwinBlacklistConsumer;
+      DarwinLegacyFilterDeclConsumer::needsFiltering(clangModule)) {
+    actualConsumer = &darwinFilterConsumer;
   }
 
   // Find the corresponding lookup table.
@@ -2312,15 +2306,15 @@ public:
 void ClangModuleUnit::getTopLevelDecls(SmallVectorImpl<Decl*> &results) const {
   VectorDeclPtrConsumer consumer(results);
   FilteringDeclaredDeclConsumer filterConsumer(consumer, this);
-  DarwinBlacklistDeclConsumer blacklistConsumer(filterConsumer,
-                                                getClangASTContext());
+  DarwinLegacyFilterDeclConsumer darwinFilterConsumer(filterConsumer,
+                                                      getClangASTContext());
 
   const clang::Module *topLevelModule =
     clangModule ? clangModule->getTopLevelModule() : nullptr;
 
   swift::VisibleDeclConsumer *actualConsumer = &filterConsumer;
-  if (DarwinBlacklistDeclConsumer::needsBlacklist(topLevelModule))
-    actualConsumer = &blacklistConsumer;
+  if (DarwinLegacyFilterDeclConsumer::needsFiltering(topLevelModule))
+    actualConsumer = &darwinFilterConsumer;
 
   // Find the corresponding lookup table.
   if (auto lookupTable = owner.findLookupTable(topLevelModule)) {
@@ -2424,13 +2418,13 @@ void ClangModuleUnit::lookupValue(ModuleDecl::AccessPathTy accessPath,
   VectorDeclConsumer vectorWriter(results);
   FilteringVisibleDeclConsumer filteringConsumer(vectorWriter, this);
 
-  DarwinBlacklistDeclConsumer darwinBlacklistConsumer(filteringConsumer,
+  DarwinLegacyFilterDeclConsumer darwinFilterConsumer(filteringConsumer,
                                                       getClangASTContext());
 
   swift::VisibleDeclConsumer *consumer = &filteringConsumer;
   if (lookupKind == NLKind::UnqualifiedLookup &&
-      DarwinBlacklistDeclConsumer::needsBlacklist(clangModule)) {
-    consumer = &darwinBlacklistConsumer;
+      DarwinLegacyFilterDeclConsumer::needsFiltering(clangModule)) {
+    consumer = &darwinFilterConsumer;
   }
 
   // Find the corresponding lookup table.
@@ -2514,32 +2508,34 @@ ClangModuleUnit::lookupNestedType(Identifier name,
 
     bool anyMatching = false;
     TypeDecl *originalDecl = nullptr;
-    owner.forEachDistinctName(clangTypeDecl, [&](ImportedName newName,
-                                                 ImportNameVersion nameVersion){
+    owner.forEachDistinctName(clangTypeDecl,
+                              [&](ImportedName newName,
+                                  ImportNameVersion nameVersion) -> bool {
       if (anyMatching)
-        return;
+        return true;
       if (!newName.getDeclName().isSimpleName(name))
-        return;
+        return true;
 
       auto decl = dyn_cast_or_null<TypeDecl>(
           owner.importDeclReal(clangTypeDecl, nameVersion));
       if (!decl)
-        return;
+        return false;
 
       if (!originalDecl)
         originalDecl = decl;
       else if (originalDecl == decl)
-        return;
+        return true;
 
       auto *importedContext = decl->getDeclContext()->
           getAsNominalTypeOrNominalTypeExtensionContext();
       if (importedContext != baseType)
-        return;
+        return true;
 
       assert(decl->getFullName().matchesRef(name) &&
              "importFullName behaved differently from importDecl");
       results.push_back(decl);
       anyMatching = true;
+      return true;
     });
   }
 
@@ -2865,6 +2861,13 @@ clang::ASTContext &ClangModuleUnit::getClangASTContext() const {
   return owner.getClangASTContext();
 }
 
+std::string ClangModuleUnit::getExportedModuleName() const {
+  if (clangModule && !clangModule->ExportAsModule.empty())
+    return clangModule->ExportAsModule;
+
+  return getParentModule()->getName().str();
+}
+
 ModuleDecl *ClangModuleUnit::getAdapterModule() const {
   if (!clangModule)
     return nullptr;
@@ -3156,10 +3159,8 @@ void ClangImporter::Implementation::lookupValue(
         const clang::NamedDecl *recentClangDecl =
             clangDecl->getMostRecentDecl();
 
-        forEachImportNameVersionFromCurrent(CurrentVersion,
-                                            [&](ImportNameVersion nameVersion) {
-          if (nameVersion == CurrentVersion)
-            return;
+        CurrentVersion.forEachOtherImportNameVersion(
+            [&](ImportNameVersion nameVersion) {
           if (anyMatching)
             return;
 
@@ -3217,12 +3218,12 @@ void ClangImporter::Implementation::lookupObjCMembers(
 
     forEachDistinctName(clangDecl,
                         [&](ImportedName importedName,
-                            ImportNameVersion nameVersion) {
+                            ImportNameVersion nameVersion) -> bool {
       // Import the declaration.
       auto decl =
           cast_or_null<ValueDecl>(importDeclReal(clangDecl, nameVersion));
       if (!decl)
-        return;
+        return false;
 
       // If the name we found matches, report the declaration.
       // FIXME: If we didn't need to check alternate decls here, we could avoid
@@ -3238,6 +3239,7 @@ void ClangImporter::Implementation::lookupObjCMembers(
           consumer.foundDecl(alternate, DeclVisibilityKind::DynamicLookup);
         }
       }
+      return true;
     });
   }
 }
@@ -3328,4 +3330,24 @@ importName(const clang::NamedDecl *D,
            clang::DeclarationName preferredName) {
   return Impl.importFullName(D, Impl.CurrentVersion, preferredName).
     getDeclName();
+}
+
+bool swift::isInOverlayModuleForImportedModule(const DeclContext *overlayDC,
+                                               const DeclContext *importedDC) {
+  overlayDC = overlayDC->getModuleScopeContext();
+  importedDC = importedDC->getModuleScopeContext();
+
+  auto importedClangModuleUnit = dyn_cast<ClangModuleUnit>(importedDC);
+  if (!importedClangModuleUnit)
+    return false;
+
+  auto overlayModule = overlayDC->getParentModule();
+  if (overlayModule == importedClangModuleUnit->getAdapterModule())
+    return true;
+
+  // Is this a private module that's re-exported to the public (overlay) name?
+  auto clangModule =
+    importedClangModuleUnit->getClangModule()->getTopLevelModule();
+  return !clangModule->ExportAsModule.empty() &&
+    clangModule->ExportAsModule == overlayModule->getName().str();
 }

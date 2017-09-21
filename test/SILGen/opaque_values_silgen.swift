@@ -90,15 +90,19 @@ enum AddressOnlyEnum {
 // ---
 // CHECK-LABEL: sil private @_T020opaque_values_silgen16OpaqueTupleClassC8inAndOutx_xtx_xt1x_tFAA0dF0CADxxAE_tFTV : $@convention(method) <U> (@in (U, U), @guaranteed OpaqueTupleClass<U>) -> @out (U, U) {
 // CHECK: bb0([[ARG0:%.*]] : $(U, U), [[ARG1:%.*]] : $OpaqueTupleClass<U>):
-// CHECK:   [[TELEM0:%.*]] = tuple_extract [[ARG0]] : $(U, U), 0
-// CHECK:   [[TELEM1:%.*]] = tuple_extract [[ARG0]] : $(U, U), 1
-// CHECK:   [[APPLY:%.*]] = apply {{.*}}<U>([[TELEM0]], [[TELEM1]], [[ARG1]]) : $@convention(method) <τ_0_0> (@in τ_0_0, @in τ_0_0, @guaranteed OpaqueTupleClass<τ_0_0>) -> (@out τ_0_0, @out τ_0_0)
-// CHECK:   [[BORROWED_T:%.*]] = begin_borrow [[APPLY]]
-// CHECK:   [[BORROWED_T_EXT0:%.*]] = tuple_extract [[BORROWED_T]] : $(U, U), 0
-// CHECK:   [[RETVAL0:%.*]] = copy_value [[BORROWED_T_EXT0]] : $U
-// CHECK:   [[BORROWED_T_EXT1:%.*]] = tuple_extract [[BORROWED_T]] : $(U, U), 1
-// CHECK:   [[RETVAL1:%.*]] = copy_value [[BORROWED_T_EXT1]] : $U
-// CHECK:   end_borrow [[BORROWED_T]]
+// CHECK:   [[BORROWED_ARG0:%.*]] = begin_borrow [[ARG0]] : $(U, U)
+// CHECK:   [[TELEM0:%.*]] = tuple_extract [[BORROWED_ARG0]] : $(U, U), 0
+// CHECK:   [[COPY0:%.*]] = copy_value [[TELEM0]] : $U
+// CHECK:   [[TELEM1:%.*]] = tuple_extract [[BORROWED_ARG0]] : $(U, U), 1
+// CHECK:   [[COPY1:%.*]] = copy_value [[TELEM1]] : $U
+// CHECK:   end_borrow [[BORROWED_ARG0]]
+// CHECK:   [[APPLY:%.*]] = apply {{.*}}<U>([[COPY0]], [[COPY1]], [[ARG1]]) : $@convention(method) <τ_0_0> (@in τ_0_0, @in τ_0_0, @guaranteed OpaqueTupleClass<τ_0_0>) -> (@out τ_0_0, @out τ_0_0)
+// CHECK:   [[BORROWED_CALL:%.*]] = begin_borrow [[APPLY]]
+// CHECK:   [[BORROWED_CALL_EXT0:%.*]] = tuple_extract [[BORROWED_CALL]] : $(U, U), 0
+// CHECK:   [[RETVAL0:%.*]] = copy_value [[BORROWED_CALL_EXT0]] : $U
+// CHECK:   [[BORROWED_CALL_EXT1:%.*]] = tuple_extract [[BORROWED_CALL]] : $(U, U), 1
+// CHECK:   [[RETVAL1:%.*]] = copy_value [[BORROWED_CALL_EXT1]] : $U
+// CHECK:   end_borrow [[BORROWED_CALL]]
 // CHECK:   [[RETVAL:%.*]] = tuple ([[RETVAL0]] : $U, [[RETVAL1]] : $U)
 // CHECK:   return [[RETVAL]]
 // CHECK-LABEL: } // end sil function '_T020opaque_values_silgen16OpaqueTupleClassC8inAndOutx_xtx_xt1x_tFAA0dF0CADxxAE_tFTV'
@@ -129,14 +133,13 @@ enum AddressOnlyEnum {
 // ---
 // CHECK-LABEL: sil shared [transparent] [serializable] [reabstraction_thunk] @_T020opaque_values_silgen1P_pAA13TrivialStructVIxid_AA2P2_pAaE_pIxir_TR : $@convention(thin) (@in P2, @owned @callee_owned (@in P) -> TrivialStruct) -> @out P2 {
 // CHECK: bb0([[ARG0:%.*]] : $P2, [[ARG1:%.*]] : $@callee_owned (@in P) -> TrivialStruct):
-// CHECK:   [[OPENED_ARG:%.*]] = open_existential_value [[ARG0]] : $P2 to $@opened({{.*}}) P2
+// CHECK:   [[BORROWED_ARG:%.*]] = begin_borrow [[ARG0]] : $P2
+// CHECK:   [[OPENED_ARG:%.*]] = open_existential_value [[BORROWED_ARG]] : $P2 to $@opened({{.*}}) P2
 // CHECK:   [[COPIED_VAL:%.*]] = copy_value [[OPENED_ARG]]
 // CHECK:   [[INIT_P:%.*]] = init_existential_value [[COPIED_VAL]] : $@opened({{.*}}) P2, $@opened({{.*}}) P2, $P
-// CHECK:   [[BORROWED_ARG:%.*]] = begin_borrow [[INIT_P]]
-// CHECK:   [[APPLY_P:%.*]] = apply [[ARG1]]([[BORROWED_ARG]]) : $@callee_owned (@in P) -> TrivialStruct
+// CHECK:   [[APPLY_P:%.*]] = apply [[ARG1]]([[INIT_P]]) : $@callee_owned (@in P) -> TrivialStruct
 // CHECK:   [[RETVAL:%.*]] = init_existential_value [[APPLY_P]] : $TrivialStruct, $TrivialStruct, $P2
-// CHECK:   end_borrow [[BORROWED_ARG]] from [[INIT_P]] : $P, $P
-// CHECK:   destroy_value [[COPIED_VAL]]
+// CHECK:   end_borrow [[BORROWED_ARG]] from [[ARG0]] : $P2, $P2
 // CHECK:   destroy_value [[ARG0]]
 // CHECK:   return [[RETVAL]] : $P2
 // CHECK-LABEL: } // end sil function '_T020opaque_values_silgen1P_pAA13TrivialStructVIxid_AA2P2_pAaE_pIxir_TR'
@@ -154,11 +157,8 @@ enum AddressOnlyEnum {
 // CHECK:   [[ENUM_S:%.*]] = enum $Optional<P>, #Optional.some!enumelt.1, [[INIT_S]] : $P
 // CHECK:   br bb3([[ENUM_S]] : $Optional<P>)
 // CHECK: bb3([[OPT_S:%.*]] : $Optional<P>):
-// CHECK:   [[BORROWED_ARG:%.*]] = begin_borrow [[OPT_S]]
-// CHECK:   [[APPLY_P:%.*]] = apply [[ARG1]]([[BORROWED_ARG]]) : $@callee_owned (@in Optional<P>) -> TrivialStruct
+// CHECK:   [[APPLY_P:%.*]] = apply [[ARG1]]([[OPT_S]]) : $@callee_owned (@in Optional<P>) -> TrivialStruct
 // CHECK:   [[RETVAL:%.*]] = init_existential_value [[APPLY_P]] : $TrivialStruct, $TrivialStruct, $P2
-// CHECK:   end_borrow [[BORROWED_ARG]] from [[OPT_S]] : $Optional<P>, $Optional<P>
-// CHECK:   destroy_value [[OPT_S]]
 // CHECK:   return [[RETVAL]] : $P2
 // CHECK-LABEL: } // end sil function '_T020opaque_values_silgen1P_pSgAA13TrivialStructVIxid_AESgAA2P2_pIxyr_TR'
 
@@ -410,7 +410,7 @@ func s160_______callAnyArg() {
 // CHECK:   [[INT_TYPE:%.*]] = metatype $@thin Int.Type
 // CHECK:   [[INT_LIT:%.*]] = integer_literal $Builtin.Int2048, 42
 // CHECK:   [[INT_ARG:%.*]] = apply %{{.*}}([[INT_LIT]], [[INT_TYPE]]) : $@convention(method) (Builtin.Int2048, @thin Int.Type) -> Int
-// CHECK:   [[INT_CAST:%.*]] = unconditional_checked_cast_value take_always [[INT_ARG]] : $Int to $T
+// CHECK:   [[INT_CAST:%.*]] = unconditional_checked_cast_value [[INT_ARG]] : $Int to $T
 // CHECK:   [[CAST_BORROW:%.*]] = begin_borrow [[INT_CAST]] : $T
 // CHECK:   [[RETURN_VAL:%.*]] = copy_value [[CAST_BORROW]] : $T
 // CHECK:   end_borrow [[CAST_BORROW]] from [[INT_CAST]] : $T, $T
@@ -428,7 +428,7 @@ func s170____force_convert<T>() -> T {
 // CHECK: bb0:
 // CHECK:   [[INT_LIT:%.*]] = integer_literal $Builtin.Int2048, 42
 // CHECK:   [[INT_ARG:%.*]] = apply %{{.*}}([[INT_LIT]], [[INT_TYPE]]) : $@convention(method) (Builtin.Int2048, @thin Int.Type) -> Int
-// CHECK:   [[INT_CAST:%.*]] = unconditional_checked_cast_value take_always [[INT_ARG]] : $Int to $Foo
+// CHECK:   [[INT_CAST:%.*]] = unconditional_checked_cast_value [[INT_ARG]] : $Int to $Foo
 // CHECK:   return [[INT_CAST]] : $Foo
 // CHECK-LABEL: } // end sil function '_T020opaque_values_silgen21s180_______return_fooAA3Foo_pyF'
 func s180_______return_foo() -> Foo {
@@ -456,9 +456,11 @@ func s190___return_foo_var() -> Foo {
 // CHECK:   [[GLOBAL:%.*]] = global_addr {{.*}} : $*Foo
 // CHECK:   [[READ:%.*]] = begin_access [read] [dynamic] [[GLOBAL]] : $*Foo
 // CHECK:   [[LOAD_GLOBAL:%.*]] = load [copy] [[READ]] : $*Foo
-// CHECK:   [[OPEN_VAR:%.*]] = open_existential_value [[LOAD_GLOBAL]] : $Foo
+// CHECK:   [[BORROW:%.*]] = begin_borrow [[LOAD_GLOBAL]] : $Foo
+// CHECK:   [[OPEN_VAR:%.*]] = open_existential_value [[BORROW]] : $Foo
 // CHECK:   [[WITNESS:%.*]] = witness_method $@opened
 // CHECK:   apply [[WITNESS]]
+// CHECK:   end_borrow [[BORROW]]
 // CHECK:   destroy_value [[LOAD_GLOBAL]]
 // CHECK:   return %{{.*}} : $()
 // CHECK-LABEL: } // end sil function '_T020opaque_values_silgen21s200______use_foo_varyyF'
@@ -867,7 +869,7 @@ func s400______maybeCloneP(c: Clonable) {
 // ---
 // CHECK-LABEL: sil hidden @_T020opaque_values_silgen21s410__globalRvalueGetS2iF : $@convention(thin) (Int) -> Int {
 // CHECK: bb0([[ARG:%.*]] : $Int):
-// CHECK:   [[GLOBAL_ADDR:%.*]] = global_addr @_T020opaque_values_silgen16subscriptableGetAA013SubscriptableE0_pv : $*SubscriptableGet
+// CHECK:   [[GLOBAL_ADDR:%.*]] = global_addr @_T020opaque_values_silgen16subscriptableGetAA013SubscriptableE0_pvp : $*SubscriptableGet
 // CHECK:   [[READ:%.*]] = begin_access [read] [dynamic] [[GLOBAL_ADDR]] : $*SubscriptableGet
 // CHECK:   [[OPEN_ARG:%.*]] = open_existential_addr immutable_access [[READ]] : $*SubscriptableGet to $*@opened
 // CHECK:   [[GET_OPAQUE:%.*]] = load [copy] [[OPEN_ARG]] : $*@opened
@@ -883,7 +885,7 @@ func s410__globalRvalueGet(_ i : Int) -> Int {
 // ---
 // CHECK-LABEL: sil hidden @_T020opaque_values_silgen21s420__globalLvalueGetS2iF : $@convention(thin) (Int) -> Int {
 // CHECK: bb0([[ARG:%.*]] : $Int):
-// CHECK:   [[GLOBAL_ADDR:%.*]] = global_addr @_T020opaque_values_silgen19subscriptableGetSetAA013SubscriptableeF0_pv : $*SubscriptableGetSet
+// CHECK:   [[GLOBAL_ADDR:%.*]] = global_addr @_T020opaque_values_silgen19subscriptableGetSetAA013SubscriptableeF0_pvp : $*SubscriptableGetSet
 // CHECK:   [[READ:%.*]] = begin_access [read] [dynamic] [[GLOBAL_ADDR]] : $*SubscriptableGetSet
 // CHECK:   [[OPEN_ARG:%.*]] = open_existential_addr immutable_access [[READ]] : $*SubscriptableGetSet to $*@opened
 // CHECK:   [[GET_OPAQUE:%.*]] = load [copy] [[OPEN_ARG]] : $*@opened
@@ -902,12 +904,19 @@ func s420__globalLvalueGet(_ i : Int) -> Int {
 // CHECK:   [[APPLY_T:%.*]] = apply %{{.*}}<((T) -> (), T)>() : $@convention(thin) <τ_0_0> () -> @out Optional<(Int, τ_0_0)>
 // CHECK:   switch_enum [[APPLY_T]] : $Optional<(Int, (@callee_owned (@in T) -> @out (), T))>, case #Optional.some!enumelt.1: bb2, case #Optional.none!enumelt: bb1
 // CHECK: bb2([[ENUMARG:%.*]] : $(Int, (@callee_owned (@in T) -> @out (), T))):
-// CHECK:   [[TELEM0:%.*]] = tuple_extract [[ENUMARG]] : $(Int, (@callee_owned (@in T) -> @out (), T)), 0
-// CHECK:   [[TELEM1:%.*]] = tuple_extract [[ENUMARG]] : $(Int, (@callee_owned (@in T) -> @out (), T)), 1
-// CHECK:   [[TELEM1P0:%.*]] = tuple_extract [[TELEM1]] : $(@callee_owned (@in T) -> @out (), T), 0
-// CHECK:   [[TELEM1P1:%.*]] = tuple_extract [[TELEM1]] : $(@callee_owned (@in T) -> @out (), T), 1
-// CHECK:   [[PAPPLY:%.*]] = partial_apply %{{.*}}<T>([[TELEM1P0]]) : $@convention(thin) <τ_0_0> (@in τ_0_0, @owned @callee_owned (@in τ_0_0) -> @out ()) -> ()
-// CHECK:   [[NEWT0:%.*]] = tuple ([[PAPPLY]] : $@callee_owned (@in T) -> (), [[TELEM1P1]] : $T)
+// CHECK:   [[BORROWED_ENUMARG:%.*]] = begin_borrow [[ENUMARG]] : $(Int, (@callee_owned (@in T) -> @out (), T))
+// CHECK:   [[TELEM0:%.*]] = tuple_extract [[BORROWED_ENUMARG]] : $(Int, (@callee_owned (@in T) -> @out (), T)), 0
+// CHECK:   [[TELEM1:%.*]] = tuple_extract [[BORROWED_ENUMARG]] : $(Int, (@callee_owned (@in T) -> @out (), T)), 1
+// CHECK:   [[COPY1:%.*]] = copy_value [[TELEM1]] : $(@callee_owned (@in T) -> @out (), T)
+// CHECK:   end_borrow [[BORROWED_ENUMARG]]
+// CHECK:   [[BORROWED_COPY1:%.*]] = begin_borrow [[COPY1]] : $(@callee_owned (@in T) -> @out (), T)
+// CHECK:   [[TELEM1P0:%.*]] = tuple_extract [[BORROWED_COPY1]] : $(@callee_owned (@in T) -> @out (), T), 0
+// CHECK:   [[COPY1P0:%.*]] = copy_value [[TELEM1P0]] : $@callee_owned (@in T) -> @out ()
+// CHECK:   [[TELEM1P1:%.*]] = tuple_extract [[BORROWED_COPY1]] : $(@callee_owned (@in T) -> @out (), T), 1
+// CHECK:   [[COPY1P1:%.*]] = copy_value [[TELEM1P1]] : $T
+// CHECK:   end_borrow [[BORROWED_COPY1]]
+// CHECK:   [[PAPPLY:%.*]] = partial_apply %{{.*}}<T>([[COPY1P0]]) : $@convention(thin) <τ_0_0> (@in τ_0_0, @owned @callee_owned (@in τ_0_0) -> @out ()) -> ()
+// CHECK:   [[NEWT0:%.*]] = tuple ([[PAPPLY]] : $@callee_owned (@in T) -> (), [[COPY1P1]] : $T)
 // CHECK:   [[NEWT1:%.*]] = tuple ([[TELEM0]] : $Int, [[NEWT0]] : $(@callee_owned (@in T) -> (), T))
 // CHECK:   [[NEWENUM:%.*]] = enum $Optional<(Int, (@callee_owned (@in T) -> (), T))>, #Optional.some!enumelt.1, [[NEWT1]] : $(Int, (@callee_owned (@in T) -> (), T))
 // CHECK:   br bb3([[NEWENUM]] : $Optional<(Int, (@callee_owned (@in T) -> (), T))>)
@@ -961,7 +970,7 @@ func s440__cleanupEmission<T>(_ x: T) {
 // Test SILGenBuilder.loadCopy().
 // ---
 // CHECK-LABEL: sil hidden @_T020opaque_values_silgen21s450__________lastValxSayxGd_tlF : $@convention(thin) <T> (@owned Array<T>) -> @out T
-// CHECK: [[LOAD:%.*]] = load [copy] %34 : $*T
+// CHECK: [[LOAD:%.*]] = load [copy] %{{.*}} : $*T
 // CHECK: return [[LOAD]] : $T
 // CHECK-LABEL: } // end sil function '_T020opaque_values_silgen21s450__________lastValxSayxGd_tlF'
 func s450__________lastVal<T>(_ rest: T...) -> T {
@@ -1059,15 +1068,16 @@ protocol ConvertibleToP {
 // ---
 // CHECK-LABEL: sil hidden @_T020opaque_values_silgen21s500_______getAnyHashAA1P_pSgAA14ConvertibleToP_pSgF : $@convention(thin) (@in Optional<ConvertibleToP>) -> @out Optional<P> {
 // CHECK: bb0(%0 : $Optional<ConvertibleToP>):
-// CHECK: [[BORROW:%.*]] = begin_borrow %0 : $Optional<ConvertibleToP>
-// CHECK: [[COPY:%.*]] = copy_value [[BORROW]] : $Optional<ConvertibleToP>
+// CHECK: [[BORROW_ARG:%.*]] = begin_borrow %0 : $Optional<ConvertibleToP>
+// CHECK: [[COPY:%.*]] = copy_value [[BORROW_ARG]] : $Optional<ConvertibleToP>
 // CHECK: [[DATA:%.*]] = unchecked_enum_data [[COPY]] : $Optional<ConvertibleToP>, #Optional.some!enumelt.1
-// CHECK: [[VAL:%.*]] = open_existential_value [[DATA]] : $ConvertibleToP to $@opened("{{.*}}") ConvertibleToP
-// CHECK: [[WT:%.*]] = witness_method $@opened("{{.*}}") ConvertibleToP, #ConvertibleToP.asP!1 : <Self where Self : ConvertibleToP> (Self) -> () -> P, %12 : $@opened("{{.*}}") ConvertibleToP : $@convention(witness_method) <τ_0_0 where τ_0_0 : ConvertibleToP> (@in_guaranteed τ_0_0) -> @out P
-// CHECK: [[AS_P:%.*]] = apply [[WT]]<@opened("{{.*}}") ConvertibleToP>(%12) : $@convention(witness_method) <τ_0_0 where τ_0_0 : ConvertibleToP> (@in_guaranteed τ_0_0) -> @out P
+// CHECK: [[BORROW_DATA:%.*]] = begin_borrow [[DATA]] : $ConvertibleToP
+// CHECK: [[VAL:%.*]] = open_existential_value [[BORROW_DATA]] : $ConvertibleToP to $@opened("{{.*}}") ConvertibleToP
+// CHECK: [[WT:%.*]] = witness_method $@opened("{{.*}}") ConvertibleToP, #ConvertibleToP.asP!1 : <Self where Self : ConvertibleToP> (Self) -> () -> P, [[VAL]] : $@opened("{{.*}}") ConvertibleToP : $@convention(witness_method) <τ_0_0 where τ_0_0 : ConvertibleToP> (@in_guaranteed τ_0_0) -> @out P
+// CHECK: [[AS_P:%.*]] = apply [[WT]]<@opened("{{.*}}") ConvertibleToP>([[VAL]]) : $@convention(witness_method) <τ_0_0 where τ_0_0 : ConvertibleToP> (@in_guaranteed τ_0_0) -> @out P
 // CHECK: [[ENUM:%.*]] = enum $Optional<P>, #Optional.some!enumelt.1, [[AS_P]] : $P
 // CHECK: destroy_value [[DATA]] : $ConvertibleToP
-// CHECK: end_borrow [[BORROW]] from %0 : $Optional<ConvertibleToP>, $Optional<ConvertibleToP>
+// CHECK: end_borrow [[BORROW_ARG]] from %0 : $Optional<ConvertibleToP>, $Optional<ConvertibleToP>
 // CHECK: br bb{{.*}}([[ENUM]] : $Optional<P>)
 // CHECK: // end sil function '_T020opaque_values_silgen21s500_______getAnyHashAA1P_pSgAA14ConvertibleToP_pSgF'
 func s500_______getAnyHash(_ value: ConvertibleToP?) -> P? {
@@ -1115,6 +1125,30 @@ func s999_____condTFromAny<T>(_ x: Any, _ y: T) {
   if let f = x as? (Int, T) -> (Int, T) {
     _ = f(42, y)
   }
+}
+
+// Make sure that we insert a destroy of the box even though we used an Int type.
+// CHECK-LABEL: sil @_T020opaque_values_silgen22s020_______assignToVaryyF : $@convention(thin) () -> () {
+// CHECK: bb0:
+// CHECK:   [[Y_BOX:%.*]] = alloc_box ${ var Int }, var, name "y"
+// CHECK:   [[PROJECT_Y_BOX:%.*]] = project_box [[Y_BOX]] : ${ var Int }, 0
+// CHECK:   [[X_BOX:%.*]] = alloc_box ${ var Any }, var, name "x"
+// CHECK:   [[PROJECT_X_BOX:%.*]] = project_box [[X_BOX]] : ${ var Any }, 0
+// CHECK:   [[ACCESS_PROJECT_Y_BOX:%.*]] = begin_access [read] [unknown] [[PROJECT_Y_BOX]] : $*Int
+// CHECK:   [[Y:%.*]] = load [trivial] [[ACCESS_PROJECT_Y_BOX]] : $*Int
+// CHECK:   [[Y_ANY_FOR_X:%.*]] = init_existential_value [[Y]] : $Int, $Int, $Any
+// CHECK:   store [[Y_ANY_FOR_X]] to [init] [[PROJECT_X_BOX]]
+// CHECK:   [[ACCESS_PROJECT_Y_BOX:%.*]] = begin_access [read] [unknown] [[PROJECT_Y_BOX]] : $*Int
+// CHECK:   [[Y:%.*]] = load [trivial] [[ACCESS_PROJECT_Y_BOX]] : $*Int
+// CHECK:   [[Y_ANY_FOR_Z:%.*]] = init_existential_value [[Y]] : $Int, $Int, $Any
+// CHECK:   destroy_value [[Y_ANY_FOR_Z]]
+// CEHCK:   destroy_value [[X_BOX]]
+// CHECK:   destroy_value [[Y_BOX]]
+// CHECK: } // end sil function '_T020opaque_values_silgen22s020_______assignToVaryyF'
+public func s020_______assignToVar() {
+  var y: Int = 3
+  var x: Any = y
+  let z: Any = y
 }
 
 // s250_________testBoxT continued Test Implicit Value Construction under Opaque value mode
@@ -1213,7 +1247,7 @@ func s999_____condTFromAny<T>(_ x: Any, _ y: T) {
 
 // Tests materializeForSet's createSetterCallback for opaque values
 // ---
-// CHECK-LABEL: sil shared [transparent] [serialized] @_T0s10DictionaryV20opaque_values_silgenE9subscriptq_Sgq_cfmytfU_ : $@convention(method) <Key, Value where Key : Hashable> (Builtin.RawPointer, @inout Builtin.UnsafeValueBuffer, @inout Dictionary<Key, Value>, @thick Dictionary<Key, Value>.Type) -> () {
+// CHECK-LABEL: sil shared [transparent] [serialized] @_T0s10DictionaryV20opaque_values_silgenEq_Sgq_cimytfU_ : $@convention(method) <Key, Value where Key : Hashable> (Builtin.RawPointer, @inout Builtin.UnsafeValueBuffer, @inout Dictionary<Key, Value>, @thick Dictionary<Key, Value>.Type) -> () {
 // CHECK: bb0([[ARG0:%.*]] : $Builtin.RawPointer, [[ARG1:%.*]] : $*Builtin.UnsafeValueBuffer, [[ARG2:%.*]] : $*Dictionary<Key, Value>, [[ARG3:%.*]] : $@thick Dictionary<Key, Value>.Type):
 // CHECK:   [[PROJ_VAL1:%.*]] = project_value_buffer $Value in [[ARG1]] : $*Builtin.UnsafeValueBuffer
 // CHECK:   [[LOAD_VAL1:%.*]] = load [take] [[PROJ_VAL1]] : $*Value
@@ -1221,7 +1255,7 @@ func s999_____condTFromAny<T>(_ x: Any, _ y: T) {
 // CHECK:   [[LOAD_VAL0:%.*]] = load [take] [[ADDR_VAL0]] : $*Optional<Value>
 // CHECK:   apply {{.*}}<Key, Value>([[LOAD_VAL0]], [[LOAD_VAL1]], [[ARG2]]) : $@convention(method) <τ_0_0, τ_0_1 where τ_0_0 : Hashable> (@in Optional<τ_0_1>, @in τ_0_1, @inout Dictionary<τ_0_0, τ_0_1>) -> ()
 // CHECK:   return %{{.*}} : $()
-// CHECK-LABEL: } // end sil function '_T0s10DictionaryV20opaque_values_silgenE9subscriptq_Sgq_cfmytfU_'
+// CHECK-LABEL: } // end sil function '_T0s10DictionaryV20opaque_values_silgenEq_Sgq_cimytfU_'
 extension Dictionary {
   public subscript(key: Value) -> Value? {
     @inline(__always)

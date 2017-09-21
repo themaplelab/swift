@@ -566,7 +566,7 @@ SILFunction *SILDeserializer::readSILFunction(DeclID FID,
   LocalValues.clear();
   ForwardLocalValues.clear();
 
-  SILOpenedArchetypesTracker OpenedArchetypesTracker(*fn);
+  SILOpenedArchetypesTracker OpenedArchetypesTracker(fn);
   SILBuilder Builder(*fn);
   // Track the archetypes just like SILGen. This
   // is required for adding typedef operands to instructions.
@@ -707,7 +707,7 @@ static SILDeclRef getSILDeclRef(ModuleFile *MF,
          "Expect 5 numbers for SILDeclRef");
   SILDeclRef DRef(cast<ValueDecl>(MF->getDecl(ListOfValues[NextIdx])),
                   (SILDeclRef::Kind)ListOfValues[NextIdx+1],
-                  (ResilienceExpansion)ListOfValues[NextIdx+2],
+                  (swift::ResilienceExpansion)ListOfValues[NextIdx+2],
                   /*isCurried=*/false, ListOfValues[NextIdx+4] > 0);
   if (ListOfValues[NextIdx+3] < DRef.getUncurryLevel())
     DRef = DRef.asCurried();
@@ -1206,7 +1206,8 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
     ResultVal = Builder.createAllocGlobal(Loc, g);
     break;
   }
-  case ValueKind::GlobalAddrInst: {
+  case ValueKind::GlobalAddrInst:
+  case ValueKind::GlobalValueInst: {
     // Format: Name and type. Use SILOneOperandLayout.
     auto Ty = MF->getType(TyID);
     Identifier Name = MF->getIdentifier(ValID);
@@ -1214,12 +1215,17 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
     // Find the global variable.
     SILGlobalVariable *g = getGlobalForReference(Name.str());
     assert(g && "Can't deserialize global variable");
-    assert(g->getLoweredType().getAddressType() ==
-           getSILType(Ty, (SILValueCategory)TyCategory) &&
+    SILType expectedType = ((ValueKind)OpCode == ValueKind::GlobalAddrInst ?
+                            g->getLoweredType().getAddressType() :
+                            g->getLoweredType());
+    assert(expectedType == getSILType(Ty, (SILValueCategory)TyCategory) &&
            "Type of a global variable does not match GlobalAddr.");
     (void)Ty;
-
-    ResultVal = Builder.createGlobalAddr(Loc, g);
+    if ((ValueKind)OpCode == ValueKind::GlobalAddrInst) {
+      ResultVal = Builder.createGlobalAddr(Loc, g);
+    } else {
+      ResultVal = Builder.createGlobalValue(Loc, g);
+    }
     break;
   }
   case ValueKind::DeallocStackInst: {
@@ -1654,6 +1660,9 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
                     OpList);
     break;
   }
+  case ValueKind::ObjectInst: {
+    llvm_unreachable("Serialization of global initializers not supported");
+  }
   case ValueKind::BranchInst: {
     SmallVector<SILValue, 4> Args;
     for (unsigned I = 0, E = ListOfValues.size(); I < E; I += 3)
@@ -1996,15 +2005,28 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
     break;
   }
   case ValueKind::UnconditionalCheckedCastValueInst: {
-    CastConsumptionKind consumption = getCastConsumptionKind(Attr);
     SILValue Val = getLocalValue(
         ValID, getSILType(MF->getType(TyID2), (SILValueCategory)TyCategory2));
     SILType Ty = getSILType(MF->getType(TyID), (SILValueCategory)TyCategory);
-    ResultVal =
-        Builder.createUnconditionalCheckedCastValue(Loc, consumption, Val, Ty);
+    ResultVal = Builder.createUnconditionalCheckedCastValue(Loc, Val, Ty);
     break;
   }
-  case ValueKind::UnconditionalCheckedCastAddrInst:
+  case ValueKind::UnconditionalCheckedCastAddrInst: {
+    // ignore attr.
+    CanType sourceType = MF->getType(ListOfValues[0])->getCanonicalType();
+    SILType srcAddrTy = getSILType(MF->getType(ListOfValues[2]),
+                                   (SILValueCategory)ListOfValues[3]);
+    SILValue src = getLocalValue(ListOfValues[1], srcAddrTy);
+
+    CanType targetType = MF->getType(ListOfValues[4])->getCanonicalType();
+    SILType destAddrTy =
+        getSILType(MF->getType(TyID), (SILValueCategory)TyCategory);
+    SILValue dest = getLocalValue(ListOfValues[5], destAddrTy);
+
+    ResultVal = Builder.createUnconditionalCheckedCastAddr(Loc, src, sourceType,
+                                                           dest, targetType);
+    break;
+  }
   case ValueKind::CheckedCastAddrBranchInst: {
     CastConsumptionKind consumption = getCastConsumptionKind(ListOfValues[0]);
 
@@ -2018,13 +2040,6 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
       getSILType(MF->getType(TyID), (SILValueCategory) TyCategory);
     SILValue dest = getLocalValue(ListOfValues[6], destAddrTy);
 
-    if (OpCode == (unsigned) ValueKind::UnconditionalCheckedCastAddrInst) {
-      ResultVal = Builder.createUnconditionalCheckedCastAddr(Loc, consumption,
-                                                             src, sourceType,
-                                                             dest, targetType);
-      break;
-    }
-
     auto *successBB = getBBForReference(Fn, ListOfValues[7]);
     auto *failureBB = getBBForReference(Fn, ListOfValues[8]);
     ResultVal = Builder.createCheckedCastAddrBranch(Loc, consumption,
@@ -2035,6 +2050,7 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
   }
   case ValueKind::UncheckedRefCastAddrInst: {
     CanType sourceType = MF->getType(ListOfValues[0])->getCanonicalType();
+    // ignore attr.
     SILType srcAddrTy = getSILType(MF->getType(ListOfValues[2]),
                                    (SILValueCategory)ListOfValues[3]);
     SILValue src = getLocalValue(ListOfValues[1], srcAddrTy);
@@ -2090,7 +2106,6 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
     auto valueTy = MF->getType(ListOfValues[nextValue++]);
     auto numComponents = ListOfValues[nextValue++];
     auto numOperands = ListOfValues[nextValue++];
-    assert(numOperands == 0 && "operands not implemented yet");
     auto numSubstitutions = ListOfValues[nextValue++];
     auto objcString = MF->getIdentifier(ListOfValues[nextValue++]).str();
     auto numGenericParams = ListOfValues[nextValue++];
@@ -2102,6 +2117,7 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
     }
     
     SmallVector<KeyPathPatternComponent, 4> components;
+    components.reserve(numComponents);
     while (numComponents-- > 0) {
       auto kind =
         (KeyPathComponentKindEncoding)ListOfValues[nextValue++];
@@ -2126,6 +2142,36 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
         }
       };
       
+      ArrayRef<KeyPathPatternComponent::Index> indices;
+      SILFunction *indicesEquals = nullptr;
+      SILFunction *indicesHash = nullptr;
+      
+      auto handleComputedIndices = [&] {
+        SmallVector<KeyPathPatternComponent::Index, 4> indicesBuf;
+        auto numIndexes = ListOfValues[nextValue++];
+        indicesBuf.reserve(numIndexes);
+        while (numIndexes-- > 0) {
+          unsigned operand = ListOfValues[nextValue++];
+          auto formalType = MF->getType(ListOfValues[nextValue++]);
+          auto loweredType = MF->getType(ListOfValues[nextValue++]);
+          auto loweredCategory = (SILValueCategory)ListOfValues[nextValue++];
+          auto conformance = MF->readConformance(SILCursor);
+          indicesBuf.push_back({
+            operand, formalType->getCanonicalType(),
+            SILType::getPrimitiveType(loweredType->getCanonicalType(),
+                                      loweredCategory),
+            conformance});
+        }
+        
+        indices = MF->getContext().AllocateCopy(indicesBuf);
+        if (!indices.empty()) {
+          auto indicesEqualsName = MF->getIdentifier(ListOfValues[nextValue++]);
+          auto indicesHashName = MF->getIdentifier(ListOfValues[nextValue++]);
+          indicesEquals = getFuncForReference(indicesEqualsName.str());
+          indicesHash = getFuncForReference(indicesHashName.str());
+        }
+      };
+      
       switch (kind) {
       case KeyPathComponentKindEncoding::StoredProperty: {
         auto decl = cast<VarDecl>(MF->getDecl(ListOfValues[nextValue++]));
@@ -2137,9 +2183,10 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
         auto id = handleComputedId();
         auto getterName = MF->getIdentifier(ListOfValues[nextValue++]);
         auto getter = getFuncForReference(getterName.str());
+        handleComputedIndices();
         components.push_back(
-          KeyPathPatternComponent::forComputedGettableProperty(id, getter, {},
-                                                               type));
+          KeyPathPatternComponent::forComputedGettableProperty(
+            id, getter, indices, indicesEquals, indicesHash, type));
         break;
       }
       case KeyPathComponentKindEncoding::SettableProperty: {
@@ -2148,10 +2195,10 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
         auto getter = getFuncForReference(getterName.str());
         auto setterName = MF->getIdentifier(ListOfValues[nextValue++]);
         auto setter = getFuncForReference(setterName.str());
+        handleComputedIndices();
         components.push_back(
-          KeyPathPatternComponent::forComputedSettableProperty(id,
-                                                               getter, setter,
-                                                               {}, type));
+          KeyPathPatternComponent::forComputedSettableProperty(
+            id, getter, setter, indices, indicesEquals, indicesHash, type));
         break;
       }
       case KeyPathComponentKindEncoding::OptionalChain:
@@ -2189,7 +2236,18 @@ bool SILDeserializer::readSILInstruction(SILFunction *Fn, SILBasicBlock *BB,
                                        components,
                                        objcString);
     
-    ResultVal = Builder.createKeyPath(Loc, pattern, substitutions, kpTy);
+    SmallVector<SILValue, 4> operands;
+    
+    operands.reserve(numOperands);
+    while (numOperands-- > 0) {
+      auto opValue = ListOfValues[nextValue++];
+      auto opTy = MF->getType(ListOfValues[nextValue++]);
+      auto opCat = (SILValueCategory)ListOfValues[nextValue++];
+      operands.push_back(getLocalValue(opValue, getSILType(opTy, opCat)));
+    }
+    
+    ResultVal = Builder.createKeyPath(Loc, pattern,
+                                      substitutions, operands, kpTy);
     break;
   }
   case ValueKind::MarkUninitializedBehaviorInst:

@@ -170,7 +170,7 @@ collectExistentialConformances(ModuleDecl *M, CanType fromType, CanType toType) 
   SmallVector<ProtocolConformanceRef, 4> conformances;
   for (auto proto : protocols) {
     auto conformance =
-      M->lookupConformance(fromType, proto->getDecl(), nullptr);
+      M->lookupConformance(fromType, proto->getDecl());
     conformances.push_back(*conformance);
   }
   
@@ -470,24 +470,17 @@ ManagedValue Transform::transform(ManagedValue v,
     // CF <-> Objective-C via toll-free bridging.
     if ((class1->getForeignClassKind() == ClassDecl::ForeignKind::CFType) ^
         (class2->getForeignClassKind() == ClassDecl::ForeignKind::CFType)) {
-       return ManagedValue(SGF.B.createUncheckedRefCast(Loc,
-                                                        v.getValue(),
-                                                        loweredResultTy),
-                           v.getCleanup());
+      return SGF.B.createUncheckedRefCast(Loc, v, loweredResultTy);
     }
 
     if (outputSubstType->isExactSuperclassOf(inputSubstType)) {
       // Upcast to a superclass.
-      return ManagedValue(SGF.B.createUpcast(Loc,
-                                             v.getValue(),
-                                             loweredResultTy),
-                          v.getCleanup());
+      return SGF.B.createUpcast(Loc, v, loweredResultTy);
     } else {
       // Unchecked-downcast to a covariant return type.
       assert(inputSubstType->isExactSuperclassOf(outputSubstType)
              && "should be inheritance relationship between input and output");
-      return SGF.emitManagedRValueWithCleanup(
-        SGF.B.createUncheckedRefCast(Loc, v.forward(SGF), loweredResultTy));      
+      return SGF.B.createUncheckedRefCast(Loc, v, loweredResultTy);
     }
   }
 
@@ -497,10 +490,7 @@ ManagedValue Transform::transform(ManagedValue v,
       if (archetypeType->getSuperclass()) {
         // Replace the cleanup with a new one on the superclass value so we
         // always use concrete retain/release operations.
-        return ManagedValue(SGF.B.createUpcast(Loc,
-                                               v.getValue(),
-                                               loweredResultTy),
-                            v.getCleanup());
+        return SGF.B.createUpcast(Loc, v, loweredResultTy);
       }
     }
   }
@@ -571,7 +561,7 @@ ManagedValue Transform::transform(ManagedValue v,
     auto *protocol = SGF.getASTContext().getProtocol(
         KnownProtocolKind::Hashable);
     auto conformance = SGF.SGM.M.getSwiftModule()->lookupConformance(
-        inputSubstType, protocol, nullptr);
+        inputSubstType, protocol);
     auto result = SGF.emitAnyHashableErasure(Loc, v, inputSubstType,
                                              *conformance, ctxt);
     if (result.isInContext())
@@ -617,39 +607,50 @@ ManagedValue Transform::transformMetatype(ManagedValue meta,
 ///
 /// If the tuple is in memory, the result elements will also be in
 /// memory.
-typedef std::pair<ManagedValue, const TypeLowering *> ManagedValueAndType;
-static void explodeTuple(SILGenFunction &SGF,
-                         SILLocation loc,
+static void explodeTuple(SILGenFunction &SGF, SILLocation loc,
                          ManagedValue managedTuple,
-                         SmallVectorImpl<ManagedValueAndType> &out) {
-  // None of the operations we do here can fail, so we can atomically
-  // disable the tuple's cleanup and then create cleanups for all the
-  // elements.
-  SILValue tuple = managedTuple.forward(SGF);
+                         SmallVectorImpl<ManagedValue> &out) {
 
-  auto tupleSILType = tuple->getType();
+  assert(managedTuple.getOwnershipKind() == ValueOwnershipKind::Trivial
+         || managedTuple.hasCleanup());
+
+  // For non-address types, borrow the tuple before extracting and copying its
+  // elements. Creating a scope here ensures that the end_borrow is inserted
+  // correctly and prevents any other cleanup activity from taking meanwhile. We
+  // allow the incoming managedTuple to be destroyed later in its original
+  // scope.
+  //
+  // SEMANTIC SIL TODO: Once we support a SIL "destructure" instruction, we can
+  // remove this borrow scope and all element copies. Instead directly forward
+  // managedTuple into its destructure.
+  Scope destructureScope(SGF, loc);
+  ManagedValue tuple =
+      managedTuple.getType().isAddress()
+          ? ManagedValue::forUnmanaged(managedTuple.forward(SGF))
+          : managedTuple.borrow(SGF, loc);
+
+  auto tupleSILType = tuple.getType();
   auto tupleType = tupleSILType.castTo<TupleType>();
 
-  out.reserve(tupleType->getNumElements());
+  llvm::SmallVector<ManagedValue, 16> elements;
+  elements.reserve(tupleType->getNumElements());
 
   for (auto index : indices(tupleType.getElementTypes())) {
     // We're starting with a SIL-lowered tuple type, so the elements
     // must also all be SIL-lowered.
     SILType eltType = tupleSILType.getTupleElementType(index);
 
-    auto &eltTL = SGF.getTypeLowering(eltType);
-
-    ManagedValue elt;
     if (tupleSILType.isAddress()) {
-      auto addr = SGF.B.createTupleElementAddr(loc, tuple, index, eltType);
-      elt = SGF.emitManagedBufferWithCleanup(addr, eltTL);
+      elements.push_back(
+          SGF.B.createTupleElementAddr(loc, tuple, index, eltType));
     } else {
-      auto value = SGF.B.createTupleExtract(loc, tuple, index, eltType);
-      elt = SGF.emitManagedRValueWithCleanup(value, eltTL);
+      ManagedValue extract =
+          SGF.B.createTupleExtract(loc, tuple, index, eltType);
+      elements.push_back(extract.copy(SGF, loc));
     }
-
-    out.push_back(ManagedValueAndType(elt, &eltTL));
   }
+  out.resize(elements.size());
+  destructureScope.popPreservingValues(elements, out);
 }
 
 /// Apply this transformation to all the elements of a tuple value,
@@ -683,7 +684,7 @@ ManagedValue Transform::transformTuple(ManagedValue inputTuple,
                                             ctxt);
 
   // Explode the tuple into individual managed values.
-  SmallVector<ManagedValueAndType, 4> inputElts;
+  SmallVector<ManagedValue, 4> inputElts;
   explodeTuple(SGF, Loc, inputTuple, inputElts);
 
   // Track all the managed elements whether or not we're actually
@@ -691,8 +692,8 @@ ManagedValue Transform::transformTuple(ManagedValue inputTuple,
   SmallVector<ManagedValue, 4> outputElts;
 
   for (auto index : indices(inputType->getElementTypes())) {
-    auto &inputEltTL = *inputElts[index].second;
-    ManagedValue inputElt = inputElts[index].first;
+    auto &inputEltTL = SGF.getTypeLowering(inputElts[index].getType());
+    ManagedValue inputElt = inputElts[index];
     if (inputElt.getType().isAddress() && !inputEltTL.isAddressOnly()) {
       inputElt = emitManagedLoad(SGF, Loc, inputElt, inputEltTL);
     }
@@ -1094,9 +1095,7 @@ namespace {
                                        outputOrigType, outputTupleType,
                                        loweredTy);
 
-        auto optional = SGF.B.createEnum(Loc, payload.getValue(),
-                                         someDecl, optionalTy);
-        return ManagedValue(optional, payload.getCleanup());
+        return SGF.B.createEnum(Loc, payload, someDecl, optionalTy);
       } else {
         auto optionalBuf = SGF.emitTemporaryAllocation(Loc, optionalTy);
         auto tupleBuf = SGF.B.createInitEnumDataAddr(Loc, optionalBuf, someDecl,
@@ -1191,7 +1190,7 @@ namespace {
       assert(inputSubstType->getNumElements() ==
              outputSubstType->getNumElements());
 
-      SmallVector<ManagedValueAndType, 4> inputEltAddrs;
+      SmallVector<ManagedValue, 4> inputEltAddrs;
       explodeTuple(SGF, Loc, inputTupleAddr, inputEltAddrs);
       assert(inputEltAddrs.size() == outputSubstType->getNumElements());
 
@@ -1200,7 +1199,7 @@ namespace {
         auto inputEltSubstType = inputSubstType.getElementType(index);
         auto outputEltOrigType = outputOrigType.getTupleElementType(index);
         auto outputEltSubstType = outputSubstType.getElementType(index);
-        auto inputEltAddr = inputEltAddrs[index].first;
+        auto inputEltAddr = inputEltAddrs[index];
         assert(inputEltAddr.getType().isAddress() ||
                !SGF.silConv.useLoweredAddresses());
 
@@ -1274,6 +1273,64 @@ namespace {
       tupleInit.finishInitialization(SGF);
     }
 
+    // Translate into a temporary.
+    void translateIndirect(AbstractionPattern inputOrigType,
+                           CanType inputSubstType,
+                           AbstractionPattern outputOrigType,
+                           CanType outputSubstType, ManagedValue input,
+                           SILType resultTy) {
+      auto &outputTL = SGF.getTypeLowering(resultTy);
+      auto temp = SGF.emitTemporary(Loc, outputTL);
+      translateSingleInto(inputOrigType, inputSubstType, outputOrigType,
+                          outputSubstType, input, *temp);
+      Outputs.push_back(temp->getManagedAddress());
+    }
+
+    // Translate into an owned argument.
+    void translateIntoOwned(AbstractionPattern inputOrigType,
+                            CanType inputSubstType,
+                            AbstractionPattern outputOrigType,
+                            CanType outputSubstType, ManagedValue input) {
+      auto output = translatePrimitive(inputOrigType, inputSubstType,
+                                       outputOrigType, outputSubstType, input);
+
+      // If our output is guaranteed or unowned, we need to create a copy here.
+      if (output.getOwnershipKind() != ValueOwnershipKind::Owned)
+        output = output.copyUnmanaged(SGF, Loc);
+
+      Outputs.push_back(output);
+    }
+
+    // Translate into a guaranteed argument.
+    void translateIntoGuaranteed(AbstractionPattern inputOrigType,
+                                 CanType inputSubstType,
+                                 AbstractionPattern outputOrigType,
+                                 CanType outputSubstType, ManagedValue input) {
+      auto output = translatePrimitive(inputOrigType, inputSubstType,
+                                       outputOrigType, outputSubstType, input);
+
+      // If our output value is not guaranteed, we need to:
+      //
+      // 1. Unowned - Copy + Borrow.
+      // 2. Owned - Borrow.
+      // 3. Trivial - do nothing.
+      //
+      // This means we can first transition unowned => owned and then handle
+      // the new owned value using the same code path as values that are
+      // initially owned.
+      if (output.getOwnershipKind() == ValueOwnershipKind::Unowned) {
+        assert(!output.hasCleanup());
+        output = SGF.emitManagedRetain(Loc, output.getValue());
+      }
+
+      // If the output is unowned or owned, create a borrow.
+      if (output.getOwnershipKind() != ValueOwnershipKind::Guaranteed) {
+        output = SGF.emitManagedBeginBorrow(Loc, output.getValue());
+      }
+
+      Outputs.push_back(output);
+    }
+
     /// Translate a single value and add it as an output.
     void translateSingle(AbstractionPattern inputOrigType,
                          CanType inputSubstType,
@@ -1290,46 +1347,15 @@ namespace {
       switch (result.getConvention()) {
       // Direct translation is relatively easy.
       case ParameterConvention::Direct_Owned:
-      case ParameterConvention::Direct_Unowned: {
-        auto output =
-            translatePrimitive(inputOrigType, inputSubstType, outputOrigType,
-                               outputSubstType, input);
-        assert(output.getType() == SGF.getSILType(result));
-
-        // If our output is guaranteed, we need to create a copy here.
-        if (output.getOwnershipKind() == ValueOwnershipKind::Guaranteed)
-          output = output.copyUnmanaged(SGF, Loc);
-        Outputs.push_back(output);
+      case ParameterConvention::Direct_Unowned:
+        translateIntoOwned(inputOrigType, inputSubstType, outputOrigType,
+                           outputSubstType, input);
+        assert(Outputs.back().getType() == SGF.getSILType(result));
         return;
-      }
-      case ParameterConvention::Direct_Guaranteed: {
-        auto output = translatePrimitive(inputOrigType, inputSubstType,
-                                         outputOrigType, outputSubstType,
-                                         input);
-        assert(output.getType() == SGF.getSILType(result));
-
-        // If our output value is not guaranteed, we need to:
-        //
-        // 1. Unowned - Copy + Borrow.
-        // 2. Owned - Borrow.
-        // 3. Trivial - do nothing.
-        //
-        // This means we can first transition unowned => owned and then handle
-        // the new owned value using the same code path as values that are
-        // initially owned.
-        if (output.getOwnershipKind() == ValueOwnershipKind::Unowned) {
-          assert(!output.hasCleanup());
-          output = SGF.emitManagedRetain(Loc, output.getValue());
-        }
-
-        if (output.getOwnershipKind() == ValueOwnershipKind::Owned) {
-          output = SGF.emitManagedBeginBorrow(Loc, output.getValue());
-        }
-
-        Outputs.push_back(output);
+      case ParameterConvention::Direct_Guaranteed:
+        translateIntoGuaranteed(inputOrigType, inputSubstType, outputOrigType,
+                                outputSubstType, input);
         return;
-      }
-
       case ParameterConvention::Indirect_Inout: {
         // If it's inout, we need writeback.
         llvm::errs() << "inout writeback in abstraction difference thunk "
@@ -1340,32 +1366,26 @@ namespace {
         abort();
       }
       case ParameterConvention::Indirect_In:
-      case ParameterConvention::Indirect_In_Constant:
+      case ParameterConvention::Indirect_In_Constant: {
+        if (SGF.silConv.useLoweredAddresses()) {
+          translateIndirect(inputOrigType, inputSubstType, outputOrigType,
+                            outputSubstType, input, SGF.getSILType(result));
+          return;
+        }
+        translateIntoOwned(inputOrigType, inputSubstType, outputOrigType,
+                           outputSubstType, input);
+        assert(Outputs.back().getType() == SGF.getSILType(result));
+        return;
+      }
       case ParameterConvention::Indirect_In_Guaranteed: {
         if (SGF.silConv.useLoweredAddresses()) {
-          // We need to translate into a temporary.
-          auto &outputTL = SGF.getTypeLowering(SGF.getSILType(result));
-          auto temp = SGF.emitTemporary(Loc, outputTL);
-          translateSingleInto(inputOrigType, inputSubstType, outputOrigType,
-                              outputSubstType, input, *temp);
-          Outputs.push_back(temp->getManagedAddress());
-        } else {
-          auto output =
-              translatePrimitive(inputOrigType, inputSubstType, outputOrigType,
-                                 outputSubstType, input);
-          assert(output.getType() == SGF.getSILType(result));
-
-          if (output.getOwnershipKind() == ValueOwnershipKind::Unowned) {
-            assert(!output.hasCleanup());
-            output = SGF.emitManagedRetain(Loc, output.getValue());
-          }
-
-          if (output.getOwnershipKind() == ValueOwnershipKind::Owned) {
-            output = SGF.emitManagedBeginBorrow(Loc, output.getValue());
-          }
-
-          Outputs.push_back(output);
+          translateIndirect(inputOrigType, inputSubstType, outputOrigType,
+                            outputSubstType, input, SGF.getSILType(result));
+          return;
         }
+        translateIntoGuaranteed(inputOrigType, inputSubstType, outputOrigType,
+                                outputSubstType, input);
+        assert(Outputs.back().getType() == SGF.getSILType(result));
         return;
       }
       case ParameterConvention::Indirect_InoutAliasable: {

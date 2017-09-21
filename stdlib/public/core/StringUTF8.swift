@@ -191,7 +191,7 @@ extension String {
       // Ensure j's cache is utf8
       if _slowPath(j._cache.utf8 == nil) {
         j = _index(atEncodedOffset: j.encodedOffset)
-        precondition(j != endIndex, "index out of bounds")
+        precondition(j != endIndex, "Index out of bounds")
       }
       
       let buffer = j._cache.utf8._unsafelyUnwrappedUnchecked
@@ -255,7 +255,7 @@ extension String {
       case .error:
         u8 = Unicode.UTF8.encodedReplacementCharacter
       case .emptyInput:
-        _preconditionFailure("index out of bounds")
+        _preconditionFailure("Index out of bounds")
       }
       return Index(
         encodedOffset: i.encodedOffset &- (u8.count < 4 ? 1 : 2),
@@ -299,7 +299,7 @@ extension String {
       @inline(__always)
       get {
         if _fastPath(_core.asciiBuffer != nil), let ascii = _core.asciiBuffer {
-          _precondition(position < endIndex, "index out of bounds")
+          _precondition(position < endIndex, "Index out of bounds")
           return ascii[position.encodedOffset]
         }
         var j = position
@@ -310,7 +310,7 @@ extension String {
               buffer.index(buffer.startIndex, offsetBy: j._transcodedOffset)]
           }
           j = _index(atEncodedOffset: j.encodedOffset)
-          precondition(j < endIndex, "index out of bounds")
+          precondition(j < endIndex, "Index out of bounds")
         }
       }
     }
@@ -391,7 +391,10 @@ extension String {
   /// slice of the `picnicGuest.utf8` view.
   ///
   /// - Parameter utf8: A UTF-8 code sequence.
-  @available(swift, deprecated: 3.2, obsoleted: 4.0)
+  @available(swift, deprecated: 3.2,
+    message: "Failable initializer was removed in Swift 4. When upgrading to Swift 4, please use non-failable String.init(_:UTF8View)")
+  @available(swift, obsoleted: 4.0,
+    message: "Please use non-failable String.init(_:UTF8View) instead")
   public init?(_ utf8: UTF8View) {
     if utf8.startIndex._transcodedOffset != 0
     || utf8.endIndex._transcodedOffset != 0 {
@@ -420,12 +423,13 @@ extension String {
   }
 
   /// Creates a string corresponding to the given sequence of UTF-8 code units.
-  @available(swift, introduced: 4.0)
+  @available(swift, introduced: 4.0, message:
+    "Please use failable String.init?(_:UTF8View) when in Swift 3.2 mode")
   public init(_ utf8: UTF8View) {
     self = String(utf8._core)
   }
 
-  /// The index type for subscripting a string's `utf8` view.
+  /// The index type for subscripting a string.
   public typealias UTF8Index = UTF8View.Index
 }
 
@@ -622,13 +626,6 @@ extension String.UTF8View : CustomReflectable {
 extension String.UTF8View : CustomPlaygroundQuickLookable {
   public var customPlaygroundQuickLook: PlaygroundQuickLook {
     return .text(description)
-  }
-}
-
-extension String {
-  @available(*, unavailable, message: "Please use String.utf8CString instead.")
-  public var nulTerminatedUTF8: ContiguousArray<UTF8.CodeUnit> {
-    Builtin.unreachable()
   }
 }
 

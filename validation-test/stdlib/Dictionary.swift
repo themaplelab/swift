@@ -1264,18 +1264,7 @@ DictionaryTestSuite.test("COW.Slow.GenerateDoesNotReallocate") {
   var iter = d.makeIterator()
   var pairs = Array<(Int, Int)>()
   while let (key, value) = iter.next() {
-    // FIXME: This doesn't work (<rdar://problem/17751308> Can't +=
-    // with array literal of pairs)
-    // pairs += [(key.value, value.value)]
-
-    // FIXME: This doesn't work (<rdar://problem/17750582> generics over tuples)
-    // pairs.append((key.value, value.value))
-
-    // FIXME: This doesn't work (<rdar://problem/17751359>)
-    // pairs.append(key.value, value.value)
-
-    let kv = (key.value, value.value)
-    pairs += [kv]
+    pairs += [(key.value, value.value)]
   }
   assert(equalsUnordered(pairs, [ (10, 1010), (20, 1020), (30, 1030) ]))
   assert(identity1 == d._rawIdentifier())
@@ -2784,8 +2773,6 @@ DictionaryTestSuite.test("BridgedFromObjC.Verbatim.Generate") {
     pairs.append(kv)
   }
   assert(equalsUnordered(pairs, [ (10, 1010), (20, 1020), (30, 1030) ]))
-  // The following is not required by the IteratorProtocol protocol, but
-  // it is a nice QoI.
   assert(iter.next() == nil)
   assert(iter.next() == nil)
   assert(iter.next() == nil)
@@ -2804,8 +2791,6 @@ DictionaryTestSuite.test("BridgedFromObjC.Nonverbatim.Generate") {
     pairs.append(kv)
   }
   assert(equalsUnordered(pairs, [ (10, 1010), (20, 1020), (30, 1030) ]))
-  // The following is not required by the IteratorProtocol protocol, but
-  // it is a nice QoI.
   assert(iter.next() == nil)
   assert(iter.next() == nil)
   assert(iter.next() == nil)
@@ -2822,8 +2807,6 @@ DictionaryTestSuite.test("BridgedFromObjC.Verbatim.Generate_Empty") {
   // <rdar://problem/16811736> Optional tuples are broken as optionals regarding == comparison
   // assert(iter.next() == .none)
   assert(iter.next() == nil)
-  // The following is not required by the IteratorProtocol protocol, but
-  // it is a nice QoI.
   assert(iter.next() == nil)
   assert(iter.next() == nil)
   assert(iter.next() == nil)
@@ -2840,8 +2823,6 @@ DictionaryTestSuite.test("BridgedFromObjC.Nonverbatim.Generate_Empty") {
   // <rdar://problem/16811736> Optional tuples are broken as optionals regarding == comparison
   // assert(iter.next() == .none)
   assert(iter.next() == nil)
-  // The following is not required by the IteratorProtocol protocol, but
-  // it is a nice QoI.
   assert(iter.next() == nil)
   assert(iter.next() == nil)
   assert(iter.next() == nil)
@@ -2865,8 +2846,6 @@ DictionaryTestSuite.test("BridgedFromObjC.Verbatim.Generate_Huge") {
     expectedPairs += [(i, 1000 + i)]
   }
   assert(equalsUnordered(pairs, expectedPairs))
-  // The following is not required by the IteratorProtocol protocol, but
-  // it is a nice QoI.
   assert(iter.next() == nil)
   assert(iter.next() == nil)
   assert(iter.next() == nil)
@@ -2889,8 +2868,6 @@ DictionaryTestSuite.test("BridgedFromObjC.Nonverbatim.Generate_Huge") {
     expectedPairs += [(i, 1000 + i)]
   }
   assert(equalsUnordered(pairs, expectedPairs))
-  // The following is not required by the IteratorProtocol protocol, but
-  // it is a nice QoI.
   assert(iter.next() == nil)
   assert(iter.next() == nil)
   assert(iter.next() == nil)
@@ -2915,8 +2892,6 @@ autoreleasepoolIfUnoptimizedReturnAutoreleased {
   }
   var expectedPairs = [ (10, 1111), (20, 1111), (30, 1111), (40, 1111) ]
   assert(equalsUnordered(pairs, expectedPairs))
-  // The following is not required by the IteratorProtocol protocol, but
-  // it is a nice QoI.
   assert(iter.next() == nil)
   assert(iter.next() == nil)
   assert(iter.next() == nil)
@@ -2941,8 +2916,6 @@ autoreleasepoolIfUnoptimizedReturnAutoreleased {
   }
   var expectedPairs = [ (10, 1111), (20, 1111), (30, 1111), (40, 1111) ]
   assert(equalsUnordered(pairs, expectedPairs))
-  // The following is not required by the IteratorProtocol protocol, but
-  // it is a nice QoI.
   assert(iter.next() == nil)
   assert(iter.next() == nil)
   assert(iter.next() == nil)

@@ -573,6 +573,9 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
   case ValueKind::SILUndef:
     llvm_unreachable("not an instruction");
 
+  case ValueKind::ObjectInst:
+    llvm_unreachable("static initializers of sil_global are not serialized");
+
   case ValueKind::DebugValueInst:
   case ValueKind::DebugValueAddrInst:
     // Currently we don't serialize debug variable infos, so it doesn't make
@@ -874,16 +877,17 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
             Ctx.getIdentifier(AGI->getReferencedGlobal()->getName())));
     break;
   }
-  case ValueKind::GlobalAddrInst: {
+  case ValueKind::GlobalAddrInst:
+  case ValueKind::GlobalValueInst: {
     // Format: Name and type. Use SILOneOperandLayout.
-    const GlobalAddrInst *GAI = cast<GlobalAddrInst>(&SI);
+    const GlobalAccessInst *GI = cast<GlobalAccessInst>(&SI);
     SILOneOperandLayout::emitRecord(Out, ScratchRecord,
         SILAbbrCodes[SILOneOperandLayout::Code],
         (unsigned)SI.getKind(), 0,
-        S.addTypeRef(GAI->getType().getSwiftRValueType()),
-        (unsigned)GAI->getType().getCategory(),
+        S.addTypeRef(GI->getType().getSwiftRValueType()),
+        (unsigned)GI->getType().getCategory(),
         S.addDeclBaseNameRef(
-            Ctx.getIdentifier(GAI->getReferencedGlobal()->getName())));
+            Ctx.getIdentifier(GI->getReferencedGlobal()->getName())));
     break;
   }
   case ValueKind::BranchInst: {
@@ -1331,7 +1335,6 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
   case ValueKind::UnconditionalCheckedCastAddrInst: {
     auto CI = cast<UnconditionalCheckedCastAddrInst>(&SI);
     ValueID listOfValues[] = {
-      toStableCastConsumptionKind(CI->getConsumptionKind()),
       S.addTypeRef(CI->getSourceType()),
       addValueRef(CI->getSrc()),
       S.addTypeRef(CI->getSrc()->getType().getSwiftRValueType()),
@@ -1351,7 +1354,7 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
     SILInstCastLayout::emitRecord(
         Out, ScratchRecord, SILAbbrCodes[SILInstCastLayout::Code],
         (unsigned)SI.getKind(),
-        toStableCastConsumptionKind(CI->getConsumptionKind()),
+        /*attr*/ 0,
         S.addTypeRef(CI->getType().getSwiftRValueType()),
         (unsigned)CI->getType().getCategory(),
         S.addTypeRef(CI->getOperand()->getType().getSwiftRValueType()),
@@ -1862,6 +1865,8 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
       ListOfValues.push_back(0);
     }
     
+    SmallVector<ProtocolConformanceRef, 4> hashableConformances;
+    
     for (auto &component : pattern->getComponents()) {
       auto handleComponentCommon = [&](KeyPathComponentKindEncoding kind) {
         ListOfValues.push_back((unsigned)kind);
@@ -1886,6 +1891,25 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
           break;
         }
       };
+      auto handleComputedIndices
+        = [&](const KeyPathPatternComponent &component) {
+          auto indices = component.getComputedPropertyIndices();
+          ListOfValues.push_back(indices.size());
+          for (auto &index : indices) {
+            ListOfValues.push_back(index.Operand);
+            ListOfValues.push_back(S.addTypeRef(index.FormalType));
+            ListOfValues.push_back(
+              S.addTypeRef(index.LoweredType.getSwiftRValueType()));
+            ListOfValues.push_back((unsigned)index.LoweredType.getCategory());
+            hashableConformances.push_back(index.Hashable);
+          }
+          if (!indices.empty()) {
+            ListOfValues.push_back(
+              addSILFunctionRef(component.getComputedPropertyIndexEquals()));
+            ListOfValues.push_back(
+              addSILFunctionRef(component.getComputedPropertyIndexHash()));
+          }
+        };
     
       switch (component.getKind()) {
       case KeyPathPatternComponent::Kind::StoredProperty:
@@ -1897,8 +1921,7 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
         handleComputedId(component.getComputedPropertyId());
         ListOfValues.push_back(
                       addSILFunctionRef(component.getComputedPropertyGetter()));
-        assert(component.getComputedPropertyIndices().empty()
-               && "indices not implemented");
+        handleComputedIndices(component);
         break;
       case KeyPathPatternComponent::Kind::SettableProperty:
         handleComponentCommon(KeyPathComponentKindEncoding::SettableProperty);
@@ -1907,8 +1930,7 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
                       addSILFunctionRef(component.getComputedPropertyGetter()));
         ListOfValues.push_back(
                       addSILFunctionRef(component.getComputedPropertySetter()));
-        assert(component.getComputedPropertyIndices().empty()
-               && "indices not implemented");
+        handleComputedIndices(component);
         break;
       case KeyPathPatternComponent::Kind::OptionalChain:
         handleComponentCommon(KeyPathComponentKindEncoding::OptionalChain);
@@ -1922,12 +1944,21 @@ void SILSerializer::writeSILInstruction(const SILInstruction &SI) {
       }
     }
     
-    assert(KPI->getAllOperands().empty() && "operands not implemented yet");
+    for (auto &operand : KPI->getAllOperands()) {
+      auto value = operand.get();
+      ListOfValues.push_back(addValueRef(value));
+      ListOfValues.push_back(S.addTypeRef(value->getType().getSwiftRValueType()));
+      ListOfValues.push_back((unsigned)value->getType().getCategory());
+    }
+    
     SILOneTypeValuesLayout::emitRecord(Out, ScratchRecord,
          SILAbbrCodes[SILOneTypeValuesLayout::Code], (unsigned)SI.getKind(),
          S.addTypeRef(KPI->getType().getSwiftRValueType()),
          (unsigned)KPI->getType().getCategory(),
          ListOfValues);
+    for (auto conformance : hashableConformances) {
+      S.writeConformance(conformance, SILAbbrCodes);
+    }
     S.writeGenericRequirements(reqts, SILAbbrCodes);
     S.writeSubstitutions(KPI->getSubstitutions(), SILAbbrCodes);
 
@@ -2258,12 +2289,12 @@ void SILSerializer::writeSILBlock(const SILModule *SILMod) {
   // mandatory function bodies.
   for (const SILFunction &F : *SILMod) {
     if (emitDeclarationsForOnoneSupport) {
-      // Only declarations of whitelisted pre-specializations from with
+      // Only declarations of hardcoded pre-specializations with
       // public linkage need to be serialized as they will be used
-      // by UsePrespecializations pass during -Onone compilation to
+      // by the UsePrespecializations pass during -Onone compilation to
       // check for availability of concrete pre-specializations.
       if (!hasPublicVisibility(F.getLinkage()) ||
-          !isWhitelistedSpecialization(F.getName()))
+          !isKnownPrespecialization(F.getName()))
         continue;
     }
 
