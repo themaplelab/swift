@@ -1212,13 +1212,14 @@ public:
       ManagedValue superMV = std::move(super).getScalarValue();
 
       // Check if super is not the same as our base type. This means that we
-      // performed an upcast. Set SuperInitDelegationState to super.
+      // performed an upcast, and we must have consumed the special cleanup
+      // we installed.  Install a new special cleanup.
       if (superMV.getValue() != SGF.InitDelegationSelf.getValue()) {
-        SILValue underlyingSelf = SGF.InitDelegationSelf.forward(SGF);
+        SILValue underlyingSelf = SGF.InitDelegationSelf.getValue();
         SGF.InitDelegationSelf = ManagedValue::forUnmanaged(underlyingSelf);
         CleanupHandle newWriteback = SGF.enterDelegateInitSelfWritebackCleanup(
             SGF.InitDelegationLoc.getValue(), SGF.InitDelegationSelfBox,
-            superMV.getValue());
+            superMV.forward(SGF));
         SGF.SuperInitDelegationSelf =
             ManagedValue(superMV.getValue(), newWriteback);
         super = RValue(SGF, SGF.InitDelegationLoc.getValue(), superFormalType,
@@ -1275,10 +1276,7 @@ public:
         }
         auto loweredResultTy = SGF.getLoweredLoadableType(resultTy);
         if (loweredResultTy != selfValue.getType()) {
-          auto upcast = SGF.B.createUpcast(ice,
-                                           selfValue.getValue(),
-                                           loweredResultTy);
-          selfValue = ManagedValue(upcast, selfValue.getCleanup());
+          selfValue = SGF.B.createUpcast(ice, selfValue, loweredResultTy);
         }
 
         selfArg = ice->getSubExpr();
@@ -3025,6 +3023,10 @@ private:
       if (maybeEmitDelayed(expr, OriginalArgument(expr, /*indirect*/ false)))
         return;
 
+      // Any borrows from any rvalue accesses, we want to be cleaned up at this
+      // point.
+      FormalEvaluationScope S(SGF);
+
       // Otherwise, just use the default logic.
       value = SGF.emitRValueAsSingleValue(expr, contexts.FinalContext);
       Args.push_back(convertOwnershipConvention(value));
@@ -3617,9 +3619,9 @@ public:
 };
 } // end anonymous namespace
 
-static CleanupHandle enterDeallocBoxCleanup(SILGenFunction &SGF, SILValue box) {
-  SGF.Cleanups.pushCleanup<DeallocateUninitializedBox>(box);
-  return SGF.Cleanups.getTopCleanup();
+CleanupHandle SILGenFunction::enterDeallocBoxCleanup(SILValue box) {
+  Cleanups.pushCleanup<DeallocateUninitializedBox>(box);
+  return Cleanups.getTopCleanup();
 }
 
 /// This is an initialization for a box.
@@ -3706,7 +3708,7 @@ ManagedValue SILGenFunction::emitInjectEnum(SILLocation loc,
 
     CleanupHandle initCleanup = enterDestroyCleanup(box);
     Cleanups.setCleanupState(initCleanup, CleanupState::Dormant);
-    CleanupHandle uninitCleanup = enterDeallocBoxCleanup(*this, box);
+    CleanupHandle uninitCleanup = enterDeallocBoxCleanup(box);
 
     BoxInitialization dest(box, addr, uninitCleanup, initCleanup);
 
@@ -5822,8 +5824,11 @@ RValue SILGenFunction::emitDynamicSubscriptExpr(DynamicSubscriptExpr *e,
 }
 
 ManagedValue ArgumentScope::popPreservingValue(ManagedValue mv) {
-  CleanupCloner cloner(SGF, mv);
-  SILValue value = mv.forward(SGF);
-  pop();
-  return cloner.clone(value);
+  formalEvalScope.pop();
+  return normalScope.popPreservingValue(mv);
+}
+
+RValue ArgumentScope::popPreservingValue(RValue &&rv) {
+  formalEvalScope.pop();
+  return normalScope.popPreservingValue(std::move(rv));
 }

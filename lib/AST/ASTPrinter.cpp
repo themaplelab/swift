@@ -563,8 +563,11 @@ public:
     InnermostOnly = 4,
     SkipSelfRequirement = 8,
     SwapSelfAndDependentMemberType = 16,
+    PrintInherited = 32,
   };
 
+  void printInheritedFromRequirementSignature(ProtocolDecl *proto,
+                                              Decl *attachingTo);
   void printWhereClauseFromRequirementSignature(ProtocolDecl *proto,
                                                 Decl *attachingTo);
   void printTrailingWhereClause(TrailingWhereClause *whereClause);
@@ -591,17 +594,12 @@ private:
                     bool openBracket = true, bool closeBracket = true);
   void printNominalDeclGenericParams(NominalTypeDecl *decl);
   void printNominalDeclGenericRequirements(NominalTypeDecl *decl);
-  void printInherited(const Decl *decl,
-                      ArrayRef<TypeLoc> inherited,
-                      ArrayRef<ProtocolDecl *> protos,
-                      Type superclass = {},
-                      bool explicitClass = false);
+  void printInherited(const Decl *decl, ArrayRef<TypeLoc> inherited);
 
-  void printInherited(const NominalTypeDecl *decl,
-                      bool explicitClass = false);
-  void printInherited(const EnumDecl *D);
-  void printInherited(const ExtensionDecl *decl);
+  void printInherited(const NominalTypeDecl *D);
+  void printInherited(const ExtensionDecl *D);
   void printInherited(const GenericTypeParamDecl *D);
+  void printInherited(const AssociatedTypeDecl *D);
 
   void printEnumElement(EnumElementDecl *elt);
 
@@ -914,18 +912,7 @@ bestRequirementPrintLocation(ProtocolDecl *proto, const Requirement &req) {
     auto result = findRelevantDeclAndDirectUse(subject);
 
     bestDecl = result.first;
-
-    // A requirement like Self : Protocol or Self.T : Class might be from an
-    // inheritance, or might be a where clause.
-    if (req.getKind() != RequirementKind::Layout && result.second) {
-      auto inherited = req.getSecondType();
-      inWhereClause =
-          none_of(result.first->getInherited(), [&](const TypeLoc &loc) {
-            return loc.getType()->isEqual(inherited);
-          });
-    } else {
-      inWhereClause = true;
-    }
+    inWhereClause = !bestDecl || !result.second;
     break;
   }
   case RequirementKind::SameType: {
@@ -963,6 +950,19 @@ bestRequirementPrintLocation(ProtocolDecl *proto, const Requirement &req) {
   }
 
   return {/*AttachedTo=*/bestDecl, inWhereClause};
+}
+
+void PrintAST::printInheritedFromRequirementSignature(ProtocolDecl *proto,
+                                                      Decl *attachingTo) {
+  assert(proto->isRequirementSignatureComputed());
+  printGenericSignature(
+      GenericSignature::get({proto->getProtocolSelfType()} ,
+                            proto->getRequirementSignature()),
+      PrintInherited,
+      [&](const Requirement &req) {
+        auto location = bestRequirementPrintLocation(proto, req);
+        return location.AttachedTo == attachingTo && !location.InWhereClause;
+      });
 }
 
 void PrintAST::printWhereClauseFromRequirementSignature(ProtocolDecl *proto,
@@ -1091,6 +1091,7 @@ void PrintAST::printSingleDepthOfGenericSignature(
     llvm::function_ref<bool(const Requirement &)> filter) {
   bool printParams = (flags & PrintParams);
   bool printRequirements = (flags & PrintRequirements);
+  bool printInherited = (flags & PrintInherited);
   bool swapSelfAndDependentMemberType =
     (flags & SwapSelfAndDependentMemberType);
 
@@ -1131,7 +1132,7 @@ void PrintAST::printSingleDepthOfGenericSignature(
                [&] { Printer << ", "; });
   }
 
-  if (printRequirements) {
+  if (printRequirements || printInherited) {
     bool isFirstReq = true;
     for (const auto &req : requirements) {
       if (!filter(req))
@@ -1163,7 +1164,11 @@ void PrintAST::printSingleDepthOfGenericSignature(
       }
 
       if (isFirstReq) {
-        Printer << " " << tok::kw_where << " ";
+        if (printRequirements)
+          Printer << " " << tok::kw_where << " ";
+        else
+          Printer << " : ";
+
         isFirstReq = false;
       } else {
         Printer << ", ";
@@ -1176,15 +1181,34 @@ void PrintAST::printSingleDepthOfGenericSignature(
           second->is<DependentMemberType>())
         std::swap(first, second);
 
-      Printer.callPrintStructurePre(PrintStructureKind::GenericRequirement);
-      if (second) {
-        Requirement substReq(req.getKind(), first, second);
-        printRequirement(substReq);
+      if (printInherited) {
+        // We only print the second part of a requirement in the "inherited"
+        // clause.
+        switch (req.getKind()) {
+        case RequirementKind::Layout:
+          req.getLayoutConstraint()->print(Printer, Options);
+          break;
+
+        case RequirementKind::Conformance:
+        case RequirementKind::Superclass:
+          printType(second);
+          break;
+
+        case RequirementKind::SameType:
+          llvm_unreachable("same-type constraints belong in the where clause");
+          break;
+        }
       } else {
-        Requirement substReq(req.getKind(), first, req.getLayoutConstraint());
-        printRequirement(substReq);
+        Printer.callPrintStructurePre(PrintStructureKind::GenericRequirement);
+        if (second) {
+          Requirement substReq(req.getKind(), first, second);
+          printRequirement(substReq);
+        } else {
+          Requirement substReq(req.getKind(), first, req.getLayoutConstraint());
+          printRequirement(substReq);
+        }
+        Printer.printStructurePost(PrintStructureKind::GenericRequirement);
       }
-      Printer.printStructurePost(PrintStructureKind::GenericRequirement);
     }
   }
 
@@ -1424,8 +1448,8 @@ void PrintAST::printAccessors(AbstractStorageDecl *ASD) {
     bool mutatingGetter = ASD->getGetter() && ASD->isGetterMutating();
     bool settable = ASD->isSettable(nullptr);
     bool nonmutatingSetter = false;
-    if (settable && ASD->isSetterNonMutating() && ASD->isInstanceMember() &&
-        !ASD->getDeclContext()->getDeclaredTypeInContext()
+    if (settable && !ASD->isSetterMutating() && ASD->isInstanceMember() &&
+        !ASD->getDeclContext()->getDeclaredInterfaceType()
             ->hasReferenceSemantics())
       nonmutatingSetter = true;
 
@@ -1632,101 +1656,55 @@ void PrintAST::printNominalDeclGenericRequirements(NominalTypeDecl *decl) {
       printGenericSignature(GenericSig, PrintRequirements | InnermostOnly);
 }
 
-void PrintAST::printInherited(const Decl *decl,
-                              ArrayRef<TypeLoc> inherited,
-                              ArrayRef<ProtocolDecl *> protos,
-                              Type superclass,
-                              bool explicitClass) {
-  if (inherited.empty() && superclass.isNull() && !explicitClass) {
-    if (protos.empty())
-      return;
+void PrintAST::printInherited(const Decl *decl, ArrayRef<TypeLoc> inherited) {
+  SmallVector<TypeLoc, 6> TypesToPrint;
+  for (auto TL : inherited) {
+    if (auto Ty = TL.getType()) {
+      if (auto NTD = Ty->getAnyNominal())
+        if (!shouldPrint(NTD))
+          continue;
+    }
+    TypesToPrint.push_back(TL);
   }
 
-  if (inherited.empty()) {
-    bool PrintedColon = false;
-    bool PrintedInherited = false;
-
-    if (explicitClass) {
-      Printer << " : " << tok::kw_class;
-      PrintedInherited = true;
-    } else if (superclass) {
-      bool ShouldPrintSuper = true;
-      if (auto NTD = superclass->getAnyNominal()) {
-        ShouldPrintSuper = shouldPrint(NTD);
-      }
-      if (ShouldPrintSuper) {
-        Printer << " : ";
-        superclass.print(Printer, Options);
-        PrintedInherited = true;
-      }
-    }
-
-    for (auto Proto : protos) {
-      if (!shouldPrint(Proto))
+  auto &ctx = decl->getASTContext();
+  for (auto attr : decl->getAttrs().getAttributes<SynthesizedProtocolAttr>()) {
+    if (auto *proto = ctx.getProtocol(attr->getProtocolKind())) {
+      if (!shouldPrint(proto))
         continue;
-      if (auto Enum = dyn_cast<EnumDecl>(decl)) {
-        // Conformance to RawRepresentable is implied by having a raw type.
-        if (Enum->hasRawType()
-            && Proto->isSpecificProtocol(KnownProtocolKind::RawRepresentable))
-          continue;
-        // Conformance to Equatable and Hashable is implied by being a "simple"
-        // no-payload enum with cases.
-        if (Enum->hasCases()
-            && Enum->hasOnlyCasesWithoutAssociatedValues()
-            && (Proto->isSpecificProtocol(KnownProtocolKind::Equatable)
-                || Proto->isSpecificProtocol(KnownProtocolKind::Hashable)))
-          continue;
-      }
-
-      if (PrintedInherited)
-        Printer << ", ";
-      else if (!PrintedColon)
-        Printer << " : ";
-      Proto->getDeclaredType()->print(Printer, Options);
-      PrintedInherited = true;
-      PrintedColon = true;
+      if (attr->getProtocolKind() == KnownProtocolKind::RawRepresentable &&
+          isa<EnumDecl>(decl) &&
+          cast<EnumDecl>(decl)->hasRawType())
+        continue;
+      TypesToPrint.push_back(TypeLoc::withoutLoc(proto->getDeclaredType()));
     }
-  } else {
-    SmallVector<TypeLoc, 6> TypesToPrint;
-    for (auto TL : inherited) {
-      if (auto Ty = TL.getType()) {
-        if (auto NTD = Ty->getAnyNominal())
-          if (!shouldPrint(NTD))
-            continue;
-      }
-      TypesToPrint.push_back(TL);
-    }
-    if (TypesToPrint.empty())
-      return;
-
-    Printer << " : ";
-
-    if (explicitClass)
-      Printer << " " << tok::kw_class << ", ";
-
-    interleave(TypesToPrint, [&](TypeLoc TL) {
-      printTypeLoc(TL);
-    }, [&]() {
-      Printer << ", ";
-    });
   }
+  if (TypesToPrint.empty())
+    return;
+
+  Printer << " : ";
+
+  interleave(TypesToPrint, [&](TypeLoc TL) {
+    printTypeLoc(TL);
+  }, [&]() {
+    Printer << ", ";
+  });
 }
 
-void PrintAST::printInherited(const NominalTypeDecl *decl,
-                              bool explicitClass) {
-  printInherited(decl, decl->getInherited(), { }, nullptr, explicitClass);
+void PrintAST::printInherited(const NominalTypeDecl *D) {
+  printInherited(D, D->getInherited());
 }
 
-void PrintAST::printInherited(const EnumDecl *decl) {
-  printInherited(decl, decl->getInherited(), { });
-}
-
-void PrintAST::printInherited(const ExtensionDecl *decl) {
-  printInherited(decl, decl->getInherited(), { });
+void PrintAST::printInherited(const ExtensionDecl *D) {
+  printInherited(D, D->getInherited());
 }
 
 void PrintAST::printInherited(const GenericTypeParamDecl *D) {
-  printInherited(D, D->getInherited(), { });
+  printInherited(D, D->getInherited());
+}
+
+void PrintAST::printInherited(const AssociatedTypeDecl *D) {
+  printInherited(D, D->getInherited());
 }
 
 static void getModuleEntities(const clang::Module *ClangMod,
@@ -2003,7 +1981,7 @@ void PrintAST::visitGenericTypeParamDecl(GenericTypeParamDecl *decl) {
     Printer.printName(decl->getName(), PrintNameContext::GenericParameter);
   });
 
-  printInherited(decl, decl->getInherited(), { });
+  printInherited(decl);
 }
 
 void PrintAST::visitAssociatedTypeDecl(AssociatedTypeDecl *decl) {
@@ -2016,14 +1994,18 @@ void PrintAST::visitAssociatedTypeDecl(AssociatedTypeDecl *decl) {
       Printer.printName(decl->getName());
     });
 
-  printInherited(decl, decl->getInherited(), { });
+  auto proto = decl->getProtocol();
+  if (proto->isRequirementSignatureComputed()) {
+    printInheritedFromRequirementSignature(proto, decl);
+  } else {
+    printInherited(decl);
+  }
 
   if (!decl->getDefaultDefinitionLoc().isNull()) {
     Printer << " = ";
     decl->getDefaultDefinitionLoc().getType().print(Printer, Options);
   }
 
-  auto proto = decl->getProtocol();
   // As with protocol's trailing where clauses, use the requirement signature
   // when available.
   if (proto->isRequirementSignatureComputed()) {
@@ -2139,23 +2121,11 @@ void PrintAST::visitProtocolDecl(ProtocolDecl *decl) {
         Printer.printName(decl->getName());
       });
 
-    // Figure out whether we need an explicit 'class' in the inheritance.
-    bool explicitClass = false;
-    if (decl->requiresClass() && !decl->isObjC()) {
-      bool inheritsRequiresClass = false;
-      for (auto proto : decl->getLocalProtocols(
-                          ConformanceLookupKind::OnlyExplicit)) {
-        if (proto->requiresClass()) {
-          inheritsRequiresClass = true;
-          break;
-        }
-      }
-
-      if (!inheritsRequiresClass)
-        explicitClass = true;
+    if (decl->isRequirementSignatureComputed()) {
+      printInheritedFromRequirementSignature(decl, decl);
+    } else {
+      printInherited(decl);
     }
-
-    printInherited(decl, explicitClass);
 
     // The trailing where clause is a syntactic thing, which isn't serialized
     // (etc.) and thus isn't available for printing things out of
@@ -2176,10 +2146,10 @@ void PrintAST::visitProtocolDecl(ProtocolDecl *decl) {
 }
 
 static bool isStructOrClassContext(DeclContext *dc) {
-  if (auto ctx = dc->getDeclaredTypeInContext())
-    return ctx->getClassOrBoundGenericClass() ||
-           ctx->getStructOrBoundGenericStruct();
-  return false;
+  auto *nominal = dc->getAsNominalTypeOrNominalTypeExtensionContext();
+  if (nominal == nullptr)
+    return false;
+  return isa<ClassDecl>(nominal) || isa<StructDecl>(nominal);
 }
 
 static void printParameterFlags(ASTPrinter &printer, PrintOptions options,
@@ -2533,10 +2503,13 @@ void PrintAST::visitFuncDecl(FuncDecl *decl) {
       printContextIfNeeded(decl);
       recordDeclLoc(decl,
         [&]{ // Name
-          if (!decl->hasName())
+          if (!decl->hasName()) {
             Printer << "<anonymous>";
-          else
+          } else {
             Printer.printName(decl->getName());
+            if (decl->isOperator())
+              Printer << " ";
+          }
         }, [&] { // Parameters
           if (decl->isGeneric())
             if (auto *genericSig = decl->getGenericSignature())
@@ -2657,7 +2630,10 @@ void PrintAST::visitSubscriptDecl(SubscriptDecl *decl) {
   recordDeclLoc(decl, [&]{
     Printer << "subscript";
   }, [&] { // Parameters
-    printParameterList(decl->getIndices(), decl->getIndicesInterfaceType(),
+    printParameterList(decl->getIndices(),
+                       decl->hasInterfaceType()
+                         ? decl->getIndicesInterfaceType()
+                         : nullptr,
                        /*isCurried=*/false,
                        /*isAPINameByDefault*/[]()->bool{return false;});
   });
@@ -3945,7 +3921,7 @@ void LayoutConstraintInfo::print(ASTPrinter &Printer,
     Printer << "(";
     Printer << SizeInBits;
     if (Alignment)
-      Printer << ", " << Alignment <<")";
+      Printer << ", " << Alignment;
     Printer << ")";
     break;
   }

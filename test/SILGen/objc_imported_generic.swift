@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -emit-silgen -sil-serialize-witness-tables %s -enable-sil-ownership | %FileCheck %s
+// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -emit-silgen %s -enable-sil-ownership | %FileCheck %s
 // For integration testing, ensure we get through IRGen too.
 // RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -emit-ir -verify -DIRGEN_INTEGRATION_TEST %s
 
@@ -89,9 +89,9 @@ public func genericBlockBridging<T: Ansible>(x: GenericClass<T>) {
 }
 
 // CHECK-LABEL: sil @_T021objc_imported_generic0C13BlockBridging{{[_0-9a-zA-Z]*}}F
-// CHECK:         [[BLOCK_TO_FUNC:%.*]] = function_ref @_T0xxIyBya_xxIxxo_RlzC21objc_imported_generic7AnsibleRzlTR
+// CHECK:         [[BLOCK_TO_FUNC:%.*]] = function_ref @_T0xxIyBya_xxIxxo_21objc_imported_generic7AnsibleRzlTR
 // CHECK:         partial_apply [[BLOCK_TO_FUNC]]<T>
-// CHECK:         [[FUNC_TO_BLOCK:%.*]] = function_ref @_T0xxIxxo_xxIyBya_RlzC21objc_imported_generic7AnsibleRzlTR
+// CHECK:         [[FUNC_TO_BLOCK:%.*]] = function_ref @_T0xxIxxo_xxIyBya_21objc_imported_generic7AnsibleRzlTR
 // CHECK:         init_block_storage_header {{.*}} invoke [[FUNC_TO_BLOCK]]<T>
 
 // CHECK-LABEL: sil @_T021objc_imported_generic20arraysOfGenericParam{{[_0-9a-zA-Z]*}}F
@@ -141,5 +141,5 @@ func configureWithoutOptions() {
 // Make sure we emitted the witness table for the above conformance
 
 // CHECK-LABEL: sil_witness_table shared [serialized] GenericOption: Hashable module objc_generics {
-// CHECK: method #Hashable.hashValue!getter.1: {{.*}}: @_T0SC13GenericOptionVs8Hashable13objc_genericssACP9hashValueSifgTW
+// CHECK: method #Hashable.hashValue!getter.1: {{.*}}: @_T0SC13GenericOptionVs8Hashable13objc_genericssACP9hashValueSivgTW
 // CHECK: }

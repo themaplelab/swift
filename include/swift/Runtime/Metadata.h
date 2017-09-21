@@ -35,8 +35,42 @@
 #include "swift/Demangling/ManglingMacros.h"
 #include "swift/Runtime/Unreachable.h"
 #include "../../../stdlib/public/SwiftShims/HeapObject.h"
+#if SWIFT_OBJC_INTEROP
+#include <objc/runtime.h>
+#endif
 
 namespace swift {
+
+#if SWIFT_OBJC_INTEROP
+
+  // Const cast shorthands for ObjC types.
+
+  /// Cast to id, discarding const if necessary.
+  template <typename T>
+  static inline id id_const_cast(const T* value) {
+    return reinterpret_cast<id>(const_cast<T*>(value));
+  }
+
+  /// Cast to Class, discarding const if necessary.
+  template <typename T>
+  static inline Class class_const_cast(const T* value) {
+    return reinterpret_cast<Class>(const_cast<T*>(value));
+  }
+
+  /// Cast to Protocol*, discarding const if necessary.
+  template <typename T>
+  static inline Protocol* protocol_const_cast(const T* value) {
+    return reinterpret_cast<Protocol *>(const_cast<T*>(value));
+  }
+
+  /// Cast from a CF type, discarding const if necessary.
+  template <typename T>
+  static inline T cf_const_cast(const void* value) {
+    return reinterpret_cast<T>(const_cast<void *>(value));
+  }
+
+#endif
+
 
 template <unsigned PointerSize>
 struct RuntimeTarget;
@@ -626,7 +660,7 @@ const ExtraInhabitantsValueWitnessTable METATYPE_VALUE_WITNESS_SYM(Bo); // Built
 
 /// Return the value witnesses for unmanaged pointers.
 static inline const ValueWitnessTable &getUnmanagedPointerValueWitnesses() {
-#ifdef __LP64__
+#if __POINTER_WIDTH__ == 64
   return VALUE_WITNESS_SYM(Bi64_);
 #else
   return VALUE_WITNESS_SYM(Bi32_);
@@ -973,7 +1007,20 @@ public:
   /// Get the class object for this type if it has one, or return null if the
   /// type is not a class (or not a class with a class object).
   const TargetClassMetadata<Runtime> *getClassObject() const;
-  
+
+#if SWIFT_OBJC_INTEROP
+  /// Get the ObjC class object for this type if it has one, or return null if
+  /// the type is not a class (or not a class with a class object).
+  /// This is allowed for InProcess values only.
+  template <typename R = Runtime>
+  typename std::enable_if<std::is_same<R, InProcess>::value, Class>::type
+  getObjCClassObject() const {
+    return reinterpret_cast<Class>(
+      const_cast<TargetClassMetadata<InProcess>*>(
+        getClassObject()));
+  }
+#endif
+
 protected:
   friend struct TargetOpaqueMetadata<Runtime>;
   
@@ -1123,10 +1170,6 @@ struct TargetVTableDescriptor {
     return VTable[index].Impl.get();
   }
 };
-
-struct ClassTypeDescriptor;
-struct StructTypeDescriptor;
-struct EnumTypeDescriptor;
 
 /// Common information about all nominal types. For generic types, this
 /// descriptor is shared for all instantiations of the generic type.

@@ -578,13 +578,8 @@ getNormalInvocationArguments(std::vector<std::string> &invocationArgStrs,
   }
 
   const std::string &moduleCachePath = importerOpts.ModuleCachePath;
-
-  // Set the module and API notes cache paths to the same location.
   if (!moduleCachePath.empty()) {
     invocationArgStrs.push_back("-fmodules-cache-path=");
-    invocationArgStrs.back().append(moduleCachePath);
-
-    invocationArgStrs.push_back("-fapinotes-cache-path=");
     invocationArgStrs.back().append(moduleCachePath);
   }
 
@@ -1655,7 +1650,7 @@ ClangImporter::Implementation::Implementation(ASTContext &ctx,
       BridgingHeaderExplicitlyRequested(!opts.BridgingHeader.empty()),
       DisableAdapterModules(opts.DisableAdapterModules),
       IsReadingBridgingPCH(false),
-      CurrentVersion(nameVersionFromOptions(ctx.LangOpts)),
+      CurrentVersion(ImportNameVersion::fromOptions(ctx.LangOpts)),
       BridgingHeaderLookupTable(new SwiftLookupTable(nullptr)),
       platformAvailability(ctx.LangOpts),
       nameImporter() {}
@@ -2513,32 +2508,34 @@ ClangModuleUnit::lookupNestedType(Identifier name,
 
     bool anyMatching = false;
     TypeDecl *originalDecl = nullptr;
-    owner.forEachDistinctName(clangTypeDecl, [&](ImportedName newName,
-                                                 ImportNameVersion nameVersion){
+    owner.forEachDistinctName(clangTypeDecl,
+                              [&](ImportedName newName,
+                                  ImportNameVersion nameVersion) -> bool {
       if (anyMatching)
-        return;
+        return true;
       if (!newName.getDeclName().isSimpleName(name))
-        return;
+        return true;
 
       auto decl = dyn_cast_or_null<TypeDecl>(
           owner.importDeclReal(clangTypeDecl, nameVersion));
       if (!decl)
-        return;
+        return false;
 
       if (!originalDecl)
         originalDecl = decl;
       else if (originalDecl == decl)
-        return;
+        return true;
 
       auto *importedContext = decl->getDeclContext()->
           getAsNominalTypeOrNominalTypeExtensionContext();
       if (importedContext != baseType)
-        return;
+        return true;
 
       assert(decl->getFullName().matchesRef(name) &&
              "importFullName behaved differently from importDecl");
       results.push_back(decl);
       anyMatching = true;
+      return true;
     });
   }
 
@@ -2864,6 +2861,13 @@ clang::ASTContext &ClangModuleUnit::getClangASTContext() const {
   return owner.getClangASTContext();
 }
 
+std::string ClangModuleUnit::getExportedModuleName() const {
+  if (clangModule && !clangModule->ExportAsModule.empty())
+    return clangModule->ExportAsModule;
+
+  return getParentModule()->getName().str();
+}
+
 ModuleDecl *ClangModuleUnit::getAdapterModule() const {
   if (!clangModule)
     return nullptr;
@@ -3155,10 +3159,8 @@ void ClangImporter::Implementation::lookupValue(
         const clang::NamedDecl *recentClangDecl =
             clangDecl->getMostRecentDecl();
 
-        forEachImportNameVersionFromCurrent(CurrentVersion,
-                                            [&](ImportNameVersion nameVersion) {
-          if (nameVersion == CurrentVersion)
-            return;
+        CurrentVersion.forEachOtherImportNameVersion(
+            [&](ImportNameVersion nameVersion) {
           if (anyMatching)
             return;
 
@@ -3216,12 +3218,12 @@ void ClangImporter::Implementation::lookupObjCMembers(
 
     forEachDistinctName(clangDecl,
                         [&](ImportedName importedName,
-                            ImportNameVersion nameVersion) {
+                            ImportNameVersion nameVersion) -> bool {
       // Import the declaration.
       auto decl =
           cast_or_null<ValueDecl>(importDeclReal(clangDecl, nameVersion));
       if (!decl)
-        return;
+        return false;
 
       // If the name we found matches, report the declaration.
       // FIXME: If we didn't need to check alternate decls here, we could avoid
@@ -3237,6 +3239,7 @@ void ClangImporter::Implementation::lookupObjCMembers(
           consumer.foundDecl(alternate, DeclVisibilityKind::DynamicLookup);
         }
       }
+      return true;
     });
   }
 }
@@ -3327,4 +3330,24 @@ importName(const clang::NamedDecl *D,
            clang::DeclarationName preferredName) {
   return Impl.importFullName(D, Impl.CurrentVersion, preferredName).
     getDeclName();
+}
+
+bool swift::isInOverlayModuleForImportedModule(const DeclContext *overlayDC,
+                                               const DeclContext *importedDC) {
+  overlayDC = overlayDC->getModuleScopeContext();
+  importedDC = importedDC->getModuleScopeContext();
+
+  auto importedClangModuleUnit = dyn_cast<ClangModuleUnit>(importedDC);
+  if (!importedClangModuleUnit)
+    return false;
+
+  auto overlayModule = overlayDC->getParentModule();
+  if (overlayModule == importedClangModuleUnit->getAdapterModule())
+    return true;
+
+  // Is this a private module that's re-exported to the public (overlay) name?
+  auto clangModule =
+    importedClangModuleUnit->getClangModule()->getTopLevelModule();
+  return !clangModule->ExportAsModule.empty() &&
+    clangModule->ExportAsModule == overlayModule->getName().str();
 }

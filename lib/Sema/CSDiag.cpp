@@ -1433,9 +1433,10 @@ CalleeCandidateInfo::evaluateCloseness(UncurriedCandidate candidate,
   
   // Check to see if the first argument expects an inout argument, but is not
   // an lvalue.
-  Type firstArg = actualArgs[0].getType();
-  if (candArgs[0].getType()->is<InOutType>() && !(firstArg->hasLValueType() || firstArg->is<InOutType>()))
+  if (candArgs[0].isInOut() &&
+      !(actualArgs[0].getType()->hasLValueType() || actualArgs[0].isInOut())) {
     return { CC_NonLValueInOut, {}};
+  }
   
   // If we have exactly one argument mismatching, classify it specially, so that
   // close matches are prioritized against obviously wrong ones.
@@ -2559,7 +2560,7 @@ diagnoseTypeMemberOnInstanceLookup(Type baseObjTy,
       ->getAsNominalTypeOrNominalTypeExtensionContext();
   SmallString<32> typeName;
   llvm::raw_svector_ostream typeNameStream(typeName);
-  typeNameStream << nominal->getName() << ".";
+  typeNameStream << nominal->getSelfInterfaceType() << ".";
 
   Diag->fixItInsert(loc, typeNameStream.str());
   return;
@@ -2697,7 +2698,7 @@ diagnoseUnviableLookupResults(MemberLookupResult &result, Type baseObjTy,
                instanceTy, memberName)
         .highlight(baseRange).highlight(nameLoc.getSourceRange());
       return;
-    case MemberLookupResult::UR_InstanceMemberOnType:
+    case MemberLookupResult::UR_InstanceMemberOnType: {
       // If the base is an implicit self type reference, and we're in a
       // an initializer, then the user wrote something like:
       //
@@ -2743,11 +2744,28 @@ diagnoseUnviableLookupResults(MemberLookupResult &result, Type baseObjTy,
           return;
         }
       }
-        
-      diagnose(loc, diag::could_not_use_instance_member_on_type,
-               instanceTy, memberName)
-        .highlight(baseRange).highlight(nameLoc.getSourceRange());
+
+      // Check whether the instance member is declared on parent context and if so
+      // provide more specialized message.
+      auto memberTypeContext = member->getDeclContext()->getInnermostTypeContext();
+      auto currentTypeContext = CS.DC->getInnermostTypeContext();
+      if (memberTypeContext && currentTypeContext &&
+          memberTypeContext->getSemanticDepth() <
+          currentTypeContext->getSemanticDepth()) {
+        diagnose(loc, diag::could_not_use_instance_member_on_type,
+                 currentTypeContext->getDeclaredInterfaceType(), memberName,
+                 memberTypeContext->getDeclaredInterfaceType(),
+                 true)
+          .highlight(baseRange).highlight(nameLoc.getSourceRange());
+      } else {
+        diagnose(loc, diag::could_not_use_instance_member_on_type,
+                 instanceTy, memberName,
+                 instanceTy,
+                 false)
+         .highlight(baseRange).highlight(nameLoc.getSourceRange());
+      }
       return;
+    }
 
     case MemberLookupResult::UR_TypeMemberOnInstance:
       diagnoseTypeMemberOnInstanceLookup(baseObjTy, baseExpr,
@@ -4321,7 +4339,7 @@ void ConstraintSystem::diagnoseAssignmentFailure(Expr *dest, Type destTy,
   else {
     diagID = diag::assignment_lhs_is_immutable_variable;
   }
-  
+
   diagnoseSubElementFailure(dest, equalLoc, *this, diagID,
                             diag::assignment_lhs_not_lvalue);
 }
@@ -4620,11 +4638,11 @@ typeCheckArgumentChildIndependently(Expr *argExpr, Type argType,
         const auto &param = params[paramIdx];
 
         // Determine the parameter type.
-        auto currentParamType = param.getType();
-        if (currentParamType->is<InOutType>())
+        if (param.isInOut())
           options |= TCC_AllowLValue;
 
         // Look at each of the arguments assigned to this parameter.
+        auto currentParamType = param.getType();
         for (auto inArgNo : paramBindings[paramIdx]) {
           // Determine the argument type.
           auto currentArgType = TE->getElement(inArgNo);
@@ -4641,7 +4659,7 @@ typeCheckArgumentChildIndependently(Expr *argExpr, Type argType,
           // something of inout type, diagnose it.
           if (auto IOE =
                 dyn_cast<InOutExpr>(exprResult->getSemanticsProvidingExpr())) {
-            if (!currentParamType->is<InOutType>()) {
+            if (!param.isInOut()) {
               diagnose(exprResult->getLoc(), diag::extra_address_of,
                        CS.getType(exprResult)->getInOutObjectType())
                   .highlight(exprResult->getSourceRange())
@@ -4676,7 +4694,7 @@ typeCheckArgumentChildIndependently(Expr *argExpr, Type argType,
 
   for (unsigned i = 0, e = TE->getNumElements(); i != e; i++) {
     if (exampleInputTuple && i < exampleInputTuple->getNumElements() &&
-        exampleInputTuple->getElementType(i)->is<InOutType>())
+        exampleInputTuple->getElement(i).isInOut())
       options |= TCC_AllowLValue;
 
     auto elExpr = typeCheckChildIndependently(TE->getElement(i), options);
@@ -5026,12 +5044,15 @@ diagnoseInstanceMethodAsCurriedMemberOnType(CalleeCandidateInfo &CCI,
       }
 
       // Otherwise, complain about use of instance value on type.
-      auto diagnostic = isa<TypeExpr>(baseExpr)
-                            ? diag::instance_member_use_on_type
-                            : diag::could_not_use_instance_member_on_type;
-
-      TC.diagnose(UDE->getLoc(), diagnostic, instanceType, UDE->getName())
+      if (isa<TypeExpr>(baseExpr)) {
+        TC.diagnose(UDE->getLoc(), diag::instance_member_use_on_type,
+                    instanceType, UDE->getName())
           .highlight(baseExpr->getSourceRange());
+      } else {
+        TC.diagnose(UDE->getLoc(), diag::could_not_use_instance_member_on_type,
+                    instanceType, UDE->getName(), instanceType, false)
+          .highlight(baseExpr->getSourceRange());
+      }
       return true;
     }
   }
@@ -5218,9 +5239,9 @@ public:
       insertText << name.str() << ": ";
     Type Ty = param.getType();
     // Explode inout type.
-    if (auto IOT = param.getType()->getAs<InOutType>()) {
+    if (param.isInOut()) {
       insertText << "&";
-      Ty = IOT->getObjectType();
+      Ty = param.getType()->getInOutObjectType();
     }
     // @autoclosure; the type should be the result type.
     if (auto FT = param.getType()->getAs<AnyFunctionType>())
@@ -7537,10 +7558,10 @@ bool FailureDiagnosis::diagnoseClosureExpr(
       // If this is unresolved 'inout' parameter, it's better to drop
       // 'inout' from type because that might help to diagnose actual problem
       // e.g. type inference doesn't give us much information anyway.
-      if (paramType->is<InOutType>() && paramType->hasUnresolvedType()) {
+      if (param->isInOut() && paramType->hasUnresolvedType()) {
         assert(!param->isLet() || !paramType->is<InOutType>());
         param->setType(CS.getASTContext().TheUnresolvedType);
-        param->setInterfaceType(param->getType()->getInOutObjectType());
+        param->setInterfaceType(paramType->getInOutObjectType());
         param->setSpecifier(swift::VarDecl::Specifier::Owned);
       }
     }
@@ -7556,7 +7577,7 @@ bool FailureDiagnosis::diagnoseClosureExpr(
     for (auto VD : *CE->getParameters()) {
       if (VD->getType()->hasTypeVariable() || VD->getType()->hasError()) {
         VD->setType(CS.getASTContext().TheUnresolvedType);
-        VD->setInterfaceType(VD->getType());
+        VD->setInterfaceType(VD->getType()->getInOutObjectType());
       }
     }
   }
@@ -8189,7 +8210,7 @@ bool FailureDiagnosis::visitArrayExpr(ArrayExpr *E) {
     contextualElementType =
         ProtocolConformanceRef::getTypeWitnessByName(
             contextualType, *Conformance,
-            CS.getASTContext().getIdentifier("ArrayLiteralElement"), &CS.TC)
+            CS.getASTContext().Id_ArrayLiteralElement, &CS.TC)
             ->getDesugaredType();
     elementTypePurpose = CTP_ArrayElement;
   }
@@ -8796,12 +8817,12 @@ bool FailureDiagnosis::visitTupleExpr(TupleExpr *TE) {
     
     // Otherwise, it must match the corresponding expected argument type.
     unsigned inArgNo = sources[i];
-    auto actualType = contextualTT->getElementType(i);
-    
+
     TCCOptions options;
-    if (actualType->is<InOutType>())
+    if (contextualTT->getElement(i).isInOut())
       options |= TCC_AllowLValue;
 
+    auto actualType = contextualTT->getElementType(i);
     auto exprResult =
         typeCheckChildIndependently(TE->getElement(inArgNo), actualType,
                                     CS.getContextualTypePurpose(), options);
@@ -8812,7 +8833,7 @@ bool FailureDiagnosis::visitTupleExpr(TupleExpr *TE) {
     // something of inout type, diagnose it.
     if (auto IOE =
           dyn_cast<InOutExpr>(exprResult->getSemanticsProvidingExpr())) {
-      if (!actualType->is<InOutType>()) {
+      if (!contextualTT->getElement(i).isInOut()) {
         diagnose(exprResult->getLoc(), diag::extra_address_of,
                  CS.getType(exprResult)->getInOutObjectType())
             .highlight(exprResult->getSourceRange())

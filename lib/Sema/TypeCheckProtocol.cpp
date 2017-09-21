@@ -3383,6 +3383,15 @@ static CheckTypeWitnessResult checkTypeWitness(TypeChecker &tc, DeclContext *dc,
 /// Attempt to resolve a type witness via member name lookup.
 ResolveWitnessResult ConformanceChecker::resolveTypeWitnessViaLookup(
                        AssociatedTypeDecl *assocType) {
+  // Conformances constructed by the ClangImporter should have explicit type
+  // witnesses already.
+  if (isa<ClangModuleUnit>(Conformance->getDeclContext()->getModuleScopeContext())) {
+    llvm::errs() << "Cannot look up associated type for imported conformance:\n";
+    Conformance->getType().dump(llvm::errs());
+    assocType->dump(llvm::errs());
+    abort();
+  }
+
   if (!Proto->isRequirementSignatureComputed()) {
     Conformance->setInvalid();
     return ResolveWitnessResult::Missing;
@@ -3483,6 +3492,16 @@ InferredAssociatedTypesByWitnesses
 ConformanceChecker::inferTypeWitnessesViaValueWitnesses(
                     const llvm::SetVector<AssociatedTypeDecl *> &allUnresolved,
                     ValueDecl *req) {
+  // Conformances constructed by the ClangImporter should have explicit type
+  // witnesses already.
+  if (isa<ClangModuleUnit>(Conformance->getDeclContext()->getModuleScopeContext())) {
+    llvm::errs() << "Cannot infer associated types for imported conformance:\n";
+    Conformance->getType().dump(llvm::errs());
+    for (auto assocTypeDecl : allUnresolved)
+      assocTypeDecl->dump(llvm::errs());
+    abort();
+  }
+
   InferredAssociatedTypesByWitnesses result;
 
   auto isExtensionUsableForInference = [&](ExtensionDecl *extension) -> bool {
@@ -3797,6 +3816,27 @@ static Type getWitnessTypeForMatching(TypeChecker &tc,
                              genericFn->getResult(),
                              genericFn->getExtInfo());
   }
+
+  // Remap associated types that reference other protocols into this
+  // protocol.
+  auto proto = conformance->getProtocol();
+  type = type.transformRec([proto](TypeBase *type) -> Optional<Type> {
+    if (auto depMemTy = dyn_cast<DependentMemberType>(type)) {
+      if (depMemTy->getAssocType() &&
+          depMemTy->getAssocType()->getProtocol() != proto) {
+        for (auto member : proto->lookupDirect(depMemTy->getName())) {
+          if (auto assocType = dyn_cast<AssociatedTypeDecl>(member)) {
+            auto origProto = depMemTy->getAssocType()->getProtocol();
+            if (proto->inheritsFrom(origProto))
+              return Type(DependentMemberType::get(depMemTy->getBase(),
+                                                   assocType));
+          }
+        }
+      }
+    }
+
+    return None;
+  });
 
   ModuleDecl *module = conformance->getDeclContext()->getParentModule();
   auto resultType = type.subst(QueryTypeSubstitutionMap{substitutions},
@@ -4147,6 +4187,60 @@ compareDeclsForInference(TypeChecker &TC, DeclContext *DC,
   return TC.compareDeclarations(DC, decl1, decl2);
 }
 
+/// "Sanitize" requirements for conformance checking, removing any requirements
+/// that unnecessarily refer to associated types of other protocols.
+static void sanitizeProtocolRequirements(
+                                     ProtocolDecl *proto,
+                                     ArrayRef<Requirement> requirements,
+                                     SmallVectorImpl<Requirement> &sanitized) {
+  std::function<Type(Type)> sanitizeType;
+  sanitizeType = [&](Type outerType) {
+    return outerType.transformRec([&] (TypeBase *type) -> Optional<Type> {
+      if (auto depMemTy = dyn_cast<DependentMemberType>(type)) {
+        if (!depMemTy->getAssocType() ||
+            depMemTy->getAssocType()->getProtocol() != proto) {
+          for (auto member : proto->lookupDirect(depMemTy->getName())) {
+            if (auto assocType = dyn_cast<AssociatedTypeDecl>(member)) {
+              return Type(DependentMemberType::get(
+                                           sanitizeType(depMemTy->getBase()),
+                                           assocType));
+            }
+          }
+
+          if (depMemTy->getBase()->is<GenericTypeParamType>())
+            return Type();
+        }
+      }
+
+      return None;
+    });
+  };
+
+  for (const auto &req : requirements) {
+    switch (req.getKind()) {
+    case RequirementKind::Conformance:
+    case RequirementKind::SameType:
+    case RequirementKind::Superclass: {
+      Type firstType = sanitizeType(req.getFirstType());
+      Type secondType = sanitizeType(req.getSecondType());
+      if (firstType && secondType) {
+        sanitized.push_back({req.getKind(), firstType, secondType});
+      }
+      break;
+    }
+
+    case RequirementKind::Layout: {
+      Type firstType = sanitizeType(req.getFirstType());
+      if (firstType) {
+        sanitized.push_back({req.getKind(), firstType,
+                             req.getLayoutConstraint()});
+      }
+      break;
+    }
+    }
+  }
+}
+
 void ConformanceChecker::resolveTypeWitnesses() {
   llvm::SetVector<AssociatedTypeDecl *> unresolvedAssocTypes;
 
@@ -4414,9 +4508,12 @@ void ConformanceChecker::resolveTypeWitnesses() {
                                           Proto, Conformance->getType(),
                                           ProtocolConformanceRef(Conformance));
 
+      SmallVector<Requirement, 4> sanitizedRequirements;
+      sanitizeProtocolRequirements(Proto, Proto->getRequirementSignature(),
+                                   sanitizedRequirements);
       auto requirementSig =
         GenericSignature::get({Proto->getProtocolSelfType()},
-                              Proto->getRequirementSignature());
+                               sanitizedRequirements);
       auto result =
         TC.checkGenericArguments(DC, SourceLoc(), SourceLoc(),
                                  Conformance->getType(), requirementSig,
@@ -5082,21 +5179,31 @@ void ConformanceChecker::ensureRequirementsAreSatisfied() {
 
   CheckedRequirementSignature = true;
 
+  if (!Conformance->getSignatureConformances().empty())
+    return;
+
   auto reqSig = GenericSignature::get({proto->getProtocolSelfType()},
                                       proto->getRequirementSignature());
 
   auto substitutions = SubstitutionMap::getProtocolSubstitutions(
       proto, Conformance->getType(), ProtocolConformanceRef(Conformance));
 
+  // Create a writer to populate the signature conformances.
+  std::function<void(ProtocolConformanceRef)> writer
+    = Conformance->populateSignatureConformances();
+
   class GatherConformancesListener : public GenericRequirementsCheckListener {
+    std::function<void(ProtocolConformanceRef)> &writer;
   public:
-    SmallVector<ProtocolConformanceRef, 4> conformances;
+    GatherConformancesListener(
+                         std::function<void(ProtocolConformanceRef)> &writer)
+      : writer(writer) { }
 
     void satisfiedConformance(Type depTy, Type replacementTy,
                               ProtocolConformanceRef conformance) override {
-      conformances.push_back(conformance);
+      writer(conformance);
     }
-  } listener;
+  } listener(writer);
 
   auto result = TC.checkGenericArguments(
       Conformance->getDeclContext(), Loc, Loc,
@@ -5107,10 +5214,8 @@ void ConformanceChecker::ensureRequirementsAreSatisfied() {
       nullptr,
       ConformanceCheckFlags::Used, &listener);
 
-  // If there were no errors, record the conformances.
-  if (result == RequirementCheckResult::Success) {
-    Conformance->setSignatureConformances(listener.conformances);
-  } else {
+  // If there were errors, mark the conformance as invalid.
+  if (result != RequirementCheckResult::Success) {
     Conformance->setInvalid();
   }
 }
@@ -5345,9 +5450,9 @@ void ConformanceChecker::checkConformance(MissingWitnessDiagnosisKind Kind) {
   if (Proto->isSpecificProtocol(KnownProtocolKind::ObjectiveCBridgeable)) {
     if (auto nominal = Adoptee->getAnyNominal()) {
       if (!TC.Context.isTypeBridgedInExternalModule(nominal)) {
-        auto nominalModule = nominal->getParentModule();
-        auto conformanceModule = DC->getParentModule();
-        if (nominalModule->getName() != conformanceModule->getName()) {
+        if (nominal->getParentModule() != DC->getParentModule() &&
+            !isInOverlayModuleForImportedModule(DC, nominal)) {
+          auto nominalModule = nominal->getParentModule();
           TC.diagnose(Loc, diag::nonlocal_bridged_to_objc, nominal->getName(),
                       Proto->getName(), nominalModule->getName());
         }
@@ -5508,7 +5613,7 @@ Optional<ProtocolConformanceRef> TypeChecker::conformsToProtocol(
 
   // Look up conformance in the module.
   ModuleDecl *M = DC->getParentModule();
-  auto lookupResult = M->lookupConformance(T, Proto, this);
+  auto lookupResult = M->lookupConformance(T, Proto);
   if (!lookupResult) {
     if (ComplainLoc.isValid())
       diagnoseConformanceFailure(*this, T, Proto, DC, ComplainLoc);
@@ -6825,6 +6930,7 @@ void TypeChecker::recordKnownWitness(NormalProtocolConformance *conformance,
                                      ValueDecl *req, ValueDecl *witness) {
   // Match the witness. This should never fail, but it does allow renaming
   // (because property behaviors rely on renaming).
+  validateDecl(witness);
   auto dc = conformance->getDeclContext();
   RequirementEnvironment reqEnvironment(*this, dc, req, conformance);
   auto match = matchWitness(*this, conformance->getProtocol(), conformance,

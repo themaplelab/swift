@@ -281,8 +281,8 @@ extension Unicode.UTF8 : UnicodeCodec {
   /// byte is a continuation byte.
   ///
   ///     let eAcute = "é"
-  ///     for codePoint in eAcute.utf8 {
-  ///         print(codePoint, UTF8.isContinuation(codePoint))
+  ///     for codeUnit in eAcute.utf8 {
+  ///         print(codeUnit, UTF8.isContinuation(codeUnit))
   ///     }
   ///     // Prints "195 false"
   ///     // Prints "169 true"
@@ -876,19 +876,6 @@ extension UnicodeCodec {
   }
 }
 
-@available(*, unavailable, renamed: "UnicodeCodec")
-public typealias UnicodeCodecType = UnicodeCodec
-
-extension UnicodeCodec {
-  @available(*, unavailable, renamed: "encode(_:into:)")
-  public static func encode(
-    _ input: Unicode.Scalar,
-    output put: (CodeUnit) -> Void
-  ) {
-    Builtin.unreachable()
-  }
-}
-
 @available(*, unavailable, message: "use 'transcode(_:from:to:stoppingOnError:into:)'")
 public func transcode<Input, InputEncoding, OutputEncoding>(
   _ inputEncoding: InputEncoding.Type, _ outputEncoding: OutputEncoding.Type,
@@ -901,19 +888,6 @@ public func transcode<Input, InputEncoding, OutputEncoding>(
   OutputEncoding : UnicodeCodec,
   InputEncoding.CodeUnit == Input.Element {
   Builtin.unreachable()
-}
-
-extension UTF16 {
-  @available(*, unavailable, message: "use 'transcodedLength(of:decodedAs:repairingIllFormedSequences:)'")
-  public static func measure<Encoding, Input>(
-    _: Encoding.Type, input: Input, repairIllFormedSequences: Bool
-  ) -> (Int, Bool)?
-    where
-    Encoding : UnicodeCodec,
-    Input : IteratorProtocol,
-    Encoding.CodeUnit == Input.Element {
-    Builtin.unreachable()
-  }
 }
 
 /// A namespace for Unicode utilities.

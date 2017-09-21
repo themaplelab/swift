@@ -371,7 +371,7 @@ public:
   OwnershipUseCheckerResult visitTransformingTerminatorInst(TermInst *TI);
 
   OwnershipUseCheckerResult
-  visitNonTrivialEnum(EnumDecl *E, ValueOwnershipKind RequiredConvention);
+  visitEnumArgument(EnumDecl *E, ValueOwnershipKind RequiredConvention);
   OwnershipUseCheckerResult
   visitApplyParameter(ValueOwnershipKind RequiredConvention,
                       UseLifetimeConstraint Requirement);
@@ -449,8 +449,6 @@ NO_OPERAND_INST(StrongRetain)
 NO_OPERAND_INST(StrongRetainUnowned)
 NO_OPERAND_INST(UnownedRetain)
 NO_OPERAND_INST(Unreachable)
-// TODO: Some key path components will have operands
-NO_OPERAND_INST(KeyPath)
 #undef NO_OPERAND_INST
 
 /// Instructions whose arguments are always compatible with one convention.
@@ -790,7 +788,7 @@ OwnershipCompatibilityUseChecker::checkTerminatorArgumentMatchesDestBB(
     return {matches, lifetimeConstraint};
   }
 
-  return visitNonTrivialEnum(E, DestBlockArgOwnershipKind);
+  return visitEnumArgument(E, DestBlockArgOwnershipKind);
 }
 
 OwnershipUseCheckerResult
@@ -923,7 +921,7 @@ OwnershipCompatibilityUseChecker::visitReturnInst(ReturnInst *RI) {
   }
 
   if (auto *E = getType().getEnumOrBoundGenericEnum()) {
-    return visitNonTrivialEnum(E, Base);
+    return visitEnumArgument(E, Base);
   }
 
   return {compatibleWithOwnership(Base),
@@ -1011,42 +1009,31 @@ OwnershipUseCheckerResult OwnershipCompatibilityUseChecker::visitCallee(
   llvm_unreachable("Unhandled ParameterConvention in switch.");
 }
 
-OwnershipUseCheckerResult OwnershipCompatibilityUseChecker::visitNonTrivialEnum(
+// Visit an enum value that is passed at argument position, including block
+// arguments, apply arguments, and return values.
+//
+// The operand definition's ownership kind may be known to be "trivial",
+// but it is still valid to pass that enum to a argument nontrivial type.
+// For example:
+//
+// %val = enum $Optional<SomeClass>, #Optional.none // trivial ownership
+// apply %f(%val) : (@owned Optional<SomeClass>)    // owned argument
+OwnershipUseCheckerResult OwnershipCompatibilityUseChecker::visitEnumArgument(
     EnumDecl *E, ValueOwnershipKind RequiredKind) {
-  // Otherwise, first see if the enum is completely trivial. In such a case, we
-  // need an argument with a trivial convention. If we have an enum with at
-  // least 1 non-trivial case, then we need an argument with a non-trivial
-  // convention. If our parameter is trivial, then we just let it through in
-  // such a case. Otherwise we need to make sure that the non-trivial ownership
-  // convention matches the one on the argument parameter.
-
-  // Check if this enum has at least one case that is non-trivially typed.
-  bool HasNonTrivialCase =
-      llvm::any_of(E->getAllElements(), [this](EnumElementDecl *E) -> bool {
-        if (!E->hasAssociatedValues())
-          return false;
-        SILType EnumEltType = getType().getEnumElementType(E, Mod);
-        return !EnumEltType.isTrivial(Mod);
-      });
-
-  // If we have all trivial cases, make sure we are compatible with a trivial
-  // ownership kind.
-  if (!HasNonTrivialCase) {
-    return {compatibleWithOwnership(ValueOwnershipKind::Trivial),
-            UseLifetimeConstraint::MustBeLive};
-  }
-
-  // Otherwise, if this value is a trivial ownership kind, return.
+  // If this value is already categorized as a trivial ownership kind, it is
+  // safe to pass to any argument convention.
   if (compatibleWithOwnership(ValueOwnershipKind::Trivial)) {
     return {true, UseLifetimeConstraint::MustBeLive};
   }
 
-  // And finally finish by making sure that if we have a non-trivial ownership
-  // kind that it matches the argument's convention.
-  auto lifetimeConstraint = hasExactOwnership(ValueOwnershipKind::Owned)
+  // The operand has a non-trivial ownership kind. It must match the argument
+  // convention.
+  auto ownership = getOwnershipKind();
+  auto lifetimeConstraint = (ownership == ValueOwnershipKind::Owned)
                                 ? UseLifetimeConstraint::MustBeInvalidated
                                 : UseLifetimeConstraint::MustBeLive;
-  return {compatibleWithOwnership(RequiredKind), lifetimeConstraint};
+  return {compatibleOwnershipKinds(ownership, RequiredKind),
+          lifetimeConstraint};
 }
 
 // We allow for trivial cases of enums with non-trivial cases to be passed in
@@ -1060,7 +1047,7 @@ OwnershipUseCheckerResult OwnershipCompatibilityUseChecker::visitApplyParameter(
   if (!E) {
     return {compatibleWithOwnership(Kind), Requirement};
   }
-  return visitNonTrivialEnum(E, Kind);
+  return visitEnumArgument(E, Kind);
 }
 
 // Handle Apply and TryApply.
@@ -1155,6 +1142,18 @@ OwnershipCompatibilityUseChecker::visitMarkDependenceInst(
   return {true, UseLifetimeConstraint::MustBeLive};
 }
 
+OwnershipUseCheckerResult
+OwnershipCompatibilityUseChecker::visitKeyPathInst(KeyPathInst *I) {
+  // KeyPath moves the value in memory out of address operands, but the
+  // ownership checker doesn't reason about that yet.
+  if (isAddressOrTrivialType()) {
+    return {compatibleWithOwnership(ValueOwnershipKind::Trivial),
+            UseLifetimeConstraint::MustBeLive};
+  }
+  return {compatibleWithOwnership(ValueOwnershipKind::Owned),
+          UseLifetimeConstraint::MustBeInvalidated};
+}
+
 //===----------------------------------------------------------------------===//
 //                            Builtin Use Checker
 //===----------------------------------------------------------------------===//
@@ -1226,6 +1225,10 @@ CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, Alignof)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AllocRaw)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, And)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AssertConf)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AssignCopyArrayNoAlias)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AssignCopyArrayFrontToBack)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AssignCopyArrayBackToFront)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AssignTakeArray)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AssumeNonNegative)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AtomicLoad)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, AtomicRMW)
@@ -1305,6 +1308,7 @@ CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, Sizeof)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, StaticReport)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, Strideof)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, Sub)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, TakeArrayNoAlias)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, TakeArrayBackToFront)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, TakeArrayFrontToBack)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, MustBeLive, Trunc)

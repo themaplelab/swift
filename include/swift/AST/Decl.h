@@ -305,10 +305,16 @@ class alignas(1 << DeclAlignInBits) Decl {
     /// Whether we are overridden later
     unsigned Overridden : 1;
 
+    /// Whether the getter is mutating.
+    unsigned IsGetterMutating : 1;
+
+    /// Whether the setter is mutating.
+    unsigned IsSetterMutating : 1;
+
     /// The storage kind.
     unsigned StorageKind : 4;
   };
-  enum { NumAbstractStorageDeclBits = NumValueDeclBits + 5 };
+  enum { NumAbstractStorageDeclBits = NumValueDeclBits + 7 };
   static_assert(NumAbstractStorageDeclBits <= 32, "fits in an unsigned");
 
   class VarDeclBitfields {
@@ -361,7 +367,7 @@ class alignas(1 << DeclAlignInBits) Decl {
     unsigned BodyKind : 3;
 
     /// Number of curried parameter lists.
-    unsigned NumParameterLists : 6;
+    unsigned NumParameterLists : 5;
 
     /// Whether we are overridden later.
     unsigned Overridden : 1;
@@ -374,6 +380,9 @@ class alignas(1 << DeclAlignInBits) Decl {
 
     /// Whether NeedsNewVTableEntry is valid.
     unsigned HasComputedNeedsNewVTableEntry : 1;
+
+    /// The ResilienceExpansion to use for default arguments.
+    unsigned DefaultArgumentResilienceExpansion : 1;
   };
   enum { NumAbstractFunctionDeclBits = NumValueDeclBits + 13 };
   static_assert(NumAbstractFunctionDeclBits <= 32, "fits in an unsigned");
@@ -1951,6 +1960,23 @@ public:
   
   /// Does this binding declare something that requires storage?
   bool hasStorage() const;
+
+  /// Determines whether this binding either has an initializer expression, or is
+  /// default initialized, without performing any type checking on it.
+  ///
+  /// This is only valid to check for bindings which have storage.
+  bool isDefaultInitializable() const {
+    assert(hasStorage());
+
+    for (unsigned i = 0, e = getNumPatternEntries(); i < e; ++i)
+      if (!isDefaultInitializable(i))
+        return false;
+
+    return true;
+  }
+
+  /// Can the pattern at index i be default initialized?
+  bool isDefaultInitializable(unsigned i) const;
   
   /// When the pattern binding contains only a single variable with no
   /// destructuring, retrieve that variable.
@@ -3489,9 +3515,6 @@ private:
 class ProtocolDecl final : public NominalTypeDecl {
   SourceLoc ProtocolLoc;
 
-  /// The location of the 'class' keyword for class-bound protocols.
-  SourceLoc ClassRequirementLoc;
-
   /// The syntactic representation of the where clause in a protocol like
   /// `protocol ... where ... { ... }`.
   TrailingWhereClause *TrailingWhere;
@@ -3570,17 +3593,6 @@ public:
     ProtocolDeclBits.RequiresClassValid = true;
     ProtocolDeclBits.RequiresClass = requiresClass;
   }
-
-  /// Specify that this protocol is class-bounded, recording the location of
-  /// the 'class' keyword.
-  void setClassBounded(SourceLoc loc) {
-    ClassRequirementLoc = loc;
-    ProtocolDeclBits.RequiresClassValid = true;
-    ProtocolDeclBits.RequiresClass = true;
-  }
-
-  /// Retrieve the source location of the 'class' keyword.
-  SourceLoc getClassBoundedLoc() const { return ClassRequirementLoc; }
 
   /// Determine whether an existential conforming to this protocol can be
   /// matched with a generic type parameter constrained to this protocol.
@@ -3984,6 +3996,8 @@ protected:
                       SourceLoc NameLoc)
     : ValueDecl(Kind, DC, Name, NameLoc), OverriddenDecl(nullptr) {
     AbstractStorageDeclBits.StorageKind = Stored;
+    AbstractStorageDeclBits.IsGetterMutating = false;
+    AbstractStorageDeclBits.IsSetterMutating = true;
     AbstractStorageDeclBits.Overridden = false;
   }
 public:
@@ -4086,13 +4100,23 @@ public:
     llvm_unreachable("bad storage kind");
   }
   
-  /// \brief Return true if the 'getter' is 'mutating', i.e. that it requires an
-  /// lvalue base to be accessed.
-  bool isGetterMutating() const;
+  /// \brief Return true if reading this storage requires the ability to
+  /// modify the base value.
+  bool isGetterMutating() const {
+    return AbstractStorageDeclBits.IsGetterMutating;
+  }
+  void setIsGetterMutating(bool isMutating) {
+    AbstractStorageDeclBits.IsGetterMutating = isMutating;
+  }
   
-  /// \brief Return true if the 'setter' is 'nonmutating', i.e. that it can be
-  /// called even on an immutable base value.
-  bool isSetterNonMutating() const;
+  /// \brief Return true if modifying this storage requires the ability to
+  /// modify the base value.
+  bool isSetterMutating() const {
+    return AbstractStorageDeclBits.IsSetterMutating;
+  }
+  void setIsSetterMutating(bool isMutating) {
+    AbstractStorageDeclBits.IsSetterMutating = isMutating;
+  }
 
   FuncDecl *getAccessorFunction(AccessorKind accessor) const;
 
@@ -4855,6 +4879,8 @@ protected:
     AbstractFunctionDeclBits.Throws = Throws;
     AbstractFunctionDeclBits.NeedsNewVTableEntry = false;
     AbstractFunctionDeclBits.HasComputedNeedsNewVTableEntry = false;
+    AbstractFunctionDeclBits.DefaultArgumentResilienceExpansion =
+        unsigned(ResilienceExpansion::Maximal);
 
     // Verify no bitfield truncation.
     assert(AbstractFunctionDeclBits.NumParameterLists == NumParameterLists);
@@ -5071,6 +5097,21 @@ public:
   ///
   /// Resolved during type checking
   void setIsOverridden() { AbstractFunctionDeclBits.Overridden = true; }
+
+  /// The ResilienceExpansion for default arguments.
+  ///
+  /// In Swift 4 mode, default argument expressions are serialized, and must
+  /// obey the restrictions imposed upon inlineable function bodies.
+  ResilienceExpansion getDefaultArgumentResilienceExpansion() const {
+    return ResilienceExpansion(
+        AbstractFunctionDeclBits.DefaultArgumentResilienceExpansion);
+  }
+
+  /// Set the ResilienceExpansion for default arguments.
+  void setDefaultArgumentResilienceExpansion(ResilienceExpansion expansion) {
+    AbstractFunctionDeclBits.DefaultArgumentResilienceExpansion =
+        unsigned(expansion);
+  }
 
   /// Set information about the foreign error convention used by this
   /// declaration.
@@ -6067,8 +6108,6 @@ public:
   MutableArrayRef<Relation> getMutableLowerThan() {
     return { getLowerThanBuffer(), NumLowerThan };
   }
-
-  void collectOperatorKeywordRanges(SmallVectorImpl<CharSourceRange> &Ranges);
 
   static bool classof(const Decl *D) {
     return D->getKind() == DeclKind::PrecedenceGroup;

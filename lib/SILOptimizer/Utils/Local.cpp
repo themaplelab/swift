@@ -41,8 +41,12 @@ static llvm::cl::opt<bool> EnableExpandAll("enable-expand-all",
 /// Creates an increment on \p Ptr before insertion point \p InsertPt that
 /// creates a strong_retain if \p Ptr has reference semantics itself or a
 /// retain_value if \p Ptr is a non-trivial value without reference-semantics.
-SILInstruction *
+NullablePtr<SILInstruction>
 swift::createIncrementBefore(SILValue Ptr, SILInstruction *InsertPt) {
+  // If we have a trivial type, just bail, there is no work to do.
+  if (Ptr->getType().isTrivial(InsertPt->getModule()))
+    return nullptr;
+
   // Set up the builder we use to insert at our insertion point.
   SILBuilder B(InsertPt);
   auto Loc = RegularLocation(SourceLoc());
@@ -59,8 +63,11 @@ swift::createIncrementBefore(SILValue Ptr, SILInstruction *InsertPt) {
 /// Creates a decrement on \p Ptr before insertion point \p InsertPt that
 /// creates a strong_release if \p Ptr has reference semantics itself or
 /// a release_value if \p Ptr is a non-trivial value without reference-semantics.
-SILInstruction *
+NullablePtr<SILInstruction>
 swift::createDecrementBefore(SILValue Ptr, SILInstruction *InsertPt) {
+  if (Ptr->getType().isTrivial(InsertPt->getModule()))
+    return nullptr;
+
   // Setup the builder we will use to insert at our insertion point.
   SILBuilder B(InsertPt);
   auto Loc = RegularLocation(SourceLoc());
@@ -331,10 +338,9 @@ void swift::replaceDeadApply(ApplySite Old, ValueBase *New) {
 
 bool swift::hasArchetypes(SubstitutionList Subs) {
   // Check whether any of the substitutions are dependent.
-  for (auto &sub : Subs)
-    if (sub.getReplacement()->hasArchetype())
-      return true;
-  return false;
+  return llvm::any_of(Subs, [](const Substitution &S) {
+    return S.getReplacement()->hasArchetype();
+  });
 }
 
 bool swift::mayBindDynamicSelf(SILFunction *F) {
@@ -1463,7 +1469,7 @@ optimizeBridgedObjCToSwiftCast(SILInstruction *Inst,
   auto BridgedProto =
       M.getASTContext().getProtocol(KnownProtocolKind::ObjectiveCBridgeable);
   auto Conf =
-      *M.getSwiftModule()->lookupConformance(Target, BridgedProto, nullptr);
+      *M.getSwiftModule()->lookupConformance(Target, BridgedProto);
 
   auto ParamTypes = BridgedFunc->getLoweredFunctionType()->getParameters();
 
@@ -1591,7 +1597,7 @@ optimizeBridgedSwiftToObjCCast(SILInstruction *Inst,
       M.getASTContext().getProtocol(KnownProtocolKind::ObjectiveCBridgeable);
 
   auto Conf =
-      M.getSwiftModule()->lookupConformance(Source, BridgedProto, nullptr);
+      M.getSwiftModule()->lookupConformance(Source, BridgedProto);
 
   assert(Conf && "_ObjectiveCBridgeable conformance should exist");
   (void) Conf;
@@ -2621,7 +2627,7 @@ static bool optimizeStaticallyKnownProtocolConformance(
 
     auto Proto = dyn_cast<ProtocolDecl>(TargetType->getAnyNominal());
     if (Proto) {
-      auto Conformance = SM->lookupConformance(SourceType, Proto, nullptr);
+      auto Conformance = SM->lookupConformance(SourceType, Proto);
       if (Conformance.hasValue()) {
         // SourceType is a non-existential type conforming to a
         // protocol represented by the TargetType.

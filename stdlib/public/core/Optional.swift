@@ -179,7 +179,7 @@ public enum Optional<Wrapped> : ExpressibleByNilLiteral {
   ///     let possibleNumber: Int? = Int("42")
   ///     let nonOverflowingSquare = possibleNumber.flatMap { x -> Int? in
   ///         let (result, overflowed) = x.multipliedReportingOverflow(by: x)
-  ///         return overflowed == .overflow ? nil : result
+  ///         return overflowed ? nil : result
   ///     }
   ///     print(nonOverflowingSquare)
   ///     // Prints "Optional(1764)"
@@ -673,19 +673,6 @@ public func ?? <T>(optional: T?, defaultValue: @autoclosure () throws -> T?)
   case .none:
     return try defaultValue()
   }
-}
-
-extension Optional {
-
-  @available(*, unavailable, renamed: "none")
-  public static var None: Optional<Wrapped> {
-    return .none
-  }
-  @available(*, unavailable, renamed: "some")
-  public static func Some(_ x: Wrapped) -> Optional<Wrapped> {
-    return .some(x)
-  }
-
 }
 
 //===----------------------------------------------------------------------===//

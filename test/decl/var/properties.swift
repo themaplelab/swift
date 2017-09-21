@@ -264,10 +264,9 @@ var computed_prop_with_init_1: X {
   get {}
 } = X()  // expected-error {{expected expression}} expected-error {{consecutive statements on a line must be separated by ';'}} {{2-2=;}}
 
-// FIXME: Redundant error below
 var x2 { // expected-error{{computed property must have an explicit type}} {{7-7=: <# Type #>}} expected-error{{type annotation missing in pattern}}
   get {
-    return _x // expected-error{{unexpected non-void return value in void function}}
+    return _x
   }
 }
 
@@ -470,7 +469,7 @@ protocol ProtocolWithExtension1 {
 }
 extension ProtocolWithExtension1 {
   var fooExt: Int // expected-error{{extensions may not contain stored properties}}
-  static var fooExtStatic = 4 // expected-error{{static stored properties not supported in generic types}}
+  static var fooExtStatic = 4 // expected-error{{static stored properties not supported in protocol extensions}}
 }
 
 func getS() -> S {
@@ -1126,7 +1125,7 @@ class rdar17391625derived :  rdar17391625 {
 
 extension rdar17391625derived {
   // Not a stored property, computed because it is an override.
-  override var prop: Int { // expected-error {{declarations in extensions cannot override yet}}
+  override var prop: Int { // expected-error {{overriding declarations in extensions is not supported}}
   didSet {
   }
   }

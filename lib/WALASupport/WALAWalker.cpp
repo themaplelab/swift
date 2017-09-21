@@ -825,7 +825,7 @@ void WALAWalker::perInstruction(InstrInfo *instrInfo, WALAIntegration &wala) {
 		for (auto op = instrInfo->ops.begin(); op != instrInfo->ops.end(); ++op) {
 			outs << "\t\t [OPER]: " << *op;
 		}
-	
+
 		outs << "\n";	
 	}
 }

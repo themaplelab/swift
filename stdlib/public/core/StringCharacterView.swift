@@ -29,10 +29,10 @@ extension String {
   ///
   /// In Swift, every string provides a view of its contents as characters. In
   /// this view, many individual characters---for example, "é", "김", and
-  /// "🇮🇳"---can be made up of multiple Unicode code points. These code points
-  /// are combined by Unicode's boundary algorithms into *extended grapheme
-  /// clusters*, represented by the `Character` type. Each element of a
-  /// `CharacterView` collection is a `Character` instance.
+  /// "🇮🇳"---can be made up of multiple Unicode scalar values. These scalar
+  /// values are combined by Unicode's boundary algorithms into *extended
+  /// grapheme clusters*, represented by the `Character` type. Each element of
+  /// a `CharacterView` collection is a `Character` instance.
   ///
   ///     let flowers = "Flowers 💐"
   ///     for c in flowers.characters {
@@ -747,21 +747,5 @@ extension String.CharacterView {
     return String.CharacterView(
       unicodeScalars[bounds]._core,
       coreOffset: bounds.lowerBound.encodedOffset)
-  }
-}
-
-extension String.CharacterView {
-  @available(*, unavailable, renamed: "replaceSubrange")
-  public mutating func replaceRange<C>(
-    _ subRange: Range<Index>,
-    with newElements: C
-  ) where C : Collection, C.Element == Character {
-    Builtin.unreachable()
-  }
-    
-  @available(*, unavailable, renamed: "append(contentsOf:)")
-  public mutating func appendContentsOf<S : Sequence>(_ newElements: S)
-    where S.Element == Character {
-    Builtin.unreachable()
   }
 }

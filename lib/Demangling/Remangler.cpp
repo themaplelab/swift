@@ -274,6 +274,7 @@ class Remangler {
   void mangleAnyGenericType(Node *node, char TypeOp);
   void mangleGenericArgs(Node *node, char &Separator);
   void mangleAnyConstructor(Node *node, char kindOp);
+  void mangleAbstractStorage(Node *node, StringRef accessorCode);
 
 #define NODE(ID)                                                        \
   void mangle##ID(Node *node);
@@ -476,6 +477,16 @@ void Remangler::mangleGenericArgs(Node *node, char &Separator) {
     default:
       break;
   }
+}
+
+void Remangler::mangleAbstractStorage(Node *node, StringRef accessorCode) {
+  mangleChildNodes(node);
+  switch (node->getKind()) {
+    case Node::Kind::Subscript: Buffer << "i"; break;
+    case Node::Kind::Variable: Buffer << "v"; break;
+    default: unreachable("Not a storage node");
+  }
+  Buffer << accessorCode;
 }
 
 void Remangler::mangleAllocator(Node *node) {
@@ -770,8 +781,7 @@ void Remangler::mangleDestructor(Node *node) {
 }
 
 void Remangler::mangleDidSet(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "fW";
+  mangleAbstractStorage(node->getFirstChild(), "W");
 }
 
 void Remangler::mangleDirectness(Node *node) {
@@ -1052,8 +1062,7 @@ void Remangler::mangleGenericTypeParamDecl(Node *node) {
 }
 
 void Remangler::mangleGetter(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "fg";
+  mangleAbstractStorage(node->getFirstChild(), "g");
 }
 
 void Remangler::mangleGlobal(Node *node) {
@@ -1067,6 +1076,7 @@ void Remangler::mangleGlobal(Node *node) {
       case Node::Kind::GenericSpecializationNotReAbstracted:
       case Node::Kind::GenericPartialSpecialization:
       case Node::Kind::GenericPartialSpecializationNotReAbstracted:
+      case Node::Kind::OutlinedBridgedMethod:
       case Node::Kind::OutlinedVariable:
       case Node::Kind::ObjCAttribute:
       case Node::Kind::NonObjCAttribute:
@@ -1092,8 +1102,7 @@ void Remangler::mangleGlobal(Node *node) {
 }
 
 void Remangler::mangleGlobalGetter(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "fG";
+  mangleAbstractStorage(node->getFirstChild(), "G");
 }
 
 void Remangler::mangleIdentifier(Node *node) {
@@ -1273,8 +1282,7 @@ void Remangler::mangleLocalDeclName(Node *node) {
 }
 
 void Remangler::mangleMaterializeForSet(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "fm";
+  mangleAbstractStorage(node->getFirstChild(), "m");
 }
 
 void Remangler::mangleMetatype(Node *node) {
@@ -1318,23 +1326,19 @@ void Remangler::mangleModule(Node *node) {
 }
 
 void Remangler::mangleNativeOwningAddressor(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "flo";
+  mangleAbstractStorage(node->getFirstChild(), "lo");
 }
 
 void Remangler::mangleNativeOwningMutableAddressor(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "fao";
+  mangleAbstractStorage(node->getFirstChild(), "ao");
 }
 
 void Remangler::mangleNativePinningAddressor(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "flp";
+  mangleAbstractStorage(node->getFirstChild(), "lp");
 }
 
 void Remangler::mangleNativePinningMutableAddressor(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "faP";
+  mangleAbstractStorage(node->getFirstChild(), "aP");
 }
 
 void Remangler::mangleNominalTypeDescriptor(Node *node) {
@@ -1365,13 +1369,11 @@ void Remangler::mangleObjCBlock(Node *node) {
 }
 
 void Remangler::mangleOwningAddressor(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "flO";
+  mangleAbstractStorage(node->getFirstChild(), "lO");
 }
 
 void Remangler::mangleOwningMutableAddressor(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "faO";
+  mangleAbstractStorage(node->getFirstChild(), "aO");
 }
 
 void Remangler::manglePartialApplyForwarder(Node *node) {
@@ -1515,6 +1517,16 @@ void Remangler::mangleKeyPathSetterThunkHelper(Node *node) {
   Buffer << "Tk";
 }
 
+void Remangler::mangleKeyPathEqualsThunkHelper(Node *node) {
+  mangleChildNodes(node);
+  Buffer << "TH";
+}
+
+void Remangler::mangleKeyPathHashThunkHelper(Node *node) {
+  mangleChildNodes(node);
+  Buffer << "Th";
+}
+
 void Remangler::mangleReturnType(Node *node) {
   mangleArgumentTuple(node);
 }
@@ -1525,8 +1537,7 @@ void Remangler::mangleSILBoxType(Node *node) {
 }
 
 void Remangler::mangleSetter(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "fs";
+  mangleAbstractStorage(node->getFirstChild(), "s");
 }
 
 void Remangler::mangleSpecializationPassID(Node *node) {
@@ -1547,8 +1558,7 @@ void Remangler::mangleStructure(Node *node) {
 }
 
 void Remangler::mangleSubscript(Node *node) {
-  mangleChildNodes(node);
-  Buffer << 'i';
+  mangleAbstractStorage(node, "p");
 }
 
 void Remangler::mangleSuffix(Node *node) {
@@ -1624,13 +1634,11 @@ void Remangler::mangleUnowned(Node *node) {
 }
 
 void Remangler::mangleUnsafeAddressor(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "flu";
+  mangleAbstractStorage(node->getFirstChild(), "lu");
 }
 
 void Remangler::mangleUnsafeMutableAddressor(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "fau";
+  mangleAbstractStorage(node->getFirstChild(), "au");
 }
 
 void Remangler::mangleValueWitness(Node *node) {
@@ -1650,8 +1658,7 @@ void Remangler::mangleValueWitnessTable(Node *node) {
 }
 
 void Remangler::mangleVariable(Node *node) {
-  mangleChildNodes(node);
-  Buffer << 'v';
+  mangleAbstractStorage(node, "p");
 }
 
 void Remangler::mangleVTableAttribute(Node *node) {
@@ -1669,8 +1676,7 @@ void Remangler::mangleWeak(Node *node) {
 }
 
 void Remangler::mangleWillSet(Node *node) {
-  mangleChildNodes(node);
-  Buffer << "fw";
+  mangleAbstractStorage(node->getFirstChild(), "w");
 }
 
 void Remangler::mangleReflectionMetadataBuiltinDescriptor(Node *node) {
@@ -1737,6 +1743,12 @@ void Remangler::mangleOutlinedRelease(Node *node) {
 void Remangler::mangleOutlinedVariable(Node *node) {
   Buffer << "Tv";
   mangleIndex(node->getIndex());
+}
+
+void Remangler::mangleOutlinedBridgedMethod(Node *node) {
+  Buffer << "Te";
+  Buffer << node->getText();
+  Buffer << "_";
 }
 
 void Remangler::mangleSILBoxTypeWithLayout(Node *node) {

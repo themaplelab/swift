@@ -91,6 +91,13 @@ SILModule *ValueBase::getModule() const {
 ValueOwnershipKind::ValueOwnershipKind(SILModule &M, SILType Type,
                                        SILArgumentConvention Convention)
     : Value() {
+  // Trivial types can be passed using a variety of conventions. They always
+  // have trivial ownership.
+  if (Type.isTrivial(M)) {
+    Value = ValueOwnershipKind::Trivial;
+    return;
+  }
+
   switch (Convention) {
   case SILArgumentConvention::Indirect_In:
   case SILArgumentConvention::Indirect_In_Constant:
@@ -112,8 +119,7 @@ ValueOwnershipKind::ValueOwnershipKind(SILModule &M, SILType Type,
     Value = ValueOwnershipKind::Owned;
     return;
   case SILArgumentConvention::Direct_Unowned:
-    Value = Type.isTrivial(M) ? ValueOwnershipKind::Trivial
-                              : ValueOwnershipKind::Unowned;
+    Value = ValueOwnershipKind::Unowned;
     return;
   case SILArgumentConvention::Direct_Guaranteed:
     Value = ValueOwnershipKind::Guaranteed;
@@ -175,4 +181,41 @@ ValueOwnershipKind SILValue::getOwnershipKind() const {
   // Once we have multiple return values, this must be changed.
   sil::ValueOwnershipKindClassifier Classifier;
   return Classifier.visit(const_cast<ValueBase *>(Value));
+}
+
+/// Map a SILValue mnemonic name to its ValueKind.
+ValueKind swift::getSILValueKind(StringRef Name) {
+#define INST(Id, Parent, TextualName, MemoryBehavior, ReleasingBehavior)       \
+  if (Name == #TextualName)                                                    \
+    return ValueKind::Id;
+
+#define VALUE(Id, Parent)                                                      \
+  if (Name == #Id)                                                             \
+    return ValueKind::Id;
+
+#include "swift/SIL/SILNodes.def"
+
+#ifdef NDEBUG
+  llvm::errs()
+    << "Unknown SILValue name\n";
+  abort();
+#endif
+  llvm_unreachable("Unknown SILValue name");
+}
+
+/// Map ValueKind to a corresponding mnemonic name.
+StringRef swift::getSILValueName(ValueKind Kind) {
+  switch (Kind) {
+#define INST(Id, Parent, TextualName, MemoryBehavior, ReleasingBehavior)       \
+  case ValueKind::Id:                                                          \
+    return #TextualName;                                                       \
+    break;
+
+#define VALUE(Id, Parent)                                                      \
+  case ValueKind::Id:                                                          \
+    return #Id;                                                                \
+    break;
+
+#include "swift/SIL/SILNodes.def"
+  }
 }

@@ -2720,9 +2720,6 @@ void ArchetypeType::populateNestedTypes() const {
   llvm::SmallPtrSet<Identifier, 4> knownNestedTypes;
   ProtocolType::visitAllProtocols(getConformsTo(),
                                   [&](ProtocolDecl *proto) -> bool {
-    // Objective-C protocols don't have type members.
-    if (proto->isObjC()) return false;
-
     for (auto member : proto->getMembers()) {
       if (auto assocType = dyn_cast<AssociatedTypeDecl>(member)) {
         if (knownNestedTypes.insert(assocType->getName()).second)
@@ -3031,8 +3028,7 @@ LookUpConformanceInModule::operator()(CanType dependentType,
     return ProtocolConformanceRef(conformedProtocol->getDecl());
 
   return M->lookupConformance(conformingReplacementType,
-                              conformedProtocol->getDecl(),
-                              M->getASTContext().getLazyResolver());
+                              conformedProtocol->getDecl());
 }
 
 Optional<ProtocolConformanceRef>
@@ -4036,6 +4032,17 @@ TypeTraitResult TypeBase::canBeClass() {
     return TypeTraitResult::Is;
 
   CanType self = getCanonicalType();
+
+  // Archetypes with a trivial layout constraint can never
+  // represent a class.
+  if (auto Archetype = dyn_cast<ArchetypeType>(self)) {
+    if (auto Layout = Archetype->getLayoutConstraint()) {
+      if (Layout->isTrivial())
+        return TypeTraitResult::IsNot;
+      if (Layout->isClass())
+        return TypeTraitResult::Is;
+    }
+  }
 
   // Dependent types might be bound to classes.
   if (isa<SubstitutableType>(self))

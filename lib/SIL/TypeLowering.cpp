@@ -930,6 +930,10 @@ namespace {
 
     void emitLoweredDestroyValue(SILBuilder &B, SILLocation loc, SILValue value,
                                  LoweringStyle style) const override {
+      if (style == LoweringStyle::Shallow) {
+        emitDestroyValue(B, loc, value);
+        return;
+      }
       assert(style != LoweringStyle::Shallow &&
              "This method should never be called when performing a shallow "
              "destroy value.");
@@ -1112,7 +1116,7 @@ namespace {
   class OpaqueValueTypeLowering : public LeafLoadableTypeLowering {
   public:
     OpaqueValueTypeLowering(SILType type)
-      : LeafLoadableTypeLowering(type, IsAddressOnly, IsReferenceCounted) {}
+      : LeafLoadableTypeLowering(type, IsAddressOnly, IsNotReferenceCounted) {}
 
     void emitCopyInto(SILBuilder &B, SILLocation loc,
                       SILValue src, SILValue dest, IsTake_t isTake,

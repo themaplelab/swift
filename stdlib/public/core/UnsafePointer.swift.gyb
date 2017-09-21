@@ -540,17 +540,23 @@ public struct ${Self}<Pointee>
       count >= 0, "${Self}.assign with negative count")
     if UnsafePointer(self) < source || UnsafePointer(self) >= source + count {
       // assign forward from a disjoint or following overlapping range.
-      for i in 0..<count {
-        self[i] = source[i]
-      }
+      Builtin.assignCopyArrayFrontToBack(
+        Pointee.self, self._rawValue, source._rawValue, count._builtinWordValue)
+      // This builtin is equivalent to:
+      // for i in 0..<count {
+      //   self[i] = source[i]
+      // }
     }
     else {
       // assign backward from a non-following overlapping range.
-      var i = count-1
-      while i >= 0 {
-        self[i] = source[i]
-        i -= 1
-      }
+      Builtin.assignCopyArrayBackToFront(
+        Pointee.self, self._rawValue, source._rawValue, count._builtinWordValue)
+      // This builtin is equivalent to:
+      // var i = count-1
+      // while i >= 0 {
+      //   self[i] = source[i]
+      //   i -= 1
+      // }
     }
   }
 
@@ -670,8 +676,7 @@ public struct ${Self}<Pointee>
     _debugPrecondition(
       self + count <= source || source + count <= self,
       "moveAssign overlapping range")
-    Builtin.destroyArray(Pointee.self, self._rawValue, count._builtinWordValue)
-    Builtin.takeArrayFrontToBack(
+    Builtin.assignTakeArray(
       Pointee.self, self._rawValue, source._rawValue, count._builtinWordValue)
     // These builtins are equivalent to:
     // for i in 0..<count {
@@ -1043,132 +1048,6 @@ extension ${Self} {
   public static func -= (lhs: inout ${Self}<Pointee>, rhs: Int) {
     lhs = lhs - rhs
   }
-}
-
-extension ${Self} {
-  @available(*, unavailable, message:
-    "use 'withMemoryRebound(to:capacity:_)' to temporarily view memory as another layout-compatible type.")
-  public init<U>(_ from : UnsafeMutablePointer<U>) { Builtin.unreachable() }
-
-  @available(*, unavailable, message:
-    "use 'withMemoryRebound(to:capacity:_)' to temporarily view memory as another layout-compatible type.")
-  public init?<U>(_ from : UnsafeMutablePointer<U>?) { Builtin.unreachable(); return nil }
-
-  @available(*, unavailable, message:
-    "use 'withMemoryRebound(to:capacity:_)' to temporarily view memory as another layout-compatible type.")
-  public init<U>(_ from : UnsafePointer<U>) { Builtin.unreachable() }
-
-  @available(*, unavailable, message:
-    "use 'withMemoryRebound(to:capacity:_)' to temporarily view memory as another layout-compatible type.")
-  public init?<U>(_ from : UnsafePointer<U>?) { Builtin.unreachable(); return nil }
-
- % if mutable:
-  @available(*, unavailable, renamed: "init(mutating:)")
-  public init(_ from : UnsafePointer<Pointee>) { Builtin.unreachable() }
-
-  @available(*, unavailable, renamed: "init(mutating:)")
-  public init?(_ from : UnsafePointer<Pointee>?) { Builtin.unreachable(); return nil }
-% end
-
-  @available(*, unavailable, renamed: "Pointee")
-  public typealias Memory = Pointee
-
-  @available(*, unavailable, message: "use 'nil' literal")
-  public init() {
-    Builtin.unreachable()
-  }
-
-% if mutable:
-  @available(*, unavailable, renamed: "allocate(capacity:)")
-  public static func alloc(_ num: Int) -> ${Self} {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, message: "use '${Self}.allocate(capacity:)'")
-  public init(allocatingCapacity: Int) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "deallocate(capacity:)")
-  public func dealloc(_ num: Int) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "deallocate(capacity:)")
-  public func deallocateCapacity(_ num: Int) {
-    Builtin.unreachable()
-  }
-% end
-
-  @available(*, unavailable, renamed: "pointee")
-  public var memory: Pointee {
-    get {
-      Builtin.unreachable()
-    }
-% if mutable:
-    set {
-      Builtin.unreachable()
-    }
-% end
-  }
-
-% if mutable:
-  @available(*, unavailable, renamed: "initialize(to:)")
-  public func initialize(_ newvalue: Pointee) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "initialize(to:count:)")
-  public func initialize(with newvalue: Pointee, count: Int = 1) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "deinitialize(count:)")
-  public func destroy() {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "deinitialize(count:)")
-  public func destroy(_ count: Int) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "initialize(from:)")
-  public func initializeFrom<C : Collection>(_ source: C) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "initialize(from:count:)")
-  public func initializeFrom(_ source: UnsafePointer<Pointee>, count: Int) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "assign(from:count:)")
-  public func assignFrom(_ source: UnsafePointer<Pointee>, count: Int) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "assign(from:count:)")
-  public func assignBackwardFrom(_ source: UnsafePointer<Pointee>, count: Int) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "moveInitialize(from:count:)")
-  public func moveInitializeFrom(_ source: UnsafePointer<Pointee>, count: Int) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "moveInitialize(from:count:)")
-  public func moveInitializeBackwardFrom(_ source: UnsafePointer<Pointee>,
-    count: Int) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "moveAssign(from:count:)")
-  public func moveAssignFrom(_ source: UnsafePointer<Pointee>, count: Int) {
-    Builtin.unreachable()
-  }
-% end
 }
 
 extension Int {

@@ -219,7 +219,7 @@ public struct StaticString
   }
 
   /// Creates an instance initialized to a single character that is made up of
-  /// one or more Unicode code points.
+  /// one or more Unicode scalar values.
   ///
   /// Do not call this initializer directly. It may be used by the compiler
   /// when you initialize a static string using an extended grapheme cluster.
@@ -271,16 +271,3 @@ extension StaticString {
     return Mirror(reflecting: description)
   }
 }
-
-extension StaticString {
-  @available(*, unavailable, renamed: "utf8CodeUnitCount")
-  public var byteSize: Int {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, message: "use the 'String(_:)' initializer")
-  public var stringValue: String {
-    Builtin.unreachable()
-  }
-}
-

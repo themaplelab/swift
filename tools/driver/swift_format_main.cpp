@@ -54,6 +54,8 @@ private:
 
 public:
   FormatterDocument(std::unique_ptr<llvm::MemoryBuffer> Buffer) {
+    // Formatting logic requires tokens on source file.
+    CompInv.getLangOptions().KeepTokensInSourceFile = true;
     updateCode(std::move(Buffer));
   }
 
@@ -94,9 +96,8 @@ private:
   }
 
 public:
-  void setMainExecutablePath(const std::string &Path) {
-    MainExecutablePath = Path;
-  }
+  SwiftFormatInvocation(const std::string &ExecPath)
+      : MainExecutablePath(ExecPath) {}
 
   const std::string &getOutputFilename() { return OutputFilename; }
 
@@ -239,10 +240,8 @@ int swift_format_main(ArrayRef<const char *> Args, const char *Argv0,
   PrintingDiagnosticConsumer PDC;
   Instance.addDiagnosticConsumer(&PDC);
 
-  SwiftFormatInvocation Invocation;
-  std::string MainExecutablePath =
-      llvm::sys::fs::getMainExecutable(Argv0, MainAddr);
-  Invocation.setMainExecutablePath(MainExecutablePath);
+  SwiftFormatInvocation Invocation(
+      llvm::sys::fs::getMainExecutable(Argv0, MainAddr));
 
   DiagnosticEngine &Diags = Instance.getDiags();
   if (Invocation.parseArgs(Args, Diags) != 0)

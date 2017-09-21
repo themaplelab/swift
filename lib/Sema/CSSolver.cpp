@@ -319,10 +319,8 @@ enumerateDirectSupertypes(TypeChecker &tc, Type type) {
       result.push_back(superclass);
   }
 
-  if (auto lvalue = type->getAs<LValueType>())
-    result.push_back(lvalue->getObjectType());
-  if (auto iot = type->getAs<InOutType>())
-    result.push_back(iot->getObjectType());
+  if (!type->isMaterializable())
+    result.push_back(type->getWithoutSpecifierType());
 
   // FIXME: lots of other cases to consider!
   return result;
@@ -792,6 +790,10 @@ bool ConstraintSystem::Candidate::solve(
 
   // Allocate new constraint system for sub-expression.
   ConstraintSystem cs(TC, DC, None);
+  cs.baseCS = &BaseCS;
+
+  // Set up expression type checker timer for the candidate.
+  cs.Timer.emplace(E, cs);
 
   // Cleanup after constraint system generation/solving,
   // because it would assign types to expressions, which
@@ -1297,8 +1299,7 @@ ConstraintSystem::solve(Expr *&expr,
   assert(!solverState && "use solveRec for recursive calls");
 
   // Set up the expression type checker timer.
-  Timer.emplace(expr, TC.getDebugTimeExpressions(),
-                TC.getWarnLongExpressionTypeChecking(), TC.Context);
+  Timer.emplace(expr, *this);
 
   // Try to shrink the system by reducing disjunction domains. This
   // goes through every sub-expression and generate its own sub-system, to
@@ -1782,21 +1783,15 @@ bool ConstraintSystem::solveSimplified(
     Constraint *disjunction, SmallVectorImpl<Solution> &solutions,
     FreeTypeVariableBinding allowFreeTypeVariables) {
 
-  TypeVariableType *bestTypeVar = nullptr;
-  PotentialBindings bestBindings;
-  std::tie(bestBindings, bestTypeVar) = determineBestBindings();
+  auto bestBindings = determineBestBindings();
 
   // If we have a binding that does not involve type variables, and is
-  // not fully bound, and is either not a literal or is a collection
-  // literal, or we have no disjunction to attempt instead, go ahead
-  // and try the bindings for this type variable.
-  if (bestBindings &&
-      (!disjunction ||
-       (!bestBindings.InvolvesTypeVariables && !bestBindings.FullyBound &&
-        (bestBindings.LiteralBinding == LiteralBindingKind::None ||
-         bestBindings.LiteralBinding == LiteralBindingKind::Collection)))) {
-    return tryTypeVariableBindings(solverState->depth, bestTypeVar,
-                                   bestBindings.Bindings, solutions,
+  // not fully bound, or we have no disjunction to attempt instead,
+  // go ahead and try the bindings for this type variable.
+  if (bestBindings && (!disjunction || (!bestBindings->InvolvesTypeVariables &&
+                                        !bestBindings->FullyBound))) {
+    return tryTypeVariableBindings(solverState->depth, bestBindings->TypeVar,
+                                   bestBindings->Bindings, solutions,
                                    allowFreeTypeVariables);
   }
 
