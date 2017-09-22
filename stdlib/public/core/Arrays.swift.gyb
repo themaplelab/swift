@@ -169,7 +169,7 @@ if True:
 ///   specific values.
 """
   elif Self == 'Array':
-    SelfDocComment = '''\
+    SelfDocComment = """\
 /// An ordered, random-access collection.
 ///
 /// Arrays are one of the most commonly used data types in an app. You use
@@ -447,9 +447,7 @@ if True:
 ///
 /// - Note: The `ContiguousArray` and `ArraySlice` types are not bridged;
 ///   instances of those types always have a contiguous block of memory as
-///   their storage.
-/// - SeeAlso: `ContiguousArray`, `ArraySlice`, `Sequence`, `Collection`,
-///   `RangeReplaceableCollection`'''
+///   their storage."""
   # FIXME: Write about Array up/down-casting.
   else:
     raise ValueError('Unhandled case: ' + Self)
@@ -620,8 +618,6 @@ public struct ${Self}<Element>
   /// - Returns: An index offset by `n` from the index `i`, unless that index
   ///   would be beyond `limit` in the direction of movement. In that case,
   ///   the method returns `nil`.
-  ///
-  /// - SeeAlso: `index(_:offsetBy:)`, `formIndex(_:offsetBy:limitedBy:)`
   @_inlineable
   public func index(
     _ i: Int, offsetBy n: Int, limitedBy limit: Int
@@ -736,10 +732,6 @@ public struct ${Self}<Element>
   ///
   /// - Parameter bounds: A range of integers. The bounds of the range must be
   ///   valid indices of the array.
-%if Self != 'ArraySlice':
-  ///
-  /// - SeeAlso: `ArraySlice`
-%end
   @_inlineable
   public subscript(bounds: Range<Int>) -> ArraySlice<Element> {
     get {
@@ -750,7 +742,10 @@ public struct ${Self}<Element>
     set(rhs) {
       _checkIndex(bounds.lowerBound)
       _checkIndex(bounds.upperBound)
-      if self[bounds]._buffer.identity != rhs._buffer.identity {
+      // If the replacement buffer has same identity, and the ranges match,
+      // then this was a pinned in-place modification, nothing further needed.
+      if self[bounds]._buffer.identity != rhs._buffer.identity
+      || bounds != rhs.startIndex..<rhs.endIndex {
         self.replaceSubrange(bounds, with: rhs)
       }
     }
@@ -1494,7 +1489,7 @@ extension ${Self} : RangeReplaceableCollection, _ArrayProtocol {
   /// - Returns: The element that was removed.
   @_inlineable
   public mutating func _customRemoveLast() -> Element? {
-    _precondition(count > 0, "can't removeLast from an empty ${Self}")
+    _precondition(count > 0, "Can't removeLast from an empty ${Self}")
     // FIXME(performance): if `self` is uniquely referenced, we should remove
     // the element as shown below (this will deallocate the element and
     // decrease memory use).  If `self` is not uniquely referenced, the code
@@ -1574,25 +1569,15 @@ extension ${Self} : RangeReplaceableCollection, _ArrayProtocol {
     }
   }
 
-  // Since RangeReplaceableCollection now has a version of filter that is less
-  // efficient, we should make the default implementation coming from Sequence
-  // preferred.
-  @_inlineable
-  public func filter(
-    _ isIncluded: (Element) throws -> Bool
-  ) rethrows -> [Element] {
-    return try _filter(isIncluded)
-  }
-
   //===--- algorithms -----------------------------------------------------===//
 
   @_inlineable
   public mutating func _withUnsafeMutableBufferPointerIfSupported<R>(
-    _ body: (UnsafeMutablePointer<Element>, Int) throws -> R
+    _ body: (inout UnsafeMutableBufferPointer<Element>) throws -> R
   ) rethrows -> R? {
     return try withUnsafeMutableBufferPointer {
       (bufferPointer) -> R in
-      let r = try body(bufferPointer.baseAddress!, bufferPointer.count)
+      let r = try body(&bufferPointer)
       return r
     }
   }
@@ -1693,12 +1678,10 @@ extension ${Self} {
   ///
   /// - Parameter body: A closure with an `UnsafeBufferPointer` parameter that
   ///   points to the contiguous storage for the array. ${contiguousCaveat} If
-  ///   `body` has a return value, it is used as the return value for the
-  ///   `withUnsafeBufferPointer(_:)` method. The pointer argument is valid
-  ///   only for the duration of the method's execution.
-  /// - Returns: The return value of the `body` closure parameter, if any.
-  ///
-  /// - SeeAlso: `withUnsafeMutableBufferPointer`, `UnsafeBufferPointer`
+  ///   `body` has a return value, that value is also used as the return value
+  ///   for the `withUnsafeBufferPointer(_:)` method. The pointer argument is
+  ///   valid only for the duration of the method's execution.
+  /// - Returns: The return value, if any, of the `body` closure parameter.
   @_inlineable
   public func withUnsafeBufferPointer<R>(
     _ body: (UnsafeBufferPointer<Element>) throws -> R
@@ -1737,13 +1720,11 @@ extension ${Self} {
   ///
   /// - Parameter body: A closure with an `UnsafeMutableBufferPointer`
   ///   parameter that points to the contiguous storage for the array.
-  ///   ${contiguousCaveat} If `body` has a return value, it is used as the
-  ///   return value for the `withUnsafeMutableBufferPointer(_:)` method. The
-  ///   pointer argument is valid only for the duration of the method's
-  ///   execution.
-  /// - Returns: The return value of the `body` closure parameter, if any.
-  ///
-  /// - SeeAlso: `withUnsafeBufferPointer`, `UnsafeMutableBufferPointer`
+  ///   ${contiguousCaveat} If `body` has a return value, that value is also
+  ///   used as the return value for the `withUnsafeMutableBufferPointer(_:)`
+  ///   method. The pointer argument is valid only for the duration of the
+  ///   method's execution.
+  /// - Returns: The return value, if any, of the `body` closure parameter.
   @_semantics("array.withUnsafeMutableBufferPointer")
   @inline(__always) // Performance: This method should get inlined into the
   // caller such that we can combine the partial apply with the apply in this
@@ -2270,12 +2251,11 @@ extension ${Self} {
   ///
   /// - Parameter body: A closure with an `UnsafeMutableRawBufferPointer`
   ///   parameter that points to the contiguous storage for the array.
-  ///   ${contiguousCaveat} If `body` has a return value, it is used as the
-  ///   return value for the `withUnsafeMutableBytes(_:)` method. The argument
-  ///   is valid only for the duration of the closure's execution.
-  /// - Returns: The return value of the `body` closure parameter, if any.
-  ///
-  /// - SeeAlso: `withUnsafeBytes`, `UnsafeMutableRawBufferPointer`
+  ///   ${contiguousCaveat} If `body` has a return value, that value is also
+  ///   used as the return value for the `withUnsafeMutableBytes(_:)` method.
+  ///   The argument is valid only for the duration of the closure's
+  ///   execution.
+  /// - Returns: The return value, if any, of the `body` closure parameter.
   @_inlineable
   public mutating func withUnsafeMutableBytes<R>(
     _ body: (UnsafeMutableRawBufferPointer) throws -> R
@@ -2306,12 +2286,10 @@ extension ${Self} {
   ///
   /// - Parameter body: A closure with an `UnsafeRawBufferPointer` parameter
   ///   that points to the contiguous storage for the array.
-  ///   ${contiguousCaveat} If `body` has a return value, it is used as the
-  ///   return value for the `withUnsafeBytes(_:)` method. The argument is
-  ///   valid only for the duration of the closure's execution.
-  /// - Returns: The return value of the `body` closure parameter, if any.
-  ///
-  /// - SeeAlso: `withUnsafeMutableBytes`, `UnsafeRawBufferPointer`
+  ///   ${contiguousCaveat} If `body` has a return value, that value is also
+  ///   used as the return value for the `withUnsafeBytes(_:)` method. The
+  ///   argument is valid only for the duration of the closure's execution.
+  /// - Returns: The return value, if any, of the `body` closure parameter.
   @_inlineable
   public func withUnsafeBytes<R>(
     _ body: (UnsafeRawBufferPointer) throws -> R
@@ -2370,7 +2348,6 @@ extension Array {
   ///
   /// - Complexity: O(*n*) if the array is bridged, where *n* is the length
   ///   of the array; otherwise, O(1).
-  /// - SeeAlso: `removeLast()`
   @_inlineable
   public mutating func popLast() -> Element? {
     guard !isEmpty else { return nil }
@@ -2385,7 +2362,6 @@ extension ContiguousArray {
   ///   otherwise, `nil`.
   ///
   /// - Complexity: O(1)
-  /// - SeeAlso: `removeLast()`
   @_inlineable
   public mutating func popLast() -> Element? {
     guard !isEmpty else { return nil }
@@ -2403,34 +2379,6 @@ extension ArraySlice {
         shiftedToStartIndex: _startIndex))
   }
 }
-
-%for (Self, a_Self) in arrayTypes:
-extension ${Self} {
-  @available(*, unavailable, message: "Please use init(repeating:count:) instead")
-  init(count: Int, repeatedValue: Element) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "remove(at:)")
-  public mutating func removeAtIndex(_ index: Int) -> Element {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "replaceSubrange(_:with:)")
-  public mutating func replaceRange<C>(
-    _ subRange: Range<Int>,
-    with newElements: C
-  ) where C : Collection, C.Element == Element {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "append(contentsOf:)")
-  public mutating func appendContentsOf<S : Sequence>(_ newElements: S)
-    where S.Element == Element {
-    Builtin.unreachable()
-  }
-}
-%end
 
 // ${'Local Variables'}:
 // eval: (read-only-mode 1)

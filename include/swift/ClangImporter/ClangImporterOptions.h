@@ -37,12 +37,19 @@ public:
   /// Equivalent to Clang's -mcpu=.
   std::string TargetCPU;
 
+  /// The path to which we should store indexing data, if any.
+  std::string IndexStorePath;
+
   /// The bridging header or PCH that will be imported.
   std::string BridgingHeader;
 
   /// When automatically generating a precompiled header from the bridging
   /// header, place it in this directory.
   std::string PrecompiledHeaderOutputDir;
+
+  /// The optimizaton setting.  This doesn't typically matter for
+  /// import, but it can affect Clang's IR generation of static functions.
+  std::string Optimization;
 
   /// Disable validating the persistent PCH.
   bool PCHDisableValidation = false;

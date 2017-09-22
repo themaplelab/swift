@@ -1154,7 +1154,7 @@ do {
   _ = GenericEnum.two(3, 4)
   _ = GenericEnum.two((3, 4)) // expected-error {{missing argument for parameter #2 in call}}
 
-  _ = GenericEnum.tuple(3, 4) // expected-error {{enum element 'tuple' expects a single parameter of type '(_, _)'}} {{25-25=(}} {{29-29=)}}
+  _ = GenericEnum.tuple(3, 4) // expected-error {{enum element 'tuple' expects a single parameter of type '(T, T)'}} {{25-25=(}} {{29-29=)}}
   _ = GenericEnum.tuple((3, 4))
 }
 
@@ -1187,7 +1187,7 @@ do {
   _ = GenericEnum.two((a, b)) // expected-error {{missing argument for parameter #2 in call}}
   _ = GenericEnum.two(c) // expected-error {{missing argument for parameter #2 in call}}
 
-  _ = GenericEnum.tuple(a, b) // expected-error {{enum element 'tuple' expects a single parameter of type '(_, _)'}} {{25-25=(}} {{29-29=)}}
+  _ = GenericEnum.tuple(a, b) // expected-error {{enum element 'tuple' expects a single parameter of type '(T, T)'}} {{25-25=(}} {{29-29=)}}
   _ = GenericEnum.tuple((a, b))
   _ = GenericEnum.tuple(c)
 }
@@ -1223,7 +1223,7 @@ do {
   _ = GenericEnum.two((a, b)) // expected-error {{missing argument for parameter #2 in call}}
   _ = GenericEnum.two(c) // expected-error {{missing argument for parameter #2 in call}}
 
-  _ = GenericEnum.tuple(a, b) // expected-error {{enum element 'tuple' expects a single parameter of type '(_, _)'}} {{25-25=(}} {{29-29=)}}
+  _ = GenericEnum.tuple(a, b) // expected-error {{enum element 'tuple' expects a single parameter of type '(T, T)'}} {{25-25=(}} {{29-29=)}}
   _ = GenericEnum.tuple((a, b))
   _ = GenericEnum.tuple(c)
 }
@@ -1460,7 +1460,7 @@ enum DataSourcePage<T> {
 }
 
 let pages1: MutableProperty<(data: DataSourcePage<Int>, totalCount: Int)> = MutableProperty((
-    // expected-error@-1 {{cannot convert value of type 'MutableProperty<(data: _, totalCount: Int)>' to specified type 'MutableProperty<(data: DataSourcePage<Int>, totalCount: Int)>'}}
+    // expected-error@-1 {{expression type 'MutableProperty<(data: DataSourcePage<Int>, totalCount: Int)>' is ambiguous without more context}}
     data: .notLoaded,
     totalCount: 0
 ))
@@ -1478,3 +1478,11 @@ let pages3: MutableProperty<(data: DataSourcePage<Int>, totalCount: Int)> = Muta
     data: DataSourcePage<Int>.notLoaded,
     totalCount: 0
 ))
+
+// rdar://problem/32301091 - Make sure that in Swift 3 mode following expressions still compile just fine
+
+func rdar32301091_1(_ :((Int, Int) -> ())!) {}
+rdar32301091_1 { _ in } // Ok in Swift 3
+
+func rdar32301091_2(_ :(Int, Int) -> ()) {}
+rdar32301091_2 { _ in } // Ok in Swift 3

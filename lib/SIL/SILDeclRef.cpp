@@ -15,6 +15,8 @@
 #include "swift/AST/AnyFunctionRef.h"
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/ASTMangler.h"
+#include "swift/AST/Initializer.h"
+#include "swift/AST/ParameterList.h"
 #include "swift/ClangImporter/ClangImporter.h"
 #include "swift/ClangImporter/ClangModule.h"
 #include "swift/SIL/SILLinkage.h"
@@ -236,7 +238,7 @@ unsigned swift::getNaturalUncurryLevel(ValueDecl *vd) {
   } else if (isa<ConstructorDecl>(vd)) {
     return 1;
   } else if (auto *ed = dyn_cast<EnumElementDecl>(vd)) {
-    return ed->getArgumentInterfaceType() ? 1 : 0;
+    return ed->hasAssociatedValues() ? 1 : 0;
   } else if (isa<DestructorDecl>(vd)) {
     return 0;
   } else if (isa<ClassDecl>(vd)) {
@@ -396,8 +398,8 @@ SILLinkage SILDeclRef::getLinkage(ForDefinition_t forDefinition) const {
   // emitted by need and have shared linkage.
   if (isEnumElement() || isCurried) {
     switch (d->getEffectiveAccess()) {
-    case Accessibility::Private:
-    case Accessibility::FilePrivate:
+    case AccessLevel::Private:
+    case AccessLevel::FilePrivate:
       return maybeAddExternal(SILLinkage::Private);
 
     default:
@@ -409,8 +411,8 @@ SILLinkage SILDeclRef::getLinkage(ForDefinition_t forDefinition) const {
   // from which they come, and never get seen externally.
   if (isIVarInitializerOrDestroyer()) {
     switch (d->getEffectiveAccess()) {
-    case Accessibility::Private:
-    case Accessibility::FilePrivate:
+    case AccessLevel::Private:
+    case AccessLevel::FilePrivate:
       return maybeAddExternal(SILLinkage::Private);
     default:
       return maybeAddExternal(SILLinkage::Hidden);
@@ -430,13 +432,40 @@ SILLinkage SILDeclRef::getLinkage(ForDefinition_t forDefinition) const {
   if (isClangImported())
     return SILLinkage::Shared;
 
-  // Otherwise, we have external linkage.
-  switch (d->getEffectiveAccess()) {
-    case Accessibility::Private:
-    case Accessibility::FilePrivate:
+  // Stored property initializers get the linkage of their containing type.
+  if (isStoredPropertyInitializer()) {
+    // If the property is public, the initializer needs to be public, because
+    // it might be referenced from an inlineable initializer.
+    //
+    // Note that we don't serialize the presence of an initializer, so there's
+    // no way to reference one from another module except for this case.
+    //
+    // This is silly, and we need a proper resilience story here.
+    if (d->getEffectiveAccess() == AccessLevel::Public)
+      return maybeAddExternal(SILLinkage::Public);
+
+    d = cast<NominalTypeDecl>(d->getDeclContext());
+
+    // Otherwise, use the visibility of the type itself, because even if the
+    // property is private, we might reference the initializer from another
+    // file.
+    switch (d->getEffectiveAccess()) {
+    case AccessLevel::Private:
+    case AccessLevel::FilePrivate:
       return maybeAddExternal(SILLinkage::Private);
 
-    case Accessibility::Internal:
+    default:
+      return maybeAddExternal(SILLinkage::Hidden);
+    }
+  }
+
+  // Otherwise, we have external linkage.
+  switch (d->getEffectiveAccess()) {
+    case AccessLevel::Private:
+    case AccessLevel::FilePrivate:
+      return maybeAddExternal(SILLinkage::Private);
+
+    case AccessLevel::Internal:
       return maybeAddExternal(SILLinkage::Hidden);
 
     default:
@@ -511,12 +540,25 @@ IsSerialized_t SILDeclRef::isSerialized() const {
     dc = closure->getLocalContext();
   else {
     auto *d = getDecl();
+
+    // Default argument generators are serialized if the function was
+    // type-checked in Swift 4 mode.
+    if (kind == SILDeclRef::Kind::DefaultArgGenerator) {
+      auto *afd = cast<AbstractFunctionDecl>(d);
+      switch (afd->getDefaultArgumentResilienceExpansion()) {
+      case ResilienceExpansion::Minimal:
+        return IsSerialized;
+      case ResilienceExpansion::Maximal:
+        return IsNotSerialized;
+      }
+    }
+
     dc = getDecl()->getInnermostDeclContext();
 
     // Enum element constructors are serialized if the enum is
     // @_versioned or public.
     if (isEnumElement())
-      if (d->getEffectiveAccess() >= Accessibility::Public)
+      if (d->getEffectiveAccess() >= AccessLevel::Public)
         return IsSerialized;
 
     // Currying thunks are serialized if referenced from an inlinable
@@ -524,7 +566,7 @@ IsSerialized_t SILDeclRef::isSerialized() const {
     // such a thunk is valid, since it must in turn reference a public
     // symbol, or dispatch via class_method or witness_method.
     if (isCurried)
-      if (d->getEffectiveAccess() >= Accessibility::Public)
+      if (d->getEffectiveAccess() >= AccessLevel::Public)
         return IsSerializable;
 
     if (isForeignToNativeThunk())
@@ -536,7 +578,7 @@ IsSerialized_t SILDeclRef::isSerialized() const {
       auto *ctor = cast<ConstructorDecl>(d);
       if (ctor->isDesignatedInit() &&
           ctor->getDeclContext()->getAsClassOrClassExtensionContext()) {
-        if (ctor->getEffectiveAccess() >= Accessibility::Public &&
+        if (ctor->getEffectiveAccess() >= AccessLevel::Public &&
             !ctor->hasClangNode())
           return IsSerialized;
       }
@@ -730,7 +772,7 @@ std::string SILDeclRef::mangle(ManglingKind MKind) const {
     assert(!isCurried);
     return mangler.mangleAccessorEntity(AccessorKind::IsMutableAddressor,
                                         AddressorKind::Unsafe,
-                                        getDecl(),
+                                        cast<AbstractStorageDecl>(getDecl()),
                                         /*isStatic*/ false,
                                         SKind);
 
@@ -770,8 +812,16 @@ SILDeclRef SILDeclRef::getNextOverriddenVTableEntry() const {
     // @NSManaged property, then it won't be in the vtable.
     if (overridden.getDecl()->hasClangNode())
       return SILDeclRef();
-    if (overridden.getDecl()->isDynamic())
+
+    // If we overrode a non-required initializer, there won't be a vtable
+    // slot for the allocator.
+    if (overridden.kind == SILDeclRef::Kind::Allocator) {
+      if (!cast<ConstructorDecl>(overridden.getDecl())->isRequired())
+        return SILDeclRef();
+    } else if (overridden.getDecl()->isDynamic()) {
       return SILDeclRef();
+    }
+    
     if (auto *ovFD = dyn_cast<FuncDecl>(overridden.getDecl()))
       if (auto *asd = ovFD->getAccessorStorageDecl()) {
         if (asd->hasClangNode())
@@ -784,13 +834,6 @@ SILDeclRef SILDeclRef::getNextOverriddenVTableEntry() const {
     // either. This can occur for extensions to ObjC classes.
     if (isa<ExtensionDecl>(overridden.getDecl()->getDeclContext()))
       return SILDeclRef();
-
-    // If we overrode a non-required initializer, there won't be a vtable
-    // slot for the allocator.
-    if (overridden.kind == SILDeclRef::Kind::Allocator &&
-        !cast<ConstructorDecl>(overridden.getDecl())->isRequired()) {
-      return SILDeclRef();
-    }
 
     return overridden;
   }
@@ -832,17 +875,17 @@ SubclassScope SILDeclRef::getSubclassScope() const {
          "class must be as visible as its members");
 
   switch (classType->getEffectiveAccess()) {
-  case Accessibility::Private:
-  case Accessibility::FilePrivate:
+  case AccessLevel::Private:
+  case AccessLevel::FilePrivate:
     return SubclassScope::NotApplicable;
-  case Accessibility::Internal:
-  case Accessibility::Public:
+  case AccessLevel::Internal:
+  case AccessLevel::Public:
     return SubclassScope::Internal;
-  case Accessibility::Open:
+  case AccessLevel::Open:
     return SubclassScope::External;
   }
 
-  llvm_unreachable("Unhandled Accessibility in switch.");
+  llvm_unreachable("Unhandled access level in switch.");
 }
 
 unsigned SILDeclRef::getUncurryLevel() const {

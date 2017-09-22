@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "swift/SILOptimizer/Utils/PerformanceInlinerUtils.h"
+#include "swift/Strings.h"
 
 //===----------------------------------------------------------------------===//
 //                               ConstantTracker
@@ -591,6 +592,66 @@ static bool calleeHasPartialApplyWithOpenedExistentials(FullApplySite AI) {
   return false;
 }
 
+// Returns true if a given apply site should be skipped during the
+// early inlining pass.
+//
+// NOTE: Add here the checks for any specific @_semantics/@_effects
+// attributes causing a given callee to be excluded from the inlining
+// during the early inlining pass.
+static bool shouldSkipApplyDuringEarlyInlining(FullApplySite AI) {
+  // Add here the checks for any specific @_semantics attributes that need
+  // to be skipped during the early inlining pass.
+  ArraySemanticsCall ASC(AI.getInstruction());
+  if (ASC && !ASC.canInlineEarly())
+    return true;
+
+  SILFunction *Callee = AI.getReferencedFunction();
+  if (!Callee)
+    return false;
+
+  if (Callee->hasSemanticsAttr("self_no_escaping_closure") ||
+      Callee->hasSemanticsAttr("pair_no_escaping_closure"))
+    return true;
+
+  // Add here the checks for any specific @_effects attributes that need
+  // to be skipped during the early inlining pass.
+  if (Callee->hasEffectsKind())
+    return true;
+
+  return false;
+}
+
+/// Checks if a generic callee and caller have compatible layout constraints.
+static bool isCallerAndCalleeLayoutConstraintsCompatible(FullApplySite AI) {
+  SILFunction *Callee = AI.getReferencedFunction();
+  auto CalleeSig = Callee->getLoweredFunctionType()->getGenericSignature();
+  auto SubstParams = CalleeSig->getSubstitutableParams();
+  auto AISubs = AI.getSubstitutions();
+  for (auto idx : indices(SubstParams)) {
+    auto Param = SubstParams[idx];
+    // Map the parameter into context
+    auto ContextTy = Callee->mapTypeIntoContext(Param->getCanonicalType());
+    auto Archetype = ContextTy->getAs<ArchetypeType>();
+    if (!Archetype)
+      continue;
+    auto Layout = Archetype->getLayoutConstraint();
+    if (!Layout)
+      continue;
+    // The generic parameter has a layout constraint.
+    // Check that the substitution has the same constraint.
+    auto AIReplacement = AISubs[idx].getReplacement();
+    auto AIArchetype = AIReplacement->getAs<ArchetypeType>();
+    if (!AIArchetype)
+      return false;
+    auto AILayout = AIArchetype->getLayoutConstraint();
+    if (!AILayout)
+      return false;
+    if (AILayout != Layout)
+      return false;
+  }
+  return true;
+}
+
 // Returns the callee of an apply_inst if it is basically inlineable.
 SILFunction *swift::getEligibleFunction(FullApplySite AI,
                                         InlineSelection WhatToInline) {
@@ -601,21 +662,32 @@ SILFunction *swift::getEligibleFunction(FullApplySite AI,
   if (!Callee) {
     return nullptr;
   }
+  auto ModuleName = Callee->getModule().getSwiftModule()->getName().str();
+  bool IsInStdlib = (ModuleName == STDLIB_NAME || ModuleName == SWIFT_ONONE_SUPPORT);
 
   // Don't inline functions that are marked with the @_semantics or @effects
   // attribute if the inliner is asked not to inline them.
   if (Callee->hasSemanticsAttrs() || Callee->hasEffectsKind()) {
     if (WhatToInline == InlineSelection::NoSemanticsAndGlobalInit) {
-      ArraySemanticsCall ASC(AI.getInstruction());
-      if (!ASC.canInlineEarly())
+      if (shouldSkipApplyDuringEarlyInlining(AI))
+        return nullptr;
+      if (Callee->hasSemanticsAttr("inline_late"))
         return nullptr;
     }
     // The "availability" semantics attribute is treated like global-init.
     if (Callee->hasSemanticsAttrs() &&
         WhatToInline != InlineSelection::Everything &&
-        Callee->hasSemanticsAttrThatStartsWith("availability")) {
+        (Callee->hasSemanticsAttrThatStartsWith("availability") ||
+         (Callee->hasSemanticsAttrThatStartsWith("inline_late")))) {
       return nullptr;
     }
+    if (Callee->hasSemanticsAttrs() &&
+        WhatToInline == InlineSelection::Everything) {
+      if (Callee->hasSemanticsAttrThatStartsWith("inline_late") && IsInStdlib) {
+        return nullptr;
+      }
+    }
+
   } else if (Callee->isGlobalInit()) {
     if (WhatToInline != InlineSelection::Everything) {
       return nullptr;
@@ -678,8 +750,20 @@ SILFunction *swift::getEligibleFunction(FullApplySite AI,
   }
 
   if (!EnableSILInliningOfGenerics && AI.hasSubstitutions()) {
-    // Inlining of generics is not allowed.
-    return nullptr;
+    // Inlining of generics is not allowed unless it is an @inline(__always)
+    // or transparent function.
+    if (Callee->getInlineStrategy() != AlwaysInline && !Callee->isTransparent())
+      return nullptr;
+  }
+
+  // We cannot inline function with layout constraints on its generic types
+  // if the corresponding substitution type does not have the same constraints.
+  // The reason for this restriction is that we'd need to be able to express
+  // in SIL something like casting a value of generic type T into a value of
+  // generic type T: _LayoutConstraint, which is impossible currently.
+  if (EnableSILInliningOfGenerics && AI.hasSubstitutions()) {
+    if (!isCallerAndCalleeLayoutConstraintsCompatible(AI))
+      return nullptr;
   }
 
   // IRGen cannot handle partial_applies containing opened_existentials
@@ -712,6 +796,10 @@ static bool isConstantValue(SILValue V) {
         return false;
     }
     return true;
+  }
+  if (auto *MT = dyn_cast<MetatypeInst>(V)) {
+    if (!MT->getType().hasArchetype())
+      return true;
   }
   return false;
 }

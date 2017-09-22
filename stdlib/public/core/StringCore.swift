@@ -151,9 +151,9 @@ public struct _StringCore {
     self._baseAddress = baseAddress
 
     self._countAndFlags
-      = (UInt(extendingOrTruncating: elementShift) &<< (UInt.bitWidth - 1))
+      = (UInt(truncatingIfNeeded: elementShift) &<< (UInt.bitWidth - 1))
       | ((hasCocoaBuffer ? 1 : 0) &<< (UInt.bitWidth - 2))
-      | UInt(extendingOrTruncating: count)
+      | UInt(truncatingIfNeeded: count)
 
     self._owner = owner
     _sanityCheck(UInt(count) & _flagMask == (0 as UInt),
@@ -375,7 +375,7 @@ public struct _StringCore {
       || encoding == Unicode.UTF16.self
       || encoding == Unicode.UTF32.self {
         bytes.forEach {
-          processCodeUnit(Encoding.CodeUnit(extendingOrTruncating: $0))
+          processCodeUnit(Encoding.CodeUnit(truncatingIfNeeded: $0))
         }
       }
       else {
@@ -416,6 +416,7 @@ public struct _StringCore {
   /// - Note: If unsuccessful because of insufficient space in an
   ///   existing buffer, the suggested new capacity will at least double
   ///   the existing buffer's storage.
+  @inline(__always)
   mutating func _claimCapacity(
     _ newSize: Int, minElementWidth: Int) -> (Int, UnsafeMutableRawPointer?) {
     if _fastPath(
@@ -427,15 +428,11 @@ public struct _StringCore {
       // In order to grow the substring in place, this _StringCore should point
       // at the substring at the end of a _StringBuffer.  Otherwise, some other
       // String is using parts of the buffer beyond our last byte.
-      let usedStart = _pointer(toElementAt:0)
       let usedEnd = _pointer(toElementAt:count)
 
       // Attempt to claim unused capacity in the buffer
-      if _fastPath(
-        buffer.grow(
-          oldBounds: UnsafeRawPointer(usedStart)..<UnsafeRawPointer(usedEnd),
-          newUsedCount: newSize)
-      ) {
+      if _fastPath(buffer.start == _baseAddress && newSize <= buffer.capacity) {
+        buffer.usedEnd = buffer.start + (newSize &<< elementShift)
         count = newSize
         return (0, usedEnd)
       }
@@ -452,6 +449,7 @@ public struct _StringCore {
   /// Effectively appends garbage to the String until it has newSize
   /// UTF-16 code units.  Returns a pointer to the garbage code units;
   /// you must immediately copy valid data into that storage.
+  @inline(__always)
   mutating func _growBuffer(
     _ newSize: Int, minElementWidth: Int
   ) -> UnsafeMutableRawPointer {
@@ -669,7 +667,7 @@ extension _StringCore : RangeReplaceableCollection {
       if _fastPath(elementWidth == 1) {
         var dst = rangeStart.assumingMemoryBound(to: UTF8.CodeUnit.self)
         for u in newElements {
-          dst.pointee = UInt8(extendingOrTruncating: u)
+          dst.pointee = UInt8(truncatingIfNeeded: u)
           dst += 1
         }
       }

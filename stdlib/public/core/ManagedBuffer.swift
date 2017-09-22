@@ -12,6 +12,13 @@
 
 import SwiftShims
 
+@_silgen_name("swift_bufferAllocate")
+internal func _swift_bufferAllocate(
+  bufferType type: AnyClass,
+  size: Int,
+  alignmentMask: Int
+) -> AnyObject
+
 /// A class whose instances contain a property of type `Header` and raw
 /// storage for an array of `Element`, whose size is determined at
 /// instance creation.
@@ -88,7 +95,7 @@ open class ManagedBuffer<Header, Element> {
   public final func withUnsafeMutablePointerToElements<R>(
     _ body: (UnsafeMutablePointer<Element>) throws -> R
   ) rethrows -> R {
-    return try withUnsafeMutablePointers { return try body($0.1) }
+    return try withUnsafeMutablePointers { return try body($1) }
   }
 
   /// Call `body` with `UnsafeMutablePointer`s to the stored `Header`
@@ -262,7 +269,7 @@ public struct ManagedBufferPointer<Header, Element> : Equatable {
   public func withUnsafeMutablePointerToElements<R>(
     _ body: (UnsafeMutablePointer<Element>) throws -> R
   ) rethrows -> R {
-    return try withUnsafeMutablePointers { return try body($0.1) }
+    return try withUnsafeMutablePointers { return try body($1) }
   }
 
   /// Call `body` with `UnsafeMutablePointer`s to the stored `Header`
@@ -337,6 +344,7 @@ public struct ManagedBufferPointer<Header, Element> : Equatable {
   ///
   /// - Note: It is an error to use the `header` property of the resulting
   ///   instance unless it has been initialized.
+  @_versioned
   internal init(_ buffer: ManagedBuffer<Header, Element>) {
     _nativeBuffer = Builtin.unsafeCastToNativeObject(buffer)
   }
@@ -519,70 +527,4 @@ public func isKnownUniquelyReferenced<T : AnyObject>(
   _ object: inout T?
 ) -> Bool {
   return _isUnique(&object)
-}
-
-
-@available(*, unavailable, renamed: "ManagedBuffer")
-public typealias ManagedProtoBuffer<Header, Element> =
-  ManagedBuffer<Header, Element>
-
-extension ManagedBuffer {
-  @available(*, unavailable, renamed: "create(minimumCapacity:makingHeaderWith:)")
-  public final class func create(
-    _ minimumCapacity: Int,
-    initialValue: (ManagedBuffer<Header, Element>) -> Header
-  ) -> ManagedBuffer<Header, Element> {
-    Builtin.unreachable()
-  }
-}
-
-extension ManagedBufferPointer {
-  @available(*, unavailable, renamed: "init(bufferClass:minimumCapacity:makingHeaderWith:)")
-  public init(
-    bufferClass: AnyClass,
-    minimumCapacity: Int,
-    initialValue: (_ buffer: AnyObject, _ allocatedCount: (AnyObject) -> Int) -> Header
-  ) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "capacity")
-  public var allocatedElementCount: Int {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "isUniqueReference")
-  public mutating func holdsUniqueReference() -> Bool {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, message: "this API is no longer available")
-  public mutating func holdsUniqueOrPinnedReference() -> Bool {
-    Builtin.unreachable()
-  }
-}
-
-@available(*, unavailable, renamed: "isKnownUniquelyReferenced")
-public func isUniquelyReferenced<T>(
-  _ object: inout T
-) -> Bool {
-  Builtin.unreachable()
-}
-
-@available(*, unavailable, message: "use isKnownUniquelyReferenced instead")
-public class NonObjectiveCBase {}
-
-
-@available(*, unavailable, renamed: "isKnownUniquelyReferenced")
-public func isUniquelyReferencedNonObjC<T : AnyObject>(
-_ object: inout T
-) -> Bool {
-  Builtin.unreachable()
-}
-
-@available(*, unavailable, renamed: "isKnownUniquelyReferenced")
-public func isUniquelyReferencedNonObjC<T : AnyObject>(
-  _ object: inout T?
-) -> Bool {
-  Builtin.unreachable()
 }

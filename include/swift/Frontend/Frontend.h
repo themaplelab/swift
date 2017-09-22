@@ -271,7 +271,8 @@ public:
     CodeCompletionBuffer = Buf;
     CodeCompletionOffset = Offset;
     // We don't need typo-correction for code-completion.
-    LangOpts.DisableTypoCorrection = true;
+    // FIXME: This isn't really true, but is a performance issue.
+    LangOpts.TypoCorrectionLimit = 0;
   }
 
   std::pair<llvm::MemoryBuffer *, unsigned> getCodeCompletionPoint() const {
@@ -425,7 +426,9 @@ public:
 
   /// Parses the input file but does no type-checking or module imports.
   /// Note that this only supports parsing an invocation with a single file.
-  void performParseOnly();
+  ///
+  ///
+  void performParseOnly(bool EvaluateConditionals = false);
 
   /// Frees up the ASTContext and SILModule objects that this instance is
   /// holding on.

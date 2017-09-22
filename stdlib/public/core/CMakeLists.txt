@@ -47,6 +47,7 @@ set(SWIFTLIB_ESSENTIAL
   CString.swift
   CTypes.swift
   DebuggerSupport.swift
+  DoubleWidth.swift.gyb
   DropWhile.swift.gyb
   Dump.swift
   EmptyCollection.swift
@@ -54,6 +55,7 @@ set(SWIFTLIB_ESSENTIAL
   ErrorType.swift
   Existential.swift
   Filter.swift.gyb
+  FixedArray.swift.gyb
   FlatMap.swift
   Flatten.swift.gyb
   FloatingPoint.swift.gyb
@@ -105,6 +107,7 @@ set(SWIFTLIB_ESSENTIAL
   REPL.swift
   Reverse.swift
   Runtime.swift.gyb
+  RuntimeFunctionCounters.swift
   SipHash.swift.gyb
   SentinelCollection.swift
   Sequence.swift
@@ -114,7 +117,7 @@ set(SWIFTLIB_ESSENTIAL
   ShadowProtocols.swift
   Shims.swift
   Slice.swift.gyb
-  Sort.swift
+  Sort.swift.gyb
   StaticString.swift
   Stride.swift.gyb
   StringCharacterView.swift # ORDER DEPENDENCY: Must precede String.swift
@@ -124,9 +127,11 @@ set(SWIFTLIB_ESSENTIAL
   StringBuffer.swift
   StringComparable.swift
   StringCore.swift
+  StringIndex.swift
   StringInterpolation.swift
   StringLegacy.swift
   StringRangeReplaceableCollection.swift.gyb
+  StringSwitch.swift
   StringIndexConversions.swift
   StringUnicodeScalarView.swift
   StringUTF16.swift
@@ -138,7 +143,6 @@ set(SWIFTLIB_ESSENTIAL
   UnavailableStringAPIs.swift.gyb
   UnicodeEncoding.swift
   UnicodeParser.swift
-  UnicodeTrie.swift.gyb
   Unmanaged.swift
   UnsafeBitMap.swift
   UnsafeBufferPointer.swift.gyb
@@ -150,6 +154,7 @@ set(SWIFTLIB_ESSENTIAL
   UTF16.swift
   UTF32.swift
   Unicode.swift # ORDER DEPENDENCY: must follow new unicode support
+  ValidUTF8Buffer.swift
   WriteBackMutableSlice.swift
   )
 
@@ -222,6 +227,7 @@ endif()
 
 list(APPEND swift_stdlib_compile_flags "-Xllvm" "-sil-inline-generics")
 list(APPEND swift_stdlib_compile_flags "-Xllvm" "-sil-partial-specialization")
+list(APPEND swift_stdlib_compile_flags "-Xfrontend" "-enable-sil-ownership")
 
 if(SWIFT_CHECK_ESSENTIAL_STDLIB)
   add_swift_library(swift_stdlib_essential ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS_STDLIB IS_STDLIB_CORE

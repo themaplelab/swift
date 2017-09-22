@@ -41,10 +41,10 @@ extension Unicode.UTF16 : Unicode.Encoding {
     _ source: Unicode.Scalar
   ) -> EncodedScalar? {
     let x = source.value
-    if _fastPath(x < (1 << 16)) {
+    if _fastPath(x < ((1 as UInt32) << 16)) {
       return EncodedScalar(_storage: x, _bitCount: 16)
     }
-    let x1 = x - (1 << 16)
+    let x1 = x - ((1 as UInt32) << 16)
     var r = (0xdc00 + (x1 & 0x3ff))
     r &<<= 16
     r |= (0xd800 + (x1 &>> 10 & 0x3ff))
@@ -56,19 +56,19 @@ extension Unicode.UTF16 : Unicode.Encoding {
     _ content: FromEncoding.EncodedScalar, from _: FromEncoding.Type
   ) -> EncodedScalar? {
     if _fastPath(FromEncoding.self == UTF8.self) {
-      let c = unsafeBitCast(content, to: UTF8.EncodedScalar.self)
-      var b = c._bitCount
-      b = b &- 8
+      let c = _identityCast(content, to: UTF8.EncodedScalar.self)
+      var b = c.count
+      b = b &- 1
       if _fastPath(b == 0) {
         return EncodedScalar(
-          _storage: c._storage & 0b0__111_1111, _bitCount: 16)
+          _storage: (c._biasedBits &- 0x1) & 0b0__111_1111, _bitCount: 16)
       }
-      var s = c._storage
+      var s = c._biasedBits &- 0x01010101
       var r = s
       r &<<= 6
       s &>>= 8
       r |= s & 0b0__11_1111
-      b = b &- 8
+      b = b &- 1
       
       if _fastPath(b == 0) {
         return EncodedScalar(_storage: r & 0b0__111_1111_1111, _bitCount: 16)
@@ -76,7 +76,7 @@ extension Unicode.UTF16 : Unicode.Encoding {
       r &<<= 6
       s &>>= 8
       r |= s & 0b0__11_1111
-      b = b &- 8
+      b = b &- 1
       
       if _fastPath(b == 0) {
         return EncodedScalar(_storage: r & 0xFFFF, _bitCount: 16)
@@ -112,7 +112,7 @@ extension UTF16.ReverseParser : Unicode.Parser, _UTFParser {
 
   public func _parseMultipleCodeUnits() -> (isValid: Bool, bitCount: UInt8) {
     _sanityCheck(  // this case handled elsewhere
-      !Encoding._isScalar(UInt16(extendingOrTruncating: _buffer._storage)))
+      !Encoding._isScalar(UInt16(truncatingIfNeeded: _buffer._storage)))
     if _fastPath(_buffer._storage & 0xFC00_FC00 == 0xD800_DC00) {
       return (true, 2*16)
     }
@@ -133,7 +133,7 @@ extension Unicode.UTF16.ForwardParser : Unicode.Parser, _UTFParser {
   
   public func _parseMultipleCodeUnits() -> (isValid: Bool, bitCount: UInt8) {
     _sanityCheck(  // this case handled elsewhere
-      !Encoding._isScalar(UInt16(extendingOrTruncating: _buffer._storage)))
+      !Encoding._isScalar(UInt16(truncatingIfNeeded: _buffer._storage)))
     if _fastPath(_buffer._storage & 0xFC00_FC00 == 0xDC00_D800) {
       return (true, 2*16)
     }

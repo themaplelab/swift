@@ -106,7 +106,7 @@ public:
   
   /// If true, all functions and globals are made fragile. Currently only used
   /// for compiling the stdlib.
-  bool makeModuleFragile;
+  bool isMakeModuleFragile() const { return M.getOptions().SILSerializeAll; }
   
   Optional<SILDeclRef> StringToNSStringFn;
   Optional<SILDeclRef> NSStringToStringFn;
@@ -136,7 +136,7 @@ public:
   Optional<ProtocolConformance *> NSErrorConformanceToError;
 
 public:
-  SILGenModule(SILModule &M, ModuleDecl *SM, bool makeModuleFragile);
+  SILGenModule(SILModule &M, ModuleDecl *SM);
 
   ~SILGenModule();
   
@@ -173,8 +173,9 @@ public:
   /// Emit a vtable thunk for a derived method if its natural abstraction level
   /// diverges from the overridden base method. If no thunking is needed,
   /// returns a static reference to the derived method.
-  SILVTable::Entry emitVTableMethod(SILDeclRef derived,
-                                    SILDeclRef base);
+  Optional<SILVTable::Entry> emitVTableMethod(ClassDecl *theClass,
+                                              SILDeclRef derived,
+                                              SILDeclRef base);
 
   /// True if a function has been emitted for a given SILDeclRef.
   bool hasFunction(SILDeclRef constant);
@@ -264,14 +265,15 @@ public:
   void emitEnumConstructor(EnumElementDecl *decl);
 
   /// Emits the default argument generator with the given expression.
-  void emitDefaultArgGenerator(SILDeclRef constant, Expr *arg);
+  void emitDefaultArgGenerator(SILDeclRef constant, Expr *arg,
+                               DefaultArgumentKind kind);
 
   /// Emits the stored property initializer for the given pattern.
   void emitStoredPropertyInitialization(PatternBindingDecl *pd, unsigned i);
 
-  /// Emits the default argument generator for the given function.
+  /// Emits default argument generators for the given parameter list.
   void emitDefaultArgGenerators(SILDeclRef::Loc decl,
-                                ArrayRef<ParameterList*> paramLists);
+                                ParameterList *paramList);
 
   /// Emits the curry thunk between two uncurry levels of a function.
   void emitCurryThunk(SILDeclRef thunk);

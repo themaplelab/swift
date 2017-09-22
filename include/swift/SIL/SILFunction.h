@@ -99,6 +99,10 @@ public:
 private:
   friend class SILBasicBlock;
   friend class SILModule;
+
+	// WALAWalker integration
+	friend class WALAWalker;
+	// end WALAWalker integration
     
   /// Module - The SIL module that the function belongs to.
   SILModule &Module;
@@ -112,6 +116,10 @@ private:
 
   /// The context archetypes of the function.
   GenericEnvironment *GenericEnv;
+
+  /// The information about specialization.
+  /// Only set if this function is a specialization of another function.
+  const GenericSpecializationInformation *SpecializationInfo;
 
   /// The forwarding substitutions, lazily computed.
   Optional<SubstitutionList> ForwardingSubs;
@@ -186,6 +194,7 @@ private:
   /// *) It is inlined and the debug info keeps a reference to the function.
   /// *) It is a dead method of a class which has higher visibility than the
   ///    method itself. In this case we need to create a vtable stub for it.
+  /// *) It is a function referenced by the specialization information.
   bool Zombie = false;
 
   /// True if SILOwnership is enabled for this function.
@@ -286,11 +295,10 @@ public:
   /// Mark this function as removed from the module's function list, but kept
   /// as "zombie" for debug info or vtable stub generation.
   void setZombie() {
-    assert((isInlined() || isExternallyUsedSymbol())  &&
-          "Function should be deleted instead of getting a zombie");
+    assert(!isZombie() && "Function is a zombie function already");
     Zombie = true;
   }
-  
+
   /// Returns true if this function is dead, but kept in the module's zombie list.
   bool isZombie() const { return Zombie; }
 
@@ -456,6 +464,10 @@ public:
   ///          or is raw SIL (so that the mandatory passes still run).
   bool shouldOptimize() const;
 
+  /// Returns true if this is a function that should have its ownership
+  /// verified.
+  bool shouldVerifyOwnership() const;
+
   /// Check if the function has a location.
   /// FIXME: All functions should have locations, so this method should not be
   /// necessary.
@@ -563,6 +575,20 @@ public:
     return (ClangNodeOwner ? ClangNodeOwner->getClangDecl() : nullptr);
   }
 
+  /// Returns whether this function is a specialization.
+  bool isSpecialization() const { return SpecializationInfo != nullptr; }
+
+  /// Return the specialization information.
+  const GenericSpecializationInformation *getSpecializationInfo() const {
+    assert(isSpecialization());
+    return SpecializationInfo;
+  }
+
+  void setSpecializationInfo(const GenericSpecializationInformation *Info) {
+    assert(!isSpecialization());
+    SpecializationInfo = Info;
+  }
+
   /// Retrieve the generic environment containing the mapping from interface
   /// types to context archetypes for this function. Only present if the
   /// function has a body.
@@ -667,7 +693,17 @@ public:
                           return isa<ThrowInst>(TI);
                         });
   }
-    
+
+  /// Loop over all blocks in this function and add all function exiting blocks
+  /// to output.
+  void findExitingBlocks(llvm::SmallVectorImpl<SILBasicBlock *> &output) const {
+    for (auto &Block : const_cast<SILFunction &>(*this)) {
+      if (Block.getTerminator()->isFunctionExiting()) {
+        output.emplace_back(&Block);
+      }
+    }
+  }
+
   //===--------------------------------------------------------------------===//
   // Argument Helper Methods
   //===--------------------------------------------------------------------===//

@@ -23,8 +23,6 @@ public struct ObjectIdentifier : Hashable {
   /// The hash value is not guaranteed to be stable across different
   /// invocations of the same program.  Do not persist the hash value across
   /// program runs.
-  ///
-  /// - SeeAlso: `Hashable`
   public var hashValue: Int {
     return Int(Builtin.ptrtoint_Word(_value))
   }
@@ -101,25 +99,3 @@ extension Int {
     self.init(bitPattern: UInt(bitPattern: objectID))
   }
 }
-
-extension ObjectIdentifier {
-  @available(*, unavailable, message: "use the 'UInt(_:)' initializer")
-  public var uintValue: UInt {
-    Builtin.unreachable()
-  }
-}
-
-extension UInt {
-  @available(*, unavailable, renamed: "init(bitPattern:)")
-  public init(_ objectID: ObjectIdentifier) {
-    Builtin.unreachable()
-  }
-}
-
-extension Int {
-  @available(*, unavailable, renamed: "init(bitPattern:)")
-  public init(_ objectID: ObjectIdentifier) {
-    Builtin.unreachable()
-  }
-}
-

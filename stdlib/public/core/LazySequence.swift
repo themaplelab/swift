@@ -182,8 +182,6 @@ extension Sequence {
   /// A sequence containing the same elements as this sequence,
   /// but on which some operations, such as `map` and `filter`, are
   /// implemented lazily.
-  ///
-  /// - SeeAlso: `LazySequenceProtocol`, `LazySequence`
   public var lazy: LazySequence<Self> {
     return LazySequence(_base: self)
   }
@@ -195,15 +193,5 @@ extension LazySequenceProtocol {
   /// Identical to `self`.
   public var lazy: Self {
     return self
-  }
-}
-
-@available(*, unavailable, renamed: "LazySequenceProtocol")
-public typealias LazySequenceType = LazySequenceProtocol
-
-extension LazySequenceProtocol {
-  @available(*, unavailable, message: "Please use Array initializer instead.")
-  public var array: [Element] {
-    Builtin.unreachable()
   }
 }

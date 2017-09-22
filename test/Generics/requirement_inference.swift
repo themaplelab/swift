@@ -176,11 +176,11 @@ protocol P10 {
 }
 
 // CHECK-LABEL: sameTypeConcrete1@
-// CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : P10, τ_0_0 : P9, τ_0_0.A == X3, τ_0_0.B == Int, τ_0_0.C == Int>
+// CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : P10, τ_0_0 : P9, τ_0_0.A == X3, τ_0_0.A == X3, τ_0_0.B == Int, τ_0_0.C == Int>
 func sameTypeConcrete1<T : P9 & P10>(_: T) where T.A == X3, T.C == T.B, T.C == Int { }
 
 // CHECK-LABEL: sameTypeConcrete2@
-// CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : P10, τ_0_0 : P9, τ_0_0.B == X3, τ_0_0.C == X3>
+// CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : P10, τ_0_0 : P9, τ_0_0.A == τ_0_0.A, τ_0_0.B == X3, τ_0_0.C == X3>
 func sameTypeConcrete2<T : P9 & P10>(_: T) where T.B : X3, T.C == T.B, T.C == X3 { }
 // expected-warning@-1{{redundant superclass constraint 'T.B' : 'X3'}}
 // expected-note@-2{{same-type constraint 'T.C' == 'X3' written here}}
@@ -188,7 +188,7 @@ func sameTypeConcrete2<T : P9 & P10>(_: T) where T.B : X3, T.C == T.B, T.C == X3
 // Note: a standard-library-based stress test to make sure we don't inject
 // any additional requirements.
 // CHECK-LABEL: RangeReplaceableCollection.f()@
-// CHECK: <τ_0_0 where τ_0_0 : MutableCollection, τ_0_0 : RangeReplaceableCollection, τ_0_0.SubSequence == MutableRangeReplaceableSlice<τ_0_0>>
+// CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : MutableCollection, τ_0_0 : RangeReplaceableCollection, τ_0_0.SubSequence == MutableRangeReplaceableSlice<τ_0_0>>
 extension RangeReplaceableCollection where
   Self: MutableCollection,
   Self.SubSequence == MutableRangeReplaceableSlice<Self>
@@ -224,8 +224,8 @@ struct X8 : P12 {
 
 struct X9<T: P12, U: P12> where T.B == U.B {
   // CHECK-LABEL: X9.upperSameTypeConstraint
-	// CHECK: Generic signature: <T, U, V where U : P12, T == X8, U.B == X8.B>
-  // CHECK: Canonical generic signature: <τ_0_0, τ_0_1, τ_1_0 where τ_0_1 : P12, τ_0_0 == X8, τ_0_1.B == X7>
+	// CHECK: Generic signature: <T, U, V where T == X8, U : P12, U.B == X8.B>
+  // CHECK: Canonical generic signature: <τ_0_0, τ_0_1, τ_1_0 where τ_0_0 == X8, τ_0_1 : P12, τ_0_1.B == X7>
 	func upperSameTypeConstraint<V>(_: V) where T == X8 { }
 }
 
@@ -404,3 +404,20 @@ struct X28 : P2 {
 protocol P28: P3 {
   typealias P3Assoc = X28   // expected-warning{{typealias overriding associated type}}
 }
+
+// ----------------------------------------------------------------------------
+// Inference of associated types by name match
+// ----------------------------------------------------------------------------
+protocol P29 {
+  associatedtype X
+}
+
+protocol P30 {
+  associatedtype X
+}
+
+protocol P31 { }
+
+// CHECK-LABEL: .sameTypeNameMatch1@
+// Generic signature: <T where T : P29, T : P30, T.X : P31, T.X == T.X>
+func sameTypeNameMatch1<T: P29 & P30>(_: T) where T.X: P31 { }

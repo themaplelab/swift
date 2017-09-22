@@ -13,28 +13,14 @@
 import SwiftShims
 
 extension String {
-  /// Creates a string representing the given Unicode scalar repeated the
-  /// specified number of times.
-  ///
-  /// For example, use this initializer to create a string with ten `"0"`
-  /// scalars in a row.
-  ///
-  ///     let zeroes = String("0" as Unicode.Scalar, count: 10)
-  ///     print(zeroes)
-  ///     // Prints "0000000000"
-  @available(*, unavailable, message: "Replaced by init(repeating: String, count: Int)")
-  public init(repeating repeatedValue: Unicode.Scalar, count: Int) {
-    Builtin.unreachable()
-  }
-
   /// Creates a new string representing the given string repeated the specified
   /// number of times.
   ///
-  /// For example, use this initializer to create a string with ten `"ab"`
-  /// strings in a row.
+  /// For example, you can use this initializer to create a string with ten
+  /// `"ab"` strings in a row.
   ///
-  ///     let zeroes = String(repeating: "ab", count: 10)
-  ///     print(zeroes)
+  ///     let s = String(repeating: "ab", count: 10)
+  ///     print(s)
   ///     // Prints "abababababababababab"
   ///
   /// - Parameters:
@@ -55,15 +41,6 @@ extension String {
     for _ in 0..<count {
       self += s
     }
-  }
-
-  public var _lines : [String] {
-    return _split(separator: "\n")
-  }
-  
-  public func _split(separator: Unicode.Scalar) -> [String] {
-    let scalarSlices = unicodeScalars.split { $0 == separator }
-    return scalarSlices.map { String($0) }
   }
 
   /// A Boolean value indicating whether a string has no characters.
@@ -251,6 +228,7 @@ extension String {
   ///     greater than 9, or `false` to use lowercase letters. The default is
   ///     `false`.
   // FIXME(integers): support a more general BinaryInteger protocol
+  // FIXME(integers): support larger bitwidths than 64
   public init<T : FixedWidthInteger>(
     _ value: T, radix: Int = 10, uppercase: Bool = false
   ) {
@@ -366,12 +344,12 @@ extension String {
   ///     greater than 9, or `false` to use lowercase letters. The default is
   ///     `false`.
   @available(swift, obsoleted: 4, message: "Please use the version for FixedWidthInteger instead.")
-  public init<T : _SignedInteger>(
+  public init<T : SignedInteger>(
     _ value: T, radix: Int = 10, uppercase: Bool = false
   ) {
     _precondition(radix > 1, "Radix must be greater than 1")
     self = _int64ToString(
-      value.toIntMax(), radix: Int64(radix), uppercase: uppercase)
+      Int64(value), radix: Int64(radix), uppercase: uppercase)
   }
   
   /// Creates a string representing the given value in base 10, or some other
@@ -409,18 +387,6 @@ extension String {
   ) {
     _precondition(radix > 1, "Radix must be greater than 1")
     self = _uint64ToString(
-      value.toUIntMax(), radix: Int64(radix), uppercase: uppercase)
-  }
-}
-
-extension String {
-  @available(*, unavailable, message: "Renamed to init(repeating:count:) and reordered parameters")
-  public init(count: Int, repeatedValue c: Character) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, message: "Renamed to init(repeating:count:) and reordered parameters")
-  public init(count: Int, repeatedValue c: Unicode.Scalar) {
-    Builtin.unreachable()
+      UInt64(value), radix: Int64(radix), uppercase: uppercase)
   }
 }

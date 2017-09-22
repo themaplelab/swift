@@ -109,19 +109,17 @@ SILModule &SILInstruction::getModule() const {
   return getFunction()->getModule();
 }
 
-/// removeFromParent - This method unlinks 'self' from the containing basic
-/// block, but does not delete it.
-///
-void SILInstruction::removeFromParent() {
-  getParent()->remove(this);
-}
-
 /// eraseFromParent - This method unlinks 'self' from the containing basic
 /// block and deletes it.
 ///
 void SILInstruction::eraseFromParent() {
   assert(use_empty() && "There are uses of instruction being deleted.");
   getParent()->erase(this);
+}
+
+void SILInstruction::moveFront(SILBasicBlock *Block) {
+  getParent()->remove(this);
+  Block->push_front(this);
 }
 
 /// Unlink this instruction from its current basic block and insert it into
@@ -170,18 +168,35 @@ void SILInstruction::dropAllReferences() {
   }
 }
 
-void SILInstruction::replaceAllUsesWithUndef() {
-  SILModule &Mod = getModule();
-  while (!use_empty()) {
-    Operand *Op = *use_begin();
-    Op->set(SILUndef::get(Op->get()->getType(), Mod));
-  }
+// Initialize the static members of SILInstruction.
+int SILInstruction::NumCreatedInstructions = 0;
+int SILInstruction::NumDeletedInstructions = 0;
+
+/// Map a SILInstruction name to its SILInstructionKind.
+SILInstructionKind swift::getSILInstructionKind(StringRef InstName) {
+  auto Kind = getSILValueKind(InstName);
+  if (Kind >= ValueKind::First_SILInstruction &&
+      Kind <= ValueKind::Last_SILInstruction)
+    return SILInstructionKind(Kind);
+
+#ifdef NDEBUG
+  llvm::errs() << "Unknown SIL instruction name\n";
+  abort();
+#endif
+  llvm_unreachable("Unknown SIL insruction name");
+}
+
+/// Map SILInstructionKind to a corresponding SILInstruction name.
+StringRef swift::getSILInstructionName(SILInstructionKind Kind) {
+  return getSILValueName(ValueKind(Kind));
 }
 
 namespace {
-  class InstructionDestroyer : public SILVisitor<InstructionDestroyer> {
-  public:
-#define VALUE(CLASS, PARENT) void visit##CLASS(CLASS *I) { I->~CLASS(); }
+class InstructionDestroyer
+    : public SILInstructionVisitor<InstructionDestroyer> {
+public:
+#define INST(CLASS, PARENT, TEXTUALNAME, MEMBEHAVIOR, MAYRELEASE)              \
+  void visit##CLASS(CLASS *I) { I->~CLASS(); }
 #include "swift/SIL/SILNodes.def"
   };
 } // end anonymous namespace
@@ -912,11 +927,10 @@ bool SILInstruction::mayRelease() const {
     assert(!SILModuleConventions(getModule()).useLoweredAddresses());
     return true;
 
-  case ValueKind::UnconditionalCheckedCastAddrInst: {
-    // Failing casts with take_always can release.
-    auto *Cast = cast<UnconditionalCheckedCastAddrInst>(this);
-    return Cast->getConsumptionKind() == CastConsumptionKind::TakeAlways;
-  }
+  case ValueKind::UnconditionalCheckedCastAddrInst:
+  case ValueKind::UnconditionalCheckedCastValueInst:
+    return true;
+
   case ValueKind::CheckedCastAddrBranchInst: {
     // Failing casts with take_always can release.
     auto *Cast = cast<CheckedCastAddrBranchInst>(this);
@@ -1050,7 +1064,8 @@ bool SILInstruction::isTriviallyDuplicatable() const {
 
   if (isa<OpenExistentialAddrInst>(this) || isa<OpenExistentialRefInst>(this) ||
       isa<OpenExistentialMetatypeInst>(this) ||
-      isa<OpenExistentialOpaqueInst>(this)) {
+      isa<OpenExistentialValueInst>(this) || isa<OpenExistentialBoxInst>(this) ||
+      isa<OpenExistentialBoxValueInst>(this)) {
     // Don't know how to duplicate these properly yet. Inst.clone() per
     // instruction does not work. Because the follow-up instructions need to
     // reuse the same archetype uuid which would only work if we used a

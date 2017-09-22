@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+@_versioned
 internal protocol _ArrayProtocol
   : RangeReplaceableCollection,
     ExpressibleByArrayLiteral
@@ -69,4 +70,16 @@ internal protocol _ArrayProtocol
 
   // For testing.
   var _buffer: _Buffer { get }
+}
+
+extension _ArrayProtocol {
+  // Since RangeReplaceableCollection now has a version of filter that is less
+  // efficient, we should make the default implementation coming from Sequence
+  // preferred.
+  @_inlineable
+  public func filter(
+    _ isIncluded: (Element) throws -> Bool
+  ) rethrows -> [Element] {
+    return try _filter(isIncluded)
+  }
 }

@@ -108,13 +108,13 @@ public:
     return false;
   }
   void didGlobalize(Decl *D) override {}
-  bool lookupOverrides(Identifier Name, DeclContext *DC,
+  bool lookupOverrides(DeclBaseName Name, DeclContext *DC,
                        SourceLoc Loc, bool IsTypeLookup,
                        ResultVector &RV) override {
     return false;
   }
 
-  bool lookupAdditions(Identifier Name, DeclContext *DC,
+  bool lookupAdditions(DeclBaseName Name, DeclContext *DC,
                        SourceLoc Loc, bool IsTypeLookup,
                        ResultVector &RV) override {
     return false;
@@ -528,10 +528,10 @@ PrintImplicitAttrs("print-implicit-attrs",
                    llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
-PrintAccessibility("print-accessibility",
-                   llvm::cl::desc("Print accessibility for all values"),
-                   llvm::cl::cat(Category),
-                   llvm::cl::init(false));
+PrintAccess("print-access",
+            llvm::cl::desc("Print access keywords for all values"),
+            llvm::cl::cat(Category),
+            llvm::cl::init(false));
 
 static llvm::cl::opt<bool>
 SkipUnavailable("skip-unavailable",
@@ -539,17 +539,17 @@ SkipUnavailable("skip-unavailable",
                 llvm::cl::cat(Category),
                 llvm::cl::init(false));
 
-static llvm::cl::opt<Accessibility>
-AccessibilityFilter(
-    llvm::cl::desc("Accessibility filter:"),
+static llvm::cl::opt<AccessLevel>
+AccessFilter(
+    llvm::cl::desc("Access filter:"),
     llvm::cl::cat(Category),
-    llvm::cl::init(Accessibility::Private),
+    llvm::cl::init(AccessLevel::Private),
     llvm::cl::values(
-        clEnumValN(Accessibility::Private, "accessibility-filter-private",
+        clEnumValN(AccessLevel::Private, "access-filter-private",
             "Print all declarations"),
-        clEnumValN(Accessibility::Internal, "accessibility-filter-internal",
+        clEnumValN(AccessLevel::Internal, "access-filter-internal",
             "Print internal and public declarations"),
-        clEnumValN(Accessibility::Public, "accessibility-filter-public",
+        clEnumValN(AccessLevel::Public, "access-filter-public",
             "Print public declarations")));
 
 static llvm::cl::opt<bool>
@@ -942,6 +942,7 @@ static int doSyntaxColoring(const CompilerInvocation &InitInvok,
   PrintingDiagnosticConsumer PrintDiags;
   CI.addDiagnosticConsumer(&PrintDiags);
   Invocation.getLangOptions().Playground = Playground;
+  Invocation.getLangOptions().KeepTokensInSourceFile = true;
   if (CI.setup(Invocation))
     return 1;
   if (!RunTypeChecker)
@@ -1034,6 +1035,8 @@ private:
     for (auto &Elem : Node.Elements) {
       tagRange(Elem.Range, getTagName(Elem.Kind), Node);
     }
+    if (Node.TypeRange.isValid() && Node.Range.contains(Node.TypeRange))
+      tagRange(Node.TypeRange, "type", Node);
 
     return true;
   }
@@ -1067,11 +1070,14 @@ private:
       case SyntaxStructureKind::InstanceVariable: return "property";
       case SyntaxStructureKind::StaticVariable: return "svar";
       case SyntaxStructureKind::ClassVariable: return "cvar";
+      case SyntaxStructureKind::LocalVariable: return "lvar";
       case SyntaxStructureKind::EnumCase: return "enum-case";
       case SyntaxStructureKind::EnumElement: return "enum-elem";
+      case SyntaxStructureKind::TypeAlias: return "typealias";
+      case SyntaxStructureKind::Subscript: return "subscript";
+      case SyntaxStructureKind::AssociatedType: return "associatedtype";
       case SyntaxStructureKind::Parameter: return "param";
       case SyntaxStructureKind::ForEachStatement: return "foreach";
-      case SyntaxStructureKind::ForStatement: return "for";
       case SyntaxStructureKind::WhileStatement: return "while";
       case SyntaxStructureKind::RepeatWhileStatement: return "repeat-while";
       case SyntaxStructureKind::IfStatement: return "if";
@@ -1146,6 +1152,7 @@ private:
 static int doStructureAnnotation(const CompilerInvocation &InitInvok,
                                  StringRef SourceFilename) {
   CompilerInvocation Invocation(InitInvok);
+  Invocation.getLangOptions().KeepTokensInSourceFile = true;
   Invocation.addInputFilename(SourceFilename);
 
   CompilerInstance CI;
@@ -1572,15 +1579,27 @@ static int doPrintLocalTypes(const CompilerInvocation &InitInvok,
       node = node->getFirstChild();
 
       switch (node->getKind()) {
-        case NodeKind::Structure:
-        case NodeKind::Class:
-        case NodeKind::Enum:
-          break;
+      case NodeKind::Structure:
+      case NodeKind::Class:
+      case NodeKind::Enum:
+        break;
 
-        default:
-          llvm::errs() << "Expected a nominal type node in " <<
-            MangledName << "\n";
-          return EXIT_FAILURE;
+      case NodeKind::BoundGenericStructure:
+      case NodeKind::BoundGenericClass:
+      case NodeKind::BoundGenericEnum:
+        // Base type
+        typeNode = node->getFirstChild();
+        // Nominal type
+        node = typeNode->getFirstChild();
+        assert(node->getKind() == NodeKind::Structure ||
+               node->getKind() == NodeKind::Class ||
+               node->getKind() == NodeKind::Enum);
+        break;
+
+      default:
+        llvm::errs() << "Expected a nominal type node in " <<
+          MangledName << "\n";
+        return EXIT_FAILURE;
       }
 
       while (node->getKind() != NodeKind::LocalDeclName)
@@ -1598,7 +1617,7 @@ static int doPrintLocalTypes(const CompilerInvocation &InitInvok,
       llvm::outs() << remangled << "\n";
 
       auto Options = PrintOptions::printEverything();
-      Options.PrintAccessibility = false;
+      Options.PrintAccess = false;
       LTD->print(llvm::outs(), Options);
       llvm::outs() << "\n";
     }
@@ -1979,7 +1998,7 @@ public:
     if (auto *VD = dyn_cast<ValueDecl>(D)) {
       OS.indent(IndentLevel * 2);
       OS << Decl::getKindName(VD->getKind()) << "Decl '''"
-         << VD->getName().str() << "''' ";
+         << VD->getBaseName() << "''' ";
       VD->getInterfaceType().print(OS, Options);
       OS << "\n";
     }
@@ -2101,9 +2120,9 @@ public:
       if (!Id.empty())
         OS << Id.str() << ".";
     }
-    Identifier Id = VD->getName();
-    if (!Id.empty()) {
-      OS << Id.str();
+    DeclBaseName Name = VD->getBaseName();
+    if (!Name.empty()) {
+      OS << Name;
       return;
     }
     if (auto FD = dyn_cast<FuncDecl>(VD)) {
@@ -2422,7 +2441,7 @@ static int doPrintTypeInterface(const CompilerInvocation &InitInvok,
       break;
   }
   assert(SF && "no source file?");
-  SemaLocResolver Resolver(*SF);
+  CursorInfoResolver Resolver(*SF);
   SourceManager &SM = SF->getASTContext().SourceMgr;
   auto Offset = SM.resolveFromLineCol(BufID, Pair.getValue().first,
                                       Pair.getValue().second);
@@ -2602,6 +2621,7 @@ private:
     if (Decl *reDecl = getDeclFromUSR(Ctx, USR, error)) {
       PrintOptions POpts;
       POpts.PreferTypeRepr = false;
+      POpts.PrintParameterSpecifiers = true;
       reDecl->print(Stream, POpts);
     } else {
       Stream << "FAILURE";
@@ -2649,6 +2669,7 @@ static int doPrintRangeInfo(const CompilerInvocation &InitInvok,
   CompilerInvocation Invocation(InitInvok);
   Invocation.addInputFilename(SourceFileName);
   Invocation.getLangOptions().DisableAvailabilityChecking = false;
+  Invocation.getLangOptions().KeepTokensInSourceFile = true;
 
   CompilerInstance CI;
 
@@ -2750,7 +2771,7 @@ static int doPrintIndexedSymbols(const CompilerInvocation &InitInvok,
   CompilerInvocation Invocation(InitInvok);
   Invocation.addInputFilename(SourceFileName);
   Invocation.getLangOptions().DisableAvailabilityChecking = false;
-  Invocation.getLangOptions().DisableTypoCorrection = true;
+  Invocation.getLangOptions().TypoCorrectionLimit = 0;
 
   CompilerInstance CI;
 
@@ -3044,7 +3065,7 @@ int main(int argc, char *argv[]) {
 
   PrintOptions PrintOpts;
   if (options::PrintInterface) {
-    PrintOpts = PrintOptions::printInterface();
+    PrintOpts = PrintOptions::printModuleInterface();
   } else if (options::PrintInterfaceForDoc) {
     PrintOpts = PrintOptions::printDocInterface();
   } else {
@@ -3057,8 +3078,8 @@ int main(int argc, char *argv[]) {
     PrintOpts.PreferTypeRepr = options::PreferTypeRepr;
     PrintOpts.ExplodePatternBindingDecls = options::ExplodePatternBindingDecls;
     PrintOpts.PrintImplicitAttrs = options::PrintImplicitAttrs;
-    PrintOpts.PrintAccessibility = options::PrintAccessibility;
-    PrintOpts.AccessibilityFilter = options::AccessibilityFilter;
+    PrintOpts.PrintAccess = options::PrintAccess;
+    PrintOpts.AccessFilter = options::AccessFilter;
     PrintOpts.PrintDocumentationComments = !options::SkipDocumentationComments;
     PrintOpts.PrintRegularClangComments = options::PrintRegularComments;
     PrintOpts.SkipPrivateStdlibDecls = options::SkipPrivateStdlibDecls;

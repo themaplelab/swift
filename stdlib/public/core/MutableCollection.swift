@@ -67,7 +67,7 @@ public protocol _MutableIndexable : _Indexable {
   /// - Parameter position: The position of the element to access. `position`
   ///   must be a valid index of the collection that is not equal to the
   ///   `endIndex` property.
-  subscript(position: Index) -> _Element { get set }
+  subscript(position: Index) -> Element { get set }
 
   /// Accesses a contiguous subrange of the collection's elements.
   ///
@@ -291,7 +291,7 @@ public protocol MutableCollection : _MutableIndexable, Collection
 
   /// Exchanges the values at the specified indices of the collection.
   ///
-  /// Both parameters must be valid indices of the collection that are not
+  /// Both parameters must be valid indices of the collection and not
   /// equal to `endIndex`. Passing the same index as both `i` and `j` has no
   /// effect.
   ///
@@ -311,21 +311,15 @@ public protocol MutableCollection : _MutableIndexable, Collection
   /// same algorithm on `body`\ 's argument lets you trade safety for
   /// speed.
   mutating func _withUnsafeMutableBufferPointerIfSupported<R>(
-    _ body: (UnsafeMutablePointer<Element>, Int) throws -> R
+    _ body: (inout UnsafeMutableBufferPointer<Iterator.Element>) throws -> R
   ) rethrows -> R?
-  // FIXME(ABI)#53 (Type Checker): the signature should use
-  // UnsafeMutableBufferPointer, but the compiler can't handle that.
-  //
-  // <rdar://problem/21933004> Restore the signature of
-  // _withUnsafeMutableBufferPointerIfSupported() that mentions
-  // UnsafeMutableBufferPointer
 }
 
 // TODO: swift-3-indexing-model - review the following
 extension MutableCollection {
   @_inlineable
   public mutating func _withUnsafeMutableBufferPointerIfSupported<R>(
-    _ body: (UnsafeMutablePointer<Element>, Int) throws -> R
+    _ body: (inout UnsafeMutableBufferPointer<Iterator.Element>) throws -> R
   ) rethrows -> R? {
     return nil
   }
@@ -404,9 +398,3 @@ extension MutableCollection where Self: RandomAccessCollection {
     }
   }
 }
-
-@available(*, unavailable, renamed: "MutableCollection")
-public typealias MutableCollectionType = MutableCollection
-
-@available(*, unavailable, message: "Please use 'Collection where SubSequence : MutableCollection'")
-public typealias MutableSliceable = Collection

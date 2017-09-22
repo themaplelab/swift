@@ -44,8 +44,8 @@ CONSTANT_OWNERSHIP_INST(Owned, KeyPath)
 CONSTANT_OWNERSHIP_INST(Owned, PartialApply)
 CONSTANT_OWNERSHIP_INST(Owned, StrongPin)
 CONSTANT_OWNERSHIP_INST(Owned, ThinToThickFunction)
-CONSTANT_OWNERSHIP_INST(Owned, InitExistentialOpaque)
-CONSTANT_OWNERSHIP_INST(Owned, UnconditionalCheckedCastValue)
+CONSTANT_OWNERSHIP_INST(Owned, InitExistentialValue)
+CONSTANT_OWNERSHIP_INST(Owned, GlobalValue) // TODO: is this correct?
 
 // One would think that these /should/ be unowned. In truth they are owned since
 // objc metatypes do not go through the retain/release fast path. In their
@@ -62,6 +62,7 @@ CONSTANT_OWNERSHIP_INST(Trivial, AddressToPointer)
 CONSTANT_OWNERSHIP_INST(Trivial, AllocStack)
 CONSTANT_OWNERSHIP_INST(Trivial, BindMemory)
 CONSTANT_OWNERSHIP_INST(Trivial, BeginAccess)
+CONSTANT_OWNERSHIP_INST(Trivial, BeginUnpairedAccess)
 CONSTANT_OWNERSHIP_INST(Trivial, BridgeObjectToWord)
 CONSTANT_OWNERSHIP_INST(Trivial, ClassMethod)
 CONSTANT_OWNERSHIP_INST(Trivial, DynamicMethod)
@@ -71,7 +72,6 @@ CONSTANT_OWNERSHIP_INST(Trivial, FunctionRef)
 CONSTANT_OWNERSHIP_INST(Trivial, GlobalAddr)
 CONSTANT_OWNERSHIP_INST(Trivial, IndexAddr)
 CONSTANT_OWNERSHIP_INST(Trivial, IndexRawPointer)
-CONSTANT_OWNERSHIP_INST(Trivial, InitBlockStorageHeader)
 CONSTANT_OWNERSHIP_INST(Trivial, InitEnumDataAddr)
 CONSTANT_OWNERSHIP_INST(Trivial, InitExistentialAddr)
 CONSTANT_OWNERSHIP_INST(Trivial, InitExistentialMetatype)
@@ -82,7 +82,6 @@ CONSTANT_OWNERSHIP_INST(Trivial, IsUniqueOrPinned)
 CONSTANT_OWNERSHIP_INST(Trivial, MarkFunctionEscape)
 CONSTANT_OWNERSHIP_INST(Trivial, MarkUninitializedBehavior)
 CONSTANT_OWNERSHIP_INST(Trivial, Metatype)
-CONSTANT_OWNERSHIP_INST(Trivial, ObjCProtocol) // Is this right?
 CONSTANT_OWNERSHIP_INST(Trivial, ObjCToThickMetatype)
 CONSTANT_OWNERSHIP_INST(Trivial, OpenExistentialAddr)
 CONSTANT_OWNERSHIP_INST(Trivial, OpenExistentialBox)
@@ -114,11 +113,13 @@ CONSTANT_OWNERSHIP_INST(Trivial, UnconditionalCheckedCastAddr)
 CONSTANT_OWNERSHIP_INST(Trivial, ValueMetatype)
 CONSTANT_OWNERSHIP_INST(Trivial, WitnessMethod)
 CONSTANT_OWNERSHIP_INST(Trivial, StoreBorrow)
+CONSTANT_OWNERSHIP_INST(Unowned, InitBlockStorageHeader)
 // TODO: It would be great to get rid of these.
 CONSTANT_OWNERSHIP_INST(Unowned, RawPointerToRef)
 CONSTANT_OWNERSHIP_INST(Unowned, RefToUnowned)
 CONSTANT_OWNERSHIP_INST(Unowned, UnmanagedToRef)
 CONSTANT_OWNERSHIP_INST(Unowned, UnownedToRef)
+CONSTANT_OWNERSHIP_INST(Unowned, ObjCProtocol)
 #undef CONSTANT_OWNERSHIP_INST
 
 #define CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(OWNERSHIP, INST)                    \
@@ -131,6 +132,26 @@ CONSTANT_OWNERSHIP_INST(Unowned, UnownedToRef)
   }
 CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(Guaranteed, StructExtract)
 CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(Guaranteed, TupleExtract)
+// OpenExistentialValue opens the boxed value inside an existential
+// CoW box. The semantics of an existential CoW box implies that we
+// can only consume the projected value inside the box if the box is
+// unique. Since we do not know in general if the box is unique
+// without additional work, in SIL we require opened archetypes to
+// be borrowed sub-objects of the parent CoW box.
+CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(Guaranteed, OpenExistentialValue)
+CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(Guaranteed, OpenExistentialBoxValue)
+CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(Owned, UnconditionalCheckedCastValue)
+
+// unchecked_bitwise_cast is a bitwise copy. It produces a trivial or unowned
+// result.
+//
+// If the operand is nontrivial and the result is trivial, then it is the
+// programmer's responsibility to use Builtin.fixLifetime.
+//
+// If both the operand and the result are nontrivial, then either the types must
+// be compatible so that TBAA doesn't allow the destroy to be hoisted above uses
+// of the cast, or the programmer must use Builtin.fixLifetime.
+CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(Unowned, UncheckedBitwiseCast)
 #undef CONSTANT_OR_TRIVIAL_OWNERSHIP_INST
 
 // These are instructions that do not have any result, so we should never reach
@@ -144,7 +165,6 @@ CONSTANT_OR_TRIVIAL_OWNERSHIP_INST(Guaranteed, TupleExtract)
     assert(!I->hasValue() && "Expected an instruction without a result");      \
     llvm_unreachable("Instruction without a result can not have ownership");   \
   }
-NO_RESULT_OWNERSHIP_INST(BeginUnpairedAccess)
 NO_RESULT_OWNERSHIP_INST(DeallocStack)
 NO_RESULT_OWNERSHIP_INST(DeallocRef)
 NO_RESULT_OWNERSHIP_INST(DeallocPartialRef)
@@ -183,7 +203,7 @@ NO_RESULT_OWNERSHIP_INST(DestroyValue)
 NO_RESULT_OWNERSHIP_INST(AllocGlobal)
 NO_RESULT_OWNERSHIP_INST(InjectEnumAddr)
 NO_RESULT_OWNERSHIP_INST(DeinitExistentialAddr)
-NO_RESULT_OWNERSHIP_INST(DeinitExistentialOpaque)
+NO_RESULT_OWNERSHIP_INST(DeinitExistentialValue)
 NO_RESULT_OWNERSHIP_INST(CondFail)
 NO_RESULT_OWNERSHIP_INST(EndLifetime)
 
@@ -268,9 +288,9 @@ FORWARDING_OWNERSHIP_INST(BridgeObjectToRef)
 FORWARDING_OWNERSHIP_INST(ConvertFunction)
 FORWARDING_OWNERSHIP_INST(InitExistentialRef)
 FORWARDING_OWNERSHIP_INST(OpenExistentialRef)
-FORWARDING_OWNERSHIP_INST(OpenExistentialOpaque)
 FORWARDING_OWNERSHIP_INST(RefToBridgeObject)
 FORWARDING_OWNERSHIP_INST(SelectValue)
+FORWARDING_OWNERSHIP_INST(Object)
 FORWARDING_OWNERSHIP_INST(Struct)
 FORWARDING_OWNERSHIP_INST(Tuple)
 FORWARDING_OWNERSHIP_INST(UncheckedRefCast)
@@ -285,34 +305,6 @@ ValueOwnershipKindClassifier::visitSelectEnumInst(SelectEnumInst *SEI) {
   // We handle this specially, since a select enum forwards only its case
   // values. We drop the first element since that is the condition element.
   return visitForwardingInst(SEI, SEI->getAllOperands().drop_front());
-}
-
-ValueOwnershipKind ValueOwnershipKindClassifier::visitUncheckedBitwiseCastInst(
-    UncheckedBitwiseCastInst *UBCI) {
-  ValueOwnershipKind OpOwnership = UBCI->getOperand().getOwnershipKind();
-  bool ResultTypeIsTrivial = UBCI->getType().isTrivial(UBCI->getModule());
-
-  // First check if our operand has a trivial value ownership kind...
-  if (OpOwnership == ValueOwnershipKind::Trivial) {
-    // If we do have a trivial value ownership kind, see if our result type is
-    // trivial or non-trivial. If it is trivial, then we have trivial
-    // ownership. Otherwise, we have unowned ownership since from an ownership
-    // perspective, the value has instantaneously come into existence and
-    // nothing has taken ownership of it.
-    if (ResultTypeIsTrivial) {
-      return ValueOwnershipKind::Trivial;
-    }
-    return ValueOwnershipKind::Unowned;
-  }
-
-  // If our operand has non-trivial ownership, but our result does, then of
-  // course the result has trivial ownership.
-  if (ResultTypeIsTrivial) {
-    return ValueOwnershipKind::Trivial;
-  }
-
-  // Otherwise, we forward our ownership.
-  return visitForwardingInst(UBCI);
 }
 
 ValueOwnershipKind
@@ -569,8 +561,13 @@ CONSTANT_OWNERSHIP_BUILTIN(Trivial, StaticReport)
 
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, DestroyArray)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, CopyArray)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, TakeArrayNoAlias)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, TakeArrayFrontToBack)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, TakeArrayBackToFront)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, AssignCopyArrayNoAlias)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, AssignCopyArrayFrontToBack)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, AssignCopyArrayBackToFront)
+CONSTANT_OWNERSHIP_BUILTIN(Trivial, AssignTakeArray)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, UnexpectedError)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, ErrorInMain)
 CONSTANT_OWNERSHIP_BUILTIN(Trivial, DeallocRaw)

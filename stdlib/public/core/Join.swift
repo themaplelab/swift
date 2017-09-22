@@ -166,33 +166,10 @@ extension Sequence where Element : Sequence {
   /// - Parameter separator: A sequence to insert between each of this
   ///   sequence's elements.
   /// - Returns: The joined sequence of elements.
-  ///
-  /// - SeeAlso: `joined()`
   public func joined<Separator : Sequence>(
     separator: Separator
   ) -> JoinedSequence<Self>
     where Separator.Element == Element.Element {
     return JoinedSequence(base: self, separator: separator)
-  }
-}
-
-@available(*, unavailable, renamed: "JoinedIterator")
-public struct JoinGenerator<Base : IteratorProtocol>
-  where Base.Element : Sequence {}
-
-extension JoinedSequence {
-  @available(*, unavailable, renamed: "makeIterator()")
-  public func generate() -> JoinedIterator<Base.Iterator> {
-    Builtin.unreachable()
-  }
-}
-
-extension Sequence where Element : Sequence {
-  @available(*, unavailable, renamed: "joined(separator:)")
-  public func joinWithSeparator<Separator : Sequence>(
-    _ separator: Separator
-  ) -> JoinedSequence<Self>
-    where Separator.Element == Element.Element {
-    Builtin.unreachable()
   }
 }

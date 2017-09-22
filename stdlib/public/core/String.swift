@@ -13,24 +13,29 @@
 import SwiftShims
 
 /// A type that can represent a string as a collection of characters.
+///
+/// Do not declare new conformances to `StringProtocol`. Only the `String` and
+/// `Substring` types in the standard library are valid conforming types.
 public protocol StringProtocol
-  : RangeReplaceableCollection, BidirectionalCollection,
-  CustomDebugStringConvertible,
-  CustomReflectable, CustomPlaygroundQuickLookable,
+  : BidirectionalCollection,
   TextOutputStream, TextOutputStreamable,
   LosslessStringConvertible, ExpressibleByStringLiteral,
-  Hashable
+  Hashable, Comparable
   where Iterator.Element == Character {
 
-  associatedtype UTF8Index
-  var utf8: String.UTF8View { get }
-  associatedtype UTF16Index
-  var utf16: String.UTF16View { get }
-  associatedtype UnicodeScalarIndex
-  var unicodeScalars: String.UnicodeScalarView { get }
-  /*associatedtype CharacterIndex*/
-  var characters: String.CharacterView { get }
+  associatedtype UTF8View : /*Bidirectional*/Collection
+  where UTF8View.Element == UInt8 // Unicode.UTF8.CodeUnit
+  
+  associatedtype UTF16View : BidirectionalCollection
+  where UTF16View.Element == UInt16 // Unicode.UTF16.CodeUnit
 
+  associatedtype UnicodeScalarView : BidirectionalCollection
+  where UnicodeScalarView.Element == Unicode.Scalar
+  
+  var utf8: UTF8View { get }
+  var utf16: UTF16View { get }
+  var unicodeScalars: UnicodeScalarView { get }
+  
 #if _runtime(_ObjC)
   func hasPrefix(_ prefix: String) -> Bool
   func hasSuffix(_ prefix: String) -> Bool
@@ -81,10 +86,10 @@ public protocol StringProtocol
   ///
   /// - Parameter body: A closure with a pointer parameter that points to a
   ///   null-terminated sequence of UTF-8 code units. If `body` has a return
-  ///   value, it is used as the return value for the `withCString(_:)`
-  ///   method. The pointer argument is valid only for the duration of the
-  ///   method's execution.
-  /// - Returns: The return value of the `body` closure parameter, if any.
+  ///   value, that value is also used as the return value for the
+  ///   `withCString(_:)` method. The pointer argument is valid only for the
+  ///   duration of the method's execution.
+  /// - Returns: The return value, if any, of the `body` closure parameter.
   func withCString<Result>(
     _ body: (UnsafePointer<CChar>) throws -> Result) rethrows -> Result
 
@@ -98,16 +103,28 @@ public protocol StringProtocol
   /// - Parameters:
   ///   - body: A closure with a pointer parameter that points to a
   ///     null-terminated sequence of code units. If `body` has a return
-  ///     value, it is used as the return value for the
+  ///     value, that value is also used as the return value for the
   ///     `withCString(encodedAs:_:)` method. The pointer argument is valid
   ///     only for the duration of the method's execution.
   ///   - targetEncoding: The encoding in which the code units should be
   ///     interpreted.
-  /// - Returns: The return value of the `body` closure parameter, if any.
+  /// - Returns: The return value, if any, of the `body` closure parameter.
   func withCString<Result, Encoding: Unicode.Encoding>(
     encodedAs targetEncoding: Encoding.Type,
     _ body: (UnsafePointer<Encoding.CodeUnit>) throws -> Result
   ) rethrows -> Result
+}
+
+extension StringProtocol {
+  //@available(swift, deprecated: 3.2, obsoleted: 4.0, message: "Please use the StringProtocol itself")
+  //public var characters: Self { return self }
+
+  @available(swift, deprecated: 3.2, obsoleted: 4.0, renamed: "UTF8View.Index")
+  public typealias UTF8Index = UTF8View.Index
+  @available(swift, deprecated: 3.2, obsoleted: 4.0, renamed: "UTF16View.Index")
+  public typealias UTF16Index = UTF16View.Index
+  @available(swift, deprecated: 3.2, obsoleted: 4.0, renamed: "UnicodeScalarView.Index")
+  public typealias UnicodeScalarIndex = UnicodeScalarView.Index
 }
 
 /// A protocol that provides fast access to a known representation of String.
@@ -129,15 +146,11 @@ extension _SwiftStringView {
 }
 
 extension StringProtocol {
-  internal var _ephemeralString : String {
-    let s0 = self as? _SwiftStringView
-    if _fastPath(s0 != nil), let s1 = s0 { return s1._ephemeralContent }
-    return String(String.CharacterView(self))
-  }
-
-  internal var _persistentString : String {
-    let s0 = self as? _SwiftStringView
-    if _fastPath(s0 != nil), let s1 = s0 { return s1._persistentContent }
+  public // Used in the Foundation overlay
+  var _ephemeralString : String {
+    if _fastPath(self is _SwiftStringView) {
+      return (self as! _SwiftStringView)._ephemeralContent
+    }
     return String(String.CharacterView(self))
   }
 }
@@ -167,6 +180,7 @@ where Source.Iterator.Element == SourceEncoding.CodeUnit {
     encodedAs: sourceEncoding) { p, _ in try body(p) }
 }
 
+@_semantics("optimize.sil.specialize.generic.partial.never")
 internal func _withCStringAndLength<
   Source : Collection,
   SourceEncoding : Unicode.Encoding, 
@@ -209,6 +223,7 @@ extension _StringCore {
     }
   }
 
+  @_semantics("optimize.sil.specialize.generic.partial.never")
   internal func _withCSubstringAndLength<
     Result, TargetEncoding: Unicode.Encoding
   >(
@@ -291,12 +306,12 @@ extension String {
   /// - Parameters:
   ///   - body: A closure with a pointer parameter that points to a
   ///     null-terminated sequence of code units. If `body` has a return
-  ///     value, it is used as the return value for the
+  ///     value, that value is also used as the return value for the
   ///     `withCString(encodedAs:_:)` method. The pointer argument is valid
   ///     only for the duration of the method's execution.
   ///   - targetEncoding: The encoding in which the code units should be
   ///     interpreted.
-  /// - Returns: The return value of the `body` closure parameter, if any.
+  /// - Returns: The return value, if any, of the `body` closure parameter.
   public func withCString<Result, TargetEncoding: Unicode.Encoding>(
     encodedAs targetEncoding: TargetEncoding.Type,
     _ body: (UnsafePointer<TargetEncoding.CodeUnit>) throws -> Result
@@ -310,43 +325,45 @@ extension String {
 
 /// A Unicode string value that is a collection of characters.
 ///
-/// A string is a series of characters, such as `"Swift"`. Strings in Swift are
-/// Unicode correct, locale insensitive, and designed to be efficient. The
-/// `String` type bridges with the Objective-C class `NSString` and offers
-/// interoperability with C functions that works with strings.
+/// A string is a series of characters, such as `"Swift"`, that forms a
+/// collection. Strings in Swift are Unicode correct and locale insensitive,
+/// and are designed to be efficient. The `String` type bridges with the
+/// Objective-C class `NSString` and offers interoperability with C functions
+/// that works with strings.
 ///
 /// You can create new strings using string literals or string interpolations.
-/// A string literal is a series of characters enclosed in quotes.
+/// A *string literal* is a series of characters enclosed in quotes.
 ///
 ///     let greeting = "Welcome!"
 ///
-/// String interpolations are string literals that evaluate any included
+/// *String interpolations* are string literals that evaluate any included
 /// expressions and convert the results to string form. String interpolations
-/// are an easy way to build a string from multiple pieces. Wrap each
+/// give you an easy way to build a string from multiple pieces. Wrap each
 /// expression in a string interpolation in parentheses, prefixed by a
 /// backslash.
 ///
 ///     let name = "Rosa"
 ///     let personalizedGreeting = "Welcome, \(name)!"
+///     // personalizedGreeting == "Welcome, Rosa!"
 ///
 ///     let price = 2
 ///     let number = 3
 ///     let cookiePrice = "\(number) cookies: $\(price * number)."
+///     // cookiePrice == "3 cookies: $6."
 ///
 /// Combine strings using the concatenation operator (`+`).
 ///
 ///     let longerGreeting = greeting + " We're glad you're here!"
-///     print(longerGreeting)
-///     // Prints "Welcome! We're glad you're here!"
+///     // longerGreeting == "Welcome! We're glad you're here!"
 ///
-/// Multiline string literals are enclosed in three double quotes (`"""`), with
-/// each delimiter on its own line. Indentation is stripped from each line of
-/// a multiline string literal to match the indentation of the closing
-/// delimiter.
+/// Multiline string literals are enclosed in three double quotation marks
+/// (`"""`), with each delimiter on its own line. Indentation is stripped from
+/// each line of a multiline string literal to match the indentation of the
+/// closing delimiter.
 ///
 ///     let banner = """
 ///               __,
-///              (          o   /) _/_
+///              (           o  /) _/_
 ///               `.  , , , ,  //  /
 ///             (___)(_(_/_(_ //_ (__
 ///                          /)
@@ -361,28 +378,27 @@ extension String {
 ///
 ///     var otherGreeting = greeting
 ///     otherGreeting += " Have a nice time!"
-///     print(otherGreeting)
-///     // Prints "Welcome! Have a nice time!"
+///     // otherGreeting == "Welcome! Have a nice time!"
 ///
 ///     print(greeting)
 ///     // Prints "Welcome!"
 ///
 /// Comparing strings for equality using the equal-to operator (`==`) or a
-/// relational operator (like `<` and `>=`) is always performed using the
-/// Unicode canonical representation. This means that different
-/// representations of a string compare as being equal.
+/// relational operator (like `<` or `>=`) is always performed using Unicode
+/// canonical representation. As a result, different representations of a
+/// string compare as being equal.
 ///
 ///     let cafe1 = "Cafe\u{301}"
 ///     let cafe2 = "Café"
 ///     print(cafe1 == cafe2)
 ///     // Prints "true"
 ///
-/// The Unicode code point `"\u{301}"` modifies the preceding character to
+/// The Unicode scalar value `"\u{301}"` modifies the preceding character to
 /// include an accent, so `"e\u{301}"` has the same canonical representation
-/// as the single Unicode code point `"é"`.
+/// as the single Unicode scalar value `"é"`.
 ///
-/// Basic string operations are not sensitive to locale settings. This ensures
-/// that string comparisons and other operations always have a single, stable
+/// Basic string operations are not sensitive to locale settings, ensuring that
+/// string comparisons and other operations always have a single, stable
 /// result, allowing strings to be used as keys in `Dictionary` instances and
 /// for other purposes.
 ///
@@ -391,10 +407,10 @@ extension String {
 ///
 /// A string is a collection of *extended grapheme clusters*, which approximate
 /// human-readable characters. Many individual characters, such as "é", "김",
-/// and "🇮🇳", can be made up of multiple Unicode code points. These code points
-/// are combined by Unicode's boundary algorithms into extended grapheme
-/// clusters, represented by Swift's `Character` type. Each element of a
-/// string is represented by a `Character` instance.
+/// and "🇮🇳", can be made up of multiple Unicode scalar values. These scalar
+/// values are combined by Unicode's boundary algorithms into extended
+/// grapheme clusters, represented by the Swift `Character` type. Each element
+/// of a string is represented by a `Character` instance.
 ///
 /// For example, to retrieve the first word of a longer string, you can search
 /// for a space and then create a substring from a prefix of the string up to
@@ -410,7 +426,7 @@ extension String {
 /// storage. Substrings present the same interface as strings.
 ///
 ///     print("\(name)'s first name has \(firstName.count) letters.")
-///     // Prints "Marie Curie's name has 5 letters."
+///     // Prints "Marie Curie's first name has 5 letters."
 ///
 /// Accessing a String's Unicode Representation
 /// ===========================================
@@ -418,8 +434,7 @@ extension String {
 /// If you need to access the contents of a string as encoded in different
 /// Unicode encodings, use one of the string's `unicodeScalars`, `utf16`, or
 /// `utf8` properties. Each property provides access to a view of the string
-/// as a series of code units, each encoded in a different Unicode
-/// representation.
+/// as a series of code units, each encoded in a different Unicode encoding.
 ///
 /// To demonstrate the different views available for every string, the
 /// following examples use this `String` instance:
@@ -429,7 +444,7 @@ extension String {
 ///     // Prints "Café du 🌍"
 ///
 /// The `cafe` string is a collection of the nine characters that are visible
-/// in the printed string above.
+/// when the string is displayed.
 ///
 ///     print(cafe.count)
 ///     // Prints "9"
@@ -453,9 +468,9 @@ extension String {
 ///
 /// The `unicodeScalars` view's elements comprise each Unicode scalar value in
 /// the `cafe` string. In particular, because `cafe` was declared using the
-/// decomposed form of the `"é"` character, `unicodeScalars` contains the code
-/// points for both the letter `"e"` (101) and the accent character `"´"`
-/// (769).
+/// decomposed form of the `"é"` character, `unicodeScalars` contains the
+/// scalar values for both the letter `"e"` (101) and the accent character
+/// `"´"` (769).
 ///
 /// UTF-16 View
 /// -----------
@@ -470,9 +485,7 @@ extension String {
 ///     // Prints "[67, 97, 102, 101, 769, 32, 100, 117, 32, 55356, 57101]"
 ///
 /// The elements of the `utf16` view are the code units for the string when
-/// encoded in UTF-16.
-///
-/// The elements of this collection match those accessed through indexed
+/// encoded in UTF-16. These elements match those accessed through indexed
 /// `NSString` APIs.
 ///
 ///     let nscafe = cafe as NSString
@@ -526,10 +539,10 @@ extension String {
 ///     // Prints "1"
 ///
 /// On the other hand, an emoji flag character is constructed from a pair of
-/// Unicode scalars values, like `"\u{1F1F5}"` and `"\u{1F1F7}"`. Each of
-/// these scalar values, in turn, is too large to fit into a single UTF-16 or
-/// UTF-8 code unit. As a result, each view of the string `"🇵🇷"` reports a
-/// different length.
+/// Unicode scalar values, like `"\u{1F1F5}"` and `"\u{1F1F7}"`. Each of these
+/// scalar values, in turn, is too large to fit into a single UTF-16 or UTF-8
+/// code unit. As a result, each view of the string `"🇵🇷"` reports a different
+/// length.
 ///
 ///     let flag = "🇵🇷"
 ///     print(flag.count)
@@ -542,7 +555,7 @@ extension String {
 ///     // Prints "8"
 ///
 /// To check whether a string is empty, use its `isEmpty` property instead of
-/// comparing the length of one of the views to `0`. Unlike `isEmpty`,
+/// comparing the length of one of the views to `0`. Unlike with `isEmpty`,
 /// calculating a view's `count` property requires iterating through the
 /// elements of the string.
 ///
@@ -551,8 +564,8 @@ extension String {
 ///
 /// To find individual elements of a string, use the appropriate view for your
 /// task. For example, to retrieve the first word of a longer string, you can
-/// search the `characters` view for a space and then create a new string from
-/// a prefix of the `characters` view up to that point.
+/// search the string for a space and then create a new string from a prefix
+/// of the string up to that point.
 ///
 ///     let name = "Marie Curie"
 ///     let firstSpace = name.index(of: " ") ?? name.endIndex
@@ -560,12 +573,44 @@ extension String {
 ///     print(firstName)
 ///     // Prints "Marie"
 ///
-/// You can convert an index into one of a string's views to an index into
-/// another view.
+/// Strings and their views share indices, so you can access the UTF-8 view of
+/// the `name` string using the same `firstSpace` index.
 ///
-///     let firstSpaceUTF8 = firstSpace.samePosition(in: name.utf8)
-///     print(Array(name.utf8[..<firstSpaceUTF8]))
+///     print(Array(name.utf8[..<firstSpace]))
 ///     // Prints "[77, 97, 114, 105, 101]"
+///
+/// Note that an index into one view may not have an exact corresponding
+/// position in another view. For example, the `flag` string declared above
+/// comprises a single character, but is composed of eight code units when
+/// encoded as UTF-8. The following code creates constants for the first and
+/// second positions in the `flag.utf8` view. Accessing the `utf8` view with
+/// these indices yields the first and second code UTF-8 units.
+///
+///     let firstCodeUnit = flag.startIndex
+///     let secondCodeUnit = flag.utf8.index(after: firstCodeUnit)
+///     // flag.utf8[firstCodeUnit] == 240
+///     // flag.utf8[secondCodeUnit] == 159
+///
+/// When used to access the elements of the `flag` string itself, however, the
+/// `secondCodeUnit` index does not correspond to the position of a specific
+/// character. Instead of only accessing the specific UTF-8 code unit, that
+/// index is treated as the position of the character at the index's encoded
+/// offset. In the case of `secondCodeUnit`, that character is still the flag
+/// itself.
+///
+///     // flag[firstCodeUnit] == "🇵🇷"
+///     // flag[secondCodeUnit] == "🇵🇷"
+///
+/// If you need to validate that an index from one string's view corresponds
+/// with an exact position in another view, use the index's
+/// `samePosition(in:)` method or the `init(_:within:)` initializer.
+///
+///     if let exactIndex = secondCodeUnit.samePosition(in: flag) {
+///         print(flag[exactIndex])
+///     } else {
+///         print("No exact match for this position.")
+///     }
+///     // Prints "No exact match for this position."
 ///
 /// Performance Optimizations
 /// =========================
@@ -582,7 +627,7 @@ extension String {
 /// exponential growth strategy that makes appending to a string a constant
 /// time operation when averaged over many append operations.
 ///
-/// Bridging between String and NSString
+/// Bridging Between String and NSString
 /// ====================================
 ///
 /// Any `String` instance can be bridged to `NSString` using the type-cast
@@ -591,7 +636,7 @@ extension String {
 /// subclass of `NSString` can become a `String` instance, there are no
 /// guarantees about representation or efficiency when a `String` instance is
 /// backed by `NSString` storage. Because `NSString` is immutable, it is just
-/// as though the storage was shared by a copy: The first in any sequence of
+/// as though the storage was shared by a copy. The first in any sequence of
 /// mutating operations causes elements to be copied into unique, contiguous
 /// storage which may cost O(*n*) time and space, where *n* is the length of
 /// the string's encoded representation (or more, if the underlying `NSString`
@@ -606,9 +651,6 @@ extension String {
 /// [clusters]: http://www.unicode.org/glossary/#extended_grapheme_cluster
 /// [scalars]: http://www.unicode.org/glossary/#unicode_scalar_value
 /// [equivalence]: http://www.unicode.org/glossary/#canonical_equivalent
-///
-/// - SeeAlso: `String.CharacterView`, `String.UnicodeScalarView`,
-///   `String.UTF16View`, `String.UTF8View`
 @_fixed_layout
 public struct String {
   /// Creates an empty string.
@@ -866,7 +908,7 @@ extension String {
   }
 }
 
-extension Sequence where Element == String {
+extension Sequence where Element: StringProtocol {
 
   /// Returns a new string by concatenating the elements of the sequence,
   /// adding the given separator between each element.
@@ -900,7 +942,7 @@ extension Sequence where Element == String {
       for chunk in self {
         // FIXME(performance): this code assumes UTF-16 in-memory representation.
         // It should be switched to low-level APIs.
-        r += separatorSize + chunk.utf16.count
+        r += separatorSize + chunk._ephemeralString.utf16.count
       }
       return r - separatorSize
     }
@@ -911,17 +953,17 @@ extension Sequence where Element == String {
 
     if separatorSize == 0 {
       for x in self {
-        result.append(x)
+        result.append(x._ephemeralString)
       }
       return result
     }
 
     var iter = makeIterator()
     if let first = iter.next() {
-      result.append(first)
+      result.append(first._ephemeralString)
       while let next = iter.next() {
         result.append(separator)
-        result.append(next)
+        result.append(next._ephemeralString)
       }
     }
 
@@ -1077,7 +1119,7 @@ extension String {
         // Since we are left with either 0x0 or 0x20, we can safely truncate to
         // a UInt8 and add to our ASCII value (this will not overflow numbers in
         // the ASCII range).
-        dest.storeBytes(of: value &+ UInt8(extendingOrTruncating: add),
+        dest.storeBytes(of: value &+ UInt8(truncatingIfNeeded: add),
           toByteOffset: i, as: UInt8.self)
       }
       return String(_storage: buffer)
@@ -1116,7 +1158,7 @@ extension String {
           _asciiLowerCaseTable &>>
           UInt64(((value &- 1) & 0b0111_1111) &>> 1)
         let add = (isLower & 0x1) &<< 5
-        dest.storeBytes(of: value &- UInt8(extendingOrTruncating: add),
+        dest.storeBytes(of: value &- UInt8(truncatingIfNeeded: add),
           toByteOffset: i, as: UInt8.self)
       }
       return String(_storage: buffer)
@@ -1140,71 +1182,5 @@ extension String {
 extension String : CustomStringConvertible {
   public var description: String {
     return self
-  }
-}
-
-extension String {
-  @available(*, unavailable, renamed: "append(_:)")
-  public mutating func appendContentsOf(_ other: String) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "append(contentsOf:)")
-  public mutating func appendContentsOf<S : Sequence>(_ newElements: S)
-    where S.Element == Character {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "insert(contentsOf:at:)")
-  public mutating func insertContentsOf<S : Collection>(
-    _ newElements: S, at i: Index
-  ) where S.Element == Character {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "replaceSubrange")
-  public mutating func replaceRange<C : Collection>(
-    _ subRange: Range<Index>, with newElements: C
-  ) where C.Element == Character {
-    Builtin.unreachable()
-  }
-    
-  @available(*, unavailable, renamed: "replaceSubrange")
-  public mutating func replaceRange(
-    _ subRange: Range<Index>, with newElements: String
-  ) {
-    Builtin.unreachable()
-  }
-  
-  @available(*, unavailable, renamed: "remove(at:)")
-  public mutating func removeAtIndex(_ i: Index) -> Character {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "removeSubrange")
-  public mutating func removeRange(_ subRange: Range<Index>) {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "lowercased()")
-  public var lowercaseString: String {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "uppercased()")
-  public var uppercaseString: String {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, renamed: "init(describing:)")
-  public init<T>(_: T) {
-    Builtin.unreachable()
-  }
-}
-
-extension Sequence where Element == String {
-  @available(*, unavailable, renamed: "joined(separator:)")
-  public func joinWithSeparator(_ separator: String) -> String {
-    Builtin.unreachable()
   }
 }

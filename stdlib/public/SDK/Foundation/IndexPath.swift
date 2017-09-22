@@ -207,13 +207,13 @@ public struct IndexPath : ReferenceConvertible, Equatable, Hashable, MutableColl
             get {
                 switch self {
                 case .empty:
-                    fatalError("index \(index) out of bounds of count 0")
+                    fatalError("Index \(index) out of bounds of count 0")
                     break
                 case .single(let first):
-                    precondition(index == 0, "index \(index) out of bounds of count 1")
+                    precondition(index == 0, "Index \(index) out of bounds of count 1")
                     return first
                 case .pair(let first, let second):
-                    precondition(index >= 0 && index < 2, "index \(index) out of bounds of count 2")
+                    precondition(index >= 0 && index < 2, "Index \(index) out of bounds of count 2")
                     return index == 0 ? first : second
                 case .array(let indexes):
                     return indexes[index]
@@ -222,14 +222,14 @@ public struct IndexPath : ReferenceConvertible, Equatable, Hashable, MutableColl
             set {
                 switch self {
                 case .empty:
-                    fatalError("index \(index) out of bounds of count 0")
+                    fatalError("Index \(index) out of bounds of count 0")
                     break
                 case .single(_):
-                    precondition(index == 0, "index \(index) out of bounds of count 1")
+                    precondition(index == 0, "Index \(index) out of bounds of count 1")
                     self = .single(newValue)
                     break
                 case .pair(let first, let second):
-                    precondition(index >= 0 && index < 2, "index \(index) out of bounds of count 2")
+                    precondition(index >= 0 && index < 2, "Index \(index) out of bounds of count 2")
                     if index == 0 {
                         self = .pair(newValue, second)
                     } else {
@@ -253,16 +253,17 @@ public struct IndexPath : ReferenceConvertible, Equatable, Hashable, MutableColl
                     case (0, 0):
                         return .empty
                     default:
-                        fatalError("range \(range) is out of bounds of count 0")
+                        fatalError("Range \(range) is out of bounds of count 0")
                     }
                 case .single(let index):
                     switch (range.lowerBound, range.upperBound) {
-                    case (0, 0):
+                    case (0, 0): fallthrough
+                    case (1, 1):
                         return .empty
                     case (0, 1):
                         return .single(index)
                     default:
-                        fatalError("range \(range) is out of bounds of count 1")
+                        fatalError("Range \(range) is out of bounds of count 1")
                     }
                     return self
                 case .pair(let first, let second):
@@ -281,7 +282,7 @@ public struct IndexPath : ReferenceConvertible, Equatable, Hashable, MutableColl
                     case (0, 2):
                         return self
                     default:
-                        fatalError("range \(range) is out of bounds of count 2")
+                        fatalError("Range \(range) is out of bounds of count 2")
                     }
                 case .array(let indexes):
                     let slice = indexes[range]
@@ -289,9 +290,9 @@ public struct IndexPath : ReferenceConvertible, Equatable, Hashable, MutableColl
                     case 0:
                         return .empty
                     case 1:
-                        return .single(slice[0])
+                        return .single(slice.first!)
                     case 2:
-                        return .pair(slice[0], slice[1])
+                        return .pair(slice.first!, slice.last!)
                     default:
                         return .array(Array<Int>(slice))
                     }
@@ -300,7 +301,7 @@ public struct IndexPath : ReferenceConvertible, Equatable, Hashable, MutableColl
             set {
                 switch self {
                 case .empty:
-                    precondition(range.lowerBound == 0 && range.upperBound == 0, "range \(range) is out of bounds of count 0")
+                    precondition(range.lowerBound == 0 && range.upperBound == 0, "Range \(range) is out of bounds of count 0")
                     self = newValue
                     break
                 case .single(let index):
@@ -336,7 +337,7 @@ public struct IndexPath : ReferenceConvertible, Equatable, Hashable, MutableColl
                         self = .array([index] + other)
                         break
                     default:
-                        fatalError("range \(range) is out of bounds of count 1")
+                        fatalError("Range \(range) is out of bounds of count 1")
                     }
                 case .pair(let first, let second):
                     switch (range.lowerBound, range.upperBound) {
@@ -404,7 +405,7 @@ public struct IndexPath : ReferenceConvertible, Equatable, Hashable, MutableColl
                         }
                         break
                     default:
-                        fatalError("range \(range) is out of bounds of count 2")
+                        fatalError("Range \(range) is out of bounds of count 2")
                     }
                 case .array(let indexes):
                     var newIndexes = indexes

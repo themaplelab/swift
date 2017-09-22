@@ -49,9 +49,6 @@
 ///     space (`" "`).
 ///   - terminator: The string to print after all items have been printed. The
 ///     default is a newline (`"\n"`).
-///
-/// - SeeAlso: `debugPrint(_:separator:terminator:)`, `TextOutputStreamable`,
-///   `CustomStringConvertible`, `CustomDebugStringConvertible`
 @inline(never)
 @_semantics("stdlib_binary_only")
 public func print(
@@ -112,9 +109,6 @@ public func print(
 ///     space (`" "`).
 ///   - terminator: The string to print after all items have been printed. The
 ///     default is a newline (`"\n"`).
-///
-/// - SeeAlso: `print(_:separator:terminator:)`, `TextOutputStreamable`,
-///   `CustomStringConvertible`, `CustomDebugStringConvertible`
 @inline(never)
 @_semantics("stdlib_binary_only")
 public func debugPrint(
@@ -171,11 +165,6 @@ public func debugPrint(
 ///     default is a newline (`"\n"`).
 ///   - output: An output stream to receive the text representation of each
 ///     item.
-///
-/// - SeeAlso: `print(_:separator:terminator:)`,
-///   `debugPrint(_:separator:terminator:to:)`,
-///   `TextOutputStream`, `TextOutputStreamable`,
-///   `CustomStringConvertible`, `CustomDebugStringConvertible`
 @inline(__always)
 public func print<Target : TextOutputStream>(
   _ items: Any...,
@@ -224,11 +213,6 @@ public func print<Target : TextOutputStream>(
 ///     default is a newline (`"\n"`).
 ///   - output: An output stream to receive the text representation of each
 ///     item.
-///
-/// - SeeAlso: `debugPrint(_:separator:terminator:)`,
-///   `print(_:separator:terminator:to:)`,
-///   `TextOutputStream`, `TextOutputStreamable`,
-///   `CustomStringConvertible`, `CustomDebugStringConvertible`
 @inline(__always)
 public func debugPrint<Target : TextOutputStream>(
   _ items: Any...,
@@ -279,41 +263,3 @@ internal func _debugPrint<Target : TextOutputStream>(
   }
   output.write(terminator)
 }
-
-//===----------------------------------------------------------------------===//
-//===--- Migration Aids ---------------------------------------------------===//
-
-@available(*, unavailable, renamed: "print(_:separator:terminator:to:)")
-public func print<Target : TextOutputStream>(
-  _ items: Any...,
-  separator: String = "",
-  terminator: String = "",
-  toStream output: inout Target
-) {}
-
-@available(*, unavailable, renamed: "debugPrint(_:separator:terminator:to:)")
-public func debugPrint<Target : TextOutputStream>(
-  _ items: Any...,
-  separator: String = "",
-  terminator: String = "",
-  toStream output: inout Target
-) {}
-
-@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false': 'print((...), terminator: \"\")'")
-public func print<T>(_: T, appendNewline: Bool = true) {}
-@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false': 'debugPrint((...), terminator: \"\")'")
-public func debugPrint<T>(_: T, appendNewline: Bool = true) {}
-
-@available(*, unavailable, message: "Please use the 'to' label for the target stream: 'print((...), to: &...)'")
-public func print<T>(_: T, _: inout TextOutputStream) {}
-@available(*, unavailable, message: "Please use the 'to' label for the target stream: 'debugPrint((...), to: &...))'")
-public func debugPrint<T>(_: T, _: inout TextOutputStream) {}
-
-@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false' and use the 'to' label for the target stream: 'print((...), terminator: \"\", to: &...)'")
-public func print<T>(_: T, _: inout TextOutputStream, appendNewline: Bool = true) {}
-@available(*, unavailable, message: "Please use 'terminator: \"\"' instead of 'appendNewline: false' and use the 'to' label for the target stream: 'debugPrint((...), terminator: \"\", to: &...)'")
-public func debugPrint<T>(
-  _: T, _: inout TextOutputStream, appendNewline: Bool = true
-) {}
-//===----------------------------------------------------------------------===//
-//===----------------------------------------------------------------------===//

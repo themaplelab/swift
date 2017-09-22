@@ -28,6 +28,7 @@
 namespace swift {
 namespace Lowering {
 
+class ArgumentSource;
 class LogicalPathComponent;
 class ManagedValue;
 class PhysicalPathComponent;
@@ -107,7 +108,7 @@ public:
     OwnershipKind,              // weak pointer remapping
     AutoreleasingWritebackKind, // autorelease pointer on set
     WritebackPseudoKind,        // a fake component to customize writeback
-    OpenClassExistentialKind,   // opened class existential
+    OpenNonOpaqueExistentialKind,  // opened class or metatype existential
     // Translation LValue kinds (a subtype of logical)
     OrigToSubstKind,            // generic type substitution
     SubstToOrigKind,            // generic type substitution
@@ -154,6 +155,12 @@ public:
   TranslationPathComponent &asTranslation();
   const TranslationPathComponent &asTranslation() const;
 
+  /// Is this some form of open-existential component?
+  bool isOpenExistential() const {
+    return getKind() == OpenOpaqueExistentialKind ||
+           getKind() == OpenNonOpaqueExistentialKind;
+  }
+
   /// Return the appropriate access kind to use when producing the
   /// base value.
   virtual AccessKind getBaseAccessKind(SILGenFunction &SGF,
@@ -174,7 +181,7 @@ public:
   KindTy getKind() const { return Kind; }
 
   void dump() const;
-  virtual void print(raw_ostream &OS) const = 0;
+  virtual void dump(raw_ostream &OS, unsigned indent = 0) const = 0;
 };
 
 /// An abstract class for "physical" path components, i.e. path
@@ -234,7 +241,7 @@ public:
   ///
   /// \param base - always an address, but possibly an r-value
   virtual void set(SILGenFunction &SGF, SILLocation loc,
-                   RValue &&value, ManagedValue base) && = 0;
+                   ArgumentSource &&value, ManagedValue base) && = 0;
 
   /// Get the property.
   ///
@@ -304,7 +311,7 @@ public:
              ManagedValue base, SGFContext c) && override;
 
   void set(SILGenFunction &SGF, SILLocation loc,
-           RValue &&value, ManagedValue base) && override;
+           ArgumentSource &&value, ManagedValue base) && override;
 
   /// Transform from the original pattern.
   virtual RValue translate(SILGenFunction &SGF, SILLocation loc,
@@ -385,6 +392,13 @@ public:
     assert(isLastComponentTranslation());
     Path.pop_back();
   }
+
+  /// Assert that the given component is the last component in the
+  /// l-value, drop it.
+  void dropLastComponent(PathComponent &component) & {
+    assert(&component == Path.back().get());
+    Path.pop_back();
+  }
   
   /// Add a new component at the end of the access path of this lvalue.
   template <class T, class... As>
@@ -396,6 +410,7 @@ public:
   void addMemberComponent(SILGenFunction &SGF, SILLocation loc,
                           AbstractStorageDecl *storage,
                           SubstitutionList subs,
+                          LValueOptions options,
                           bool isSuper,
                           AccessKind accessKind,
                           AccessSemantics accessSemantics,
@@ -406,6 +421,7 @@ public:
   void addMemberVarComponent(SILGenFunction &SGF, SILLocation loc,
                              VarDecl *var,
                              SubstitutionList subs,
+                             LValueOptions options,
                              bool isSuper,
                              AccessKind accessKind,
                              AccessSemantics accessSemantics,
@@ -415,6 +431,7 @@ public:
   void addMemberSubscriptComponent(SILGenFunction &SGF, SILLocation loc,
                                    SubscriptDecl *subscript,
                                    SubstitutionList subs,
+                                   LValueOptions options,
                                    bool isSuper,
                                    AccessKind accessKind,
                                    AccessSemantics accessSemantics,
@@ -466,7 +483,7 @@ public:
                                  AccessKind otherAccess);
 
   void dump() const;
-  void print(raw_ostream &OS) const;
+  void dump(raw_ostream &os, unsigned indent = 0) const;
 };
   
 /// RAII object used to enter an inout conversion scope. Writeback scopes formed

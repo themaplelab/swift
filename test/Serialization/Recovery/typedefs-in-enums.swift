@@ -1,4 +1,4 @@
-// RUN: rm -rf %t && mkdir -p %t
+// RUN: %empty-directory(%t)
 // RUN: %target-swift-frontend -emit-sil -o - -emit-module-path %t/Lib.swiftmodule -module-name Lib -I %S/Inputs/custom-modules -disable-objc-attr-requires-foundation-module %s > /dev/null
 
 // RUN: %target-swift-ide-test -source-filename=x -print-module -module-to-print Lib -I %t -I %S/Inputs/custom-modules | %FileCheck %s
@@ -54,13 +54,13 @@ public enum OkayEnum {
 // CHECK-NEXT:   case noPayload
 // CHECK-NEXT:   case plainOldAlias(Any, UnwrappedInt)
 // CHECK-NEXT:   case other(Int)
-// CHECK-NEXT:   static func ==(a: OkayEnum, b: OkayEnum) -> Bool
+// CHECK-NEXT:   static func == (a: OkayEnum, b: OkayEnum) -> Bool
 // CHECK-NEXT: }
 // CHECK-RECOVERY-LABEL: enum OkayEnum {
 // CHECK-RECOVERY-NEXT:   case noPayload
 // CHECK-RECOVERY-NEXT:   case plainOldAlias(Any, Int32)
 // CHECK-RECOVERY-NEXT:   case other(Int)
-// CHECK-RECOVERY-NEXT:   static func ==(a: OkayEnum, b: OkayEnum) -> Bool
+// CHECK-RECOVERY-NEXT:   static func == (a: OkayEnum, b: OkayEnum) -> Bool
 // CHECK-RECOVERY-NEXT: }
 
 public enum OkayEnumWithSelfRefs {

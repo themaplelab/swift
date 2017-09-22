@@ -22,17 +22,23 @@ extension NSRange : Hashable {
     }
 
     public static func==(_ lhs: NSRange, _ rhs: NSRange) -> Bool {
-        return lhs.location == rhs.location && rhs.length == rhs.length
+        return lhs.location == rhs.location && lhs.length == rhs.length
     }
 }
 
 extension NSRange : CustomStringConvertible, CustomDebugStringConvertible {
     public var description: String { return "{\(location), \(length)}" }
-    public var debugDescription: String { return "{\(location), \(length)}" }
+    public var debugDescription: String {
+        guard location != NSNotFound else {
+            return "{NSNotFound, \(length)}"     
+        }
+        return "{\(location), \(length)}" 
+    }
 }
 
 extension NSRange {
     public init?(_ string: String) {
+        var savedLocation = 0
         if string.isEmpty {
             // fail early if the string is empty
             return nil
@@ -45,6 +51,7 @@ extension NSRange {
             return nil
         }
         var location = 0
+        savedLocation = scanner.scanLocation
         guard scanner.scanInt(&location) else {
             return nil
         }
@@ -52,15 +59,43 @@ extension NSRange {
             // return early if there are no more characters after the first int in the string
             return nil
         }
+        if scanner.scanString(".", into: nil) {
+            scanner.scanLocation = savedLocation
+            var double = 0.0
+            guard scanner.scanDouble(&double) else {
+                return nil
+            }
+            guard let integral = Int(exactly: double) else {
+                return nil
+            }
+            location = integral
+        }
+        
         let _ = scanner.scanUpToCharacters(from: digitSet, into: nil)
         if scanner.isAtEnd {
             // return early if there are no integer characters after the first int in the string
             return nil
         }
         var length = 0
+        savedLocation = scanner.scanLocation
         guard scanner.scanInt(&length) else {
             return nil
         }
+        
+        if !scanner.isAtEnd {
+            if scanner.scanString(".", into: nil) {
+                scanner.scanLocation = savedLocation
+                var double = 0.0
+                guard scanner.scanDouble(&double) else {
+                    return nil
+                }
+                guard let integral = Int(exactly: double) else {
+                    return nil
+                }
+                length = integral
+            }
+        }
+        
         
         self.location = location
         self.length = length
@@ -105,22 +140,20 @@ extension NSRange {
 //===----------------------------------------------------------------------===//
 
 extension NSRange {
-  public init<R: RangeExpression>(_ rangeExpression: R)
+  public init<R: RangeExpression>(_ region: R)
   where R.Bound: FixedWidthInteger, R.Bound.Stride : SignedInteger {
-    let range = rangeExpression.relative(to: 0..<R.Bound.max)
-    let start: Int = numericCast(range.lowerBound)
-    let end: Int = numericCast(range.upperBound)
-    self = NSRange(location: start, length: end - start)
+    let r = region.relative(to: 0..<R.Bound.max)
+    location = numericCast(r.lowerBound)
+    length = numericCast(r.count)
   }
   
-  public init<R: RangeExpression, S: StringProtocol>(_ rangeExpression: R, in string: S)
-  where R.Bound == String.Index, S.Index == String.Index {
-    let range = rangeExpression.relative(to: string)
-    let start = range.lowerBound.samePosition(in: string.utf16)
-    let end = range.upperBound.samePosition(in: string.utf16)
-    let location = string.utf16.distance(from: string.utf16.startIndex, to: start)
-    let length = string.utf16.distance(from: start, to: end)
-    self = NSRange(location: location, length: length)
+  public init<R: RangeExpression, S: StringProtocol>(_ region: R, in target: S)
+  where R.Bound == S.Index, S.Index == String.Index {
+    let r = region.relative(to: target)
+    self = NSRange(
+      location: r.lowerBound.encodedOffset - target.startIndex.encodedOffset,
+      length: r.upperBound.encodedOffset - r.lowerBound.encodedOffset
+    )
   }
 
   @available(swift, deprecated: 4, renamed: "Range.init(_:)")

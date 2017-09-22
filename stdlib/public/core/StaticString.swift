@@ -126,10 +126,10 @@ public struct StaticString
   ///
   /// - Parameter body: A closure that takes a buffer pointer to the static
   ///   string's UTF-8 code unit sequence as its sole argument. If the closure
-  ///   has a return value, it is used as the return value of the
+  ///   has a return value, that value is also used as the return value of the
   ///   `withUTF8Buffer(invoke:)` method. The pointer argument is valid only
   ///   for the duration of the method's execution.
-  /// - Returns: The return value of the `body` closure, if any.
+  /// - Returns: The return value, if any, of the `body` closure.
   public func withUTF8Buffer<R>(
     _ body: (UnsafeBufferPointer<UInt8>) -> R) -> R {
     if hasPointerRepresentation {
@@ -219,7 +219,7 @@ public struct StaticString
   }
 
   /// Creates an instance initialized to a single character that is made up of
-  /// one or more Unicode code points.
+  /// one or more Unicode scalar values.
   ///
   /// Do not call this initializer directly. It may be used by the compiler
   /// when you initialize a static string using an extended grapheme cluster.
@@ -271,16 +271,3 @@ extension StaticString {
     return Mirror(reflecting: description)
   }
 }
-
-extension StaticString {
-  @available(*, unavailable, renamed: "utf8CodeUnitCount")
-  public var byteSize: Int {
-    Builtin.unreachable()
-  }
-
-  @available(*, unavailable, message: "use the 'String(_:)' initializer")
-  public var stringValue: String {
-    Builtin.unreachable()
-  }
-}
-

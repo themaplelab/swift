@@ -23,6 +23,7 @@
 #include "swift/Basic/Defer.h"
 #include "swift/Basic/Dwarf.h"
 #include "swift/Basic/Platform.h"
+#include "swift/Basic/Statistic.h"
 #include "swift/Basic/Timer.h"
 #include "swift/Basic/Version.h"
 #include "swift/ClangImporter/ClangImporter.h"
@@ -43,6 +44,7 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/ValueSymbolTable.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/SubtargetFeature.h"
@@ -148,8 +150,6 @@ void setModuleFlags(IRGenModule &IGM) {
 
 void swift::performLLVMOptimizations(IRGenOptions &Opts, llvm::Module *Module,
                                      llvm::TargetMachine *TargetMachine) {
-  SharedTimer timer("LLVM optimization");
-
   // Set up a pipeline.
   PassManagerBuilderWrapper PMBuilder(Opts);
 
@@ -176,14 +176,14 @@ void swift::performLLVMOptimizations(IRGenOptions &Opts, llvm::Module *Module,
                            addSwiftContractPass);
   }
 
-  if (Opts.Sanitize == SanitizerKind::Address) {
+  if (Opts.Sanitizers & SanitizerKind::Address) {
     PMBuilder.addExtension(PassManagerBuilder::EP_OptimizerLast,
                            addAddressSanitizerPasses);
     PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
                            addAddressSanitizerPasses);
   }
   
-  if (Opts.Sanitize == SanitizerKind::Thread) {
+  if (Opts.Sanitizers & SanitizerKind::Thread) {
     PMBuilder.addExtension(PassManagerBuilder::EP_OptimizerLast,
                            addThreadSanitizerPass);
     PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
@@ -192,6 +192,7 @@ void swift::performLLVMOptimizations(IRGenOptions &Opts, llvm::Module *Module,
 
   if (Opts.SanitizeCoverage.CoverageType !=
       llvm::SanitizerCoverageOptions::SCK_None) {
+
     PMBuilder.addExtension(PassManagerBuilder::EP_OptimizerLast,
                            addSanitizerCoveragePass);
     PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
@@ -354,6 +355,25 @@ static bool needsRecompile(StringRef OutputFilename, ArrayRef<uint8_t> HashData,
   return true;
 }
 
+static void countStatsPostIRGen(UnifiedStatsReporter &Stats,
+                                const llvm::Module& Module) {
+  auto &C = Stats.getFrontendCounters();
+  // FIXME: calculate these in constant time if possible.
+  C.NumIRGlobals += Module.getGlobalList().size();
+  C.NumIRFunctions += Module.getFunctionList().size();
+  C.NumIRAliases += Module.getAliasList().size();
+  C.NumIRIFuncs += Module.getIFuncList().size();
+  C.NumIRNamedMetaData += Module.getNamedMDList().size();
+  C.NumIRValueSymbols += Module.getValueSymbolTable().size();
+  C.NumIRComdatSymbols += Module.getComdatSymbolTable().size();
+  for (auto const &Func : Module) {
+    for (auto const &BB : Func) {
+      C.NumIRBasicBlocks++;
+      C.NumIRInsts += BB.size();
+    }
+  }
+}
+
 /// Run the LLVM passes. In multi-threaded compilation this will be done for
 /// multiple LLVM modules in parallel.
 bool swift::performLLVM(IRGenOptions &Opts, DiagnosticEngine *Diags,
@@ -362,7 +382,8 @@ bool swift::performLLVM(IRGenOptions &Opts, DiagnosticEngine *Diags,
                         llvm::Module *Module,
                         llvm::TargetMachine *TargetMachine,
                         const version::Version &effectiveLanguageVersion,
-                        StringRef OutputFilename) {
+                        StringRef OutputFilename,
+                        UnifiedStatsReporter *Stats) {
   if (Opts.UseIncrementalLLVMCodeGen && HashGlobal) {
     // Check if we can skip the llvm part of the compilation if we have an
     // existing object file which was generated from the same llvm IR.
@@ -464,9 +485,22 @@ bool swift::performLLVM(IRGenOptions &Opts, DiagnosticEngine *Diags,
   }
   }
 
-  {
-    SharedTimer timer("LLVM output");
-    EmitPasses.run(*Module);
+  if (Stats) {
+    if (DiagMutex)
+      DiagMutex->lock();
+    countStatsPostIRGen(*Stats, *Module);
+    if (DiagMutex)
+      DiagMutex->unlock();
+  }
+
+  EmitPasses.run(*Module);
+
+  if (Stats && RawOS.hasValue()) {
+    if (DiagMutex)
+      DiagMutex->lock();
+    Stats->getFrontendCounters().NumLLVMBytesOutput += RawOS->tell();
+    if (DiagMutex)
+      DiagMutex->unlock();
   }
   return false;
 }
@@ -646,12 +680,19 @@ void swift::irgen::deleteIRGenModule(
 static void runIRGenPreparePasses(SILModule &Module,
                                   irgen::IRGenModule &IRModule) {
   SILPassManager PM(&Module, &IRModule);
+  bool largeLoadable = Module.getOptions().EnableLargeLoadableTypes;
 #define PASS(ID, Tag, Name)
 #define IRGEN_PASS(ID, Tag, Name)                                              \
-  PM.registerIRGenPass(swift::PassKind::ID, irgen::create##ID());
+  if (swift::PassKind::ID == swift::PassKind::LoadableByAddress) {             \
+    if (largeLoadable) {                                                       \
+      PM.registerIRGenPass(swift::PassKind::ID, irgen::create##ID());          \
+    }                                                                          \
+  } else {                                                                     \
+    PM.registerIRGenPass(swift::PassKind::ID, irgen::create##ID());            \
+  }
 #include "swift/SILOptimizer/PassManager/Passes.def"
   PM.executePassPipelinePlan(
-      SILPassPipelinePlan::getIRGenPreparePassPipeline());
+      SILPassPipelinePlan::getIRGenPreparePassPipeline(Module.getOptions()));
 }
 
 /// Generates LLVM IR, runs the LLVM passes and produces the output file.
@@ -715,7 +756,7 @@ static std::unique_ptr<llvm::Module> performIRGeneration(IRGenOptions &Opts,
       IGM.emitTypeMetadataRecords();
       IGM.emitBuiltinReflectionMetadata();
       IGM.emitReflectionMetadataVersion();
-      irgen.emitNSArchiveClassNameRegistration();
+      irgen.emitEagerClassInitialization();
     }
 
     // Emit symbols for eliminated dead methods.
@@ -767,11 +808,13 @@ static std::unique_ptr<llvm::Module> performIRGeneration(IRGenOptions &Opts,
   if (outModuleHash) {
     *outModuleHash = IGM.ModuleHash;
   } else {
+    SharedTimer timer("LLVM pipeline");
+
     // Since no out module hash was set, we need to performLLVM.
     if (performLLVM(Opts, &IGM.Context.Diags, nullptr, IGM.ModuleHash,
                     IGM.getModule(), IGM.TargetMachine.get(),
                     IGM.Context.LangOpts.EffectiveLanguageVersion,
-                    IGM.OutputFilename))
+                    IGM.OutputFilename, IGM.Context.Stats))
       return nullptr;
   }
 
@@ -791,7 +834,7 @@ static void ThreadEntryPoint(IRGenerator *irgen,
     performLLVM(irgen->Opts, &IGM->Context.Diags, DiagMutex, IGM->ModuleHash,
                 IGM->getModule(), IGM->TargetMachine.get(),
                 IGM->Context.LangOpts.EffectiveLanguageVersion,
-                IGM->OutputFilename);
+                IGM->OutputFilename, IGM->Context.Stats);
     if (IGM->Context.Diags.hadAnyError())
       return;
   }
@@ -894,7 +937,7 @@ static void performParallelIRGeneration(IRGenOptions &Opts,
 
   irgen.emitReflectionMetadataVersion();
 
-  irgen.emitNSArchiveClassNameRegistration();
+  irgen.emitEagerClassInitialization();
 
   // Emit reflection metadata for builtin and imported types.
   irgen.emitBuiltinReflectionMetadata();
@@ -986,6 +1029,8 @@ static void performParallelIRGeneration(IRGenOptions &Opts,
 
   // Bail out if there are any errors.
   if (Ctx.hadError()) return;
+
+  SharedTimer timer("LLVM pipeline");
 
   std::vector<std::thread> Threads;
   llvm::sys::Mutex DiagMutex;
@@ -1089,7 +1134,8 @@ swift::createSwiftModuleObjectFile(SILModule &SILMod, StringRef Buffer,
 }
 
 bool swift::performLLVM(IRGenOptions &Opts, ASTContext &Ctx,
-                        llvm::Module *Module) {
+                        llvm::Module *Module,
+                        UnifiedStatsReporter *Stats) {
   // Build TargetMachine.
   auto TargetMachine = createTargetMachine(Opts, Ctx);
   if (!TargetMachine)
@@ -1099,7 +1145,7 @@ bool swift::performLLVM(IRGenOptions &Opts, ASTContext &Ctx,
   if (::performLLVM(Opts, &Ctx.Diags, nullptr, nullptr, Module,
                     TargetMachine.get(),
                     Ctx.LangOpts.EffectiveLanguageVersion,
-                    Opts.getSingleOutputFilename()))
+                    Opts.getSingleOutputFilename(), Stats))
     return true;
   return false;
 }

@@ -40,6 +40,7 @@ set(SWIFT_BENCH_MODULES
     single-source/DictTest2
     single-source/DictTest3
     single-source/DictionaryBridge
+    single-source/DictionaryGroup
     single-source/DictionaryLiteral
     single-source/DictionaryRemove
     single-source/DictionarySwap
@@ -47,9 +48,9 @@ set(SWIFT_BENCH_MODULES
     single-source/DropLast
     single-source/DropWhile
     single-source/ErrorHandling
+    single-source/Exclusivity
     single-source/ExistentialPerformance
     single-source/Fibonacci
-    single-source/GlobalClass
     single-source/Hanoi
     single-source/Hash
     single-source/HashQuadratic
@@ -89,6 +90,7 @@ set(SWIFT_BENCH_MODULES
     single-source/RGBHistogram
     single-source/RangeAssignment
     single-source/RecursiveOwnedParameter
+    single-source/ReduceInto
     single-source/ReversedCollections
     single-source/SetTests
     single-source/SevenBoom
@@ -102,6 +104,7 @@ set(SWIFT_BENCH_MODULES
     single-source/StrToInt
     single-source/StringBuilder
     single-source/StringEdits
+    single-source/StringEnum
     single-source/StringInterpolation
     single-source/StringMatch
     single-source/StringTests

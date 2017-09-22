@@ -50,6 +50,7 @@
 #include "GenHeap.h"
 #include "HeapTypeInfo.h"
 #include "MemberAccessStrategy.h"
+#include "MetadataLayout.h"
 
 
 using namespace swift;
@@ -138,6 +139,10 @@ namespace {
     ArrayRef<ElementLayout> getElements(IRGenModule &IGM, SILType type) const {
       return getLayout(IGM, type).getElements();
     }
+
+    StructLayout *createLayoutWithTailElems(IRGenModule &IGM,
+                                            SILType classType,
+                                            ArrayRef<SILType> tailTypes) const;
   };
 } // end anonymous namespace
 
@@ -181,14 +186,30 @@ namespace {
     // If not, we can have to access stored properties through the field
     // offset vector in the instantiated type metadata.
     bool ClassHasConcreteLayout = true;
-
+    
   public:
-    ClassLayoutBuilder(IRGenModule &IGM, SILType classType)
+    ClassLayoutBuilder(IRGenModule &IGM, SILType classType,
+                       ReferenceCounting refcounting)
       : StructLayoutBuilder(IGM)
     {
       // Start by adding a heap header.
-      addHeapHeader();
-
+      switch (refcounting) {
+      case swift::irgen::ReferenceCounting::Native:
+        // For native classes, place a full object header.
+        addHeapHeader();
+        break;
+      case swift::irgen::ReferenceCounting::ObjC:
+        // For ObjC-inheriting classes, we don't reliably know the size of the
+        // base class, but NSObject only has an `isa` pointer at most.
+        addNSObjectHeader();
+        break;
+      case swift::irgen::ReferenceCounting::Block:
+      case swift::irgen::ReferenceCounting::Unknown:
+      case swift::irgen::ReferenceCounting::Bridge:
+      case swift::irgen::ReferenceCounting::Error:
+        llvm_unreachable("not a class refcounting kind");
+      }
+      
       // Next, add the fields for the given class.
       auto theClass = classType.getClassOrBoundGenericClass();
       assert(theClass);
@@ -196,6 +217,12 @@ namespace {
       
       // Add these fields to the builder.
       addFields(Elements, LayoutStrategy::Universal);
+    }
+
+    /// Adds an element layout.
+    void addElement(const ElementLayout &Elt) {
+      Elements.push_back(Elt);
+      addField(Elements.back(), LayoutStrategy::Universal);
     }
 
     /// Return the element layouts.
@@ -243,6 +270,25 @@ namespace {
           // the field offset vector.
           ClassHasFixedSize = false;
 
+          // We can't use global offset variables if we are generic and layout
+          // dependent on a generic parameter because the objective-c layout might
+          // depend on the alignment of the generic stored property('t' in the
+          // example below).
+          //
+          // class Foo<T> : NSFoobar {
+          //   var x : AKlass = AKlass()
+          //   var y : AKlass = AKlass()
+          //   var t : T?
+          // }
+          if (classType.hasArchetype())
+            for (VarDecl *var : theClass->getStoredProperties()) {
+              SILType type = classType.getFieldType(var, IGM.getSILModule());
+              auto &eltType = IGM.getTypeInfo(type);
+              if (!eltType.isFixedSize()) {
+                if (type.hasArchetype())
+                  ClassHasConcreteLayout = false;
+              }
+            }
         } else if (IGM.isResilient(superclass, ResilienceExpansion::Maximal)) {
           ClassMetadataRequiresDynamicInitialization = true;
 
@@ -363,7 +409,7 @@ void ClassTypeInfo::generateLayout(IRGenModule &IGM, SILType classType) const {
          "already generated layout");
 
   // Add the heap header.
-  ClassLayoutBuilder builder(IGM, classType);
+  ClassLayoutBuilder builder(IGM, classType, Refcount);
 
   // generateLayout can call itself recursively in order to compute a layout
   // for the abstract type.  If classType shares an exemplar types with the
@@ -387,10 +433,42 @@ void ClassTypeInfo::generateLayout(IRGenModule &IGM, SILType classType) const {
   FieldLayout = builder.getClassLayout();
 }
 
+StructLayout *
+ClassTypeInfo::createLayoutWithTailElems(IRGenModule &IGM,
+                                         SILType classType,
+                                         ArrayRef<SILType> tailTypes) const {
+  // Add the elements for the class properties.
+  ClassLayoutBuilder builder(IGM, classType, Refcount);
+
+  // Add the tail elements.
+  for (SILType TailTy : tailTypes) {
+    const TypeInfo &tailTI = IGM.getTypeInfo(TailTy);
+    builder.addElement(ElementLayout::getIncomplete(tailTI));
+  }
+
+  // Create a name for the new llvm type.
+  llvm::StructType *classTy =
+    cast<llvm::StructType>(getStorageType()->getPointerElementType());
+  std::string typeName;
+  llvm::raw_string_ostream os(typeName);
+  os << classTy->getName() << "_tailelems" << IGM.TailElemTypeID++;
+
+  // Create the llvm type.
+  llvm::StructType *ResultTy = llvm::StructType::create(IGM.getLLVMContext(),
+                                                        StringRef(os.str()));
+  builder.setAsBodyOfStruct(ResultTy);
+
+  // Create the StructLayout, which is transfered to the caller (the caller is
+  // responsible for deleting it).
+  return new StructLayout(builder, classType.getSwiftRValueType(), ResultTy,
+                          builder.getElements());
+}
+
 const StructLayout &
 ClassTypeInfo::getLayout(IRGenModule &IGM, SILType classType) const {
   // Return the cached layout if available.
-  if (Layout) return *Layout;
+  if (Layout)
+    return *Layout;
 
   generateLayout(IGM, classType);
   return *Layout;
@@ -470,7 +548,27 @@ irgen::tryEmitConstantClassFragilePhysicalMemberOffset(IRGenModule &IGM,
   }
 }
 
+unsigned
+irgen::getClassFieldIndex(IRGenModule &IGM, SILType baseType, VarDecl *field) {
+  auto &baseClassTI = IGM.getTypeInfo(baseType).as<ClassTypeInfo>();
+  auto &classLayout = baseClassTI.getClassLayout(IGM, baseType);
+  return classLayout.getFieldIndex(field);
+}
 
+FieldAccess
+irgen::getClassFieldAccess(IRGenModule &IGM, SILType baseType, VarDecl *field) {
+  auto &baseClassTI = IGM.getTypeInfo(baseType).as<ClassTypeInfo>();
+  auto &classLayout = baseClassTI.getClassLayout(IGM, baseType);
+  unsigned fieldIndex = classLayout.getFieldIndex(field);
+  return classLayout.AllFieldAccesses[fieldIndex];
+}
+
+StructLayout *
+irgen::getClassLayoutWithTailElems(IRGenModule &IGM, SILType classType,
+                                   ArrayRef<SILType> tailTypes) {
+  auto &ClassTI = IGM.getTypeInfo(classType).as<ClassTypeInfo>();
+  return ClassTI.createLayoutWithTailElems(IGM, classType, tailTypes);
+}
 
 OwnedAddress irgen::projectPhysicalClassMemberAddress(IRGenFunction &IGF,
                                                       llvm::Value *base,
@@ -558,7 +656,7 @@ irgen::getPhysicalClassMemberAccessStrategy(IRGenModule &IGM,
   }
 
   case FieldAccess::ConstantIndirect: {
-    Size indirectOffset = getClassFieldOffset(IGM, baseClass, field);
+    Size indirectOffset = getClassFieldOffsetOffset(IGM, baseClass, field);
     return MemberAccessStrategy::getIndirectFixed(indirectOffset,
                                  MemberAccessStrategy::OffsetKind::Bytes_Word);
   }
@@ -952,7 +1050,7 @@ void IRGenModule::emitClassDecl(ClassDecl *D) {
                     classTI.getLayout(*this, selfType),
                     classTI.getClassLayout(*this, selfType));
 
-  IRGen.addClassForArchiveNameRegistration(D);
+  IRGen.addClassForEagerInitialization(D);
 
   emitNestedTypeDecls(D->getMembers());
   emitFieldMetadataRecord(D);
@@ -1110,14 +1208,23 @@ namespace {
     ClassDataBuilder(IRGenModule &IGM, ProtocolDecl *theProtocol)
       : IGM(IGM), TheEntity(theProtocol), TheExtension(nullptr)
     {
-      // Gather protocol references for all of the explicitly-specified
+      llvm::SmallSetVector<ProtocolDecl *, 2> protocols;
+
+      // Gather protocol references for all of the directly inherited
       // Objective-C protocol conformances.
-      // FIXME: We can't use visitConformances() because there are no
-      // conformances for protocols to protocols right now.
       for (ProtocolDecl *p : theProtocol->getInheritedProtocols()) {
-        if (!p->isObjC())
-          continue;
-        Protocols.push_back(p);
+        getObjCProtocols(p, protocols);
+      }
+
+      // Add any restated Objective-C protocol conformances.
+      for (auto *attr :
+             theProtocol
+               ->getAttrs().getAttributes<RestatedObjCConformanceAttr>()) {
+        getObjCProtocols(attr->Proto, protocols);
+      }
+
+      for (ProtocolDecl *proto : protocols) {
+        Protocols.push_back(proto);
       }
 
       for (Decl *member : theProtocol->getMembers())
@@ -2145,7 +2252,7 @@ ClassDecl *IRGenModule::getObjCRuntimeBaseClass(Identifier name,
   SwiftRootClass->getAttrs().add(ObjCAttr::createNullary(Context, objcName,
     /*isNameImplicit=*/true));
   SwiftRootClass->setImplicit();
-  SwiftRootClass->setAccessibility(Accessibility::Open);
+  SwiftRootClass->setAccess(AccessLevel::Open);
   
   SwiftRootClasses.insert({name, SwiftRootClass});
   return SwiftRootClass;

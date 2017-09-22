@@ -1,4 +1,4 @@
-// RUN: rm -rf %t && mkdir -p %t
+// RUN: %empty-directory(%t)
 
 // RUN: not %target-swift-frontend -typecheck -F %S/Inputs/custom-frameworks -swift-version 4 %s 2>&1 | %FileCheck -check-prefix=CHECK-DIAGS -check-prefix=CHECK-DIAGS-4 %s
 // RUN: not %target-swift-frontend -typecheck -F %S/Inputs/custom-frameworks -swift-version 3 %s 2>&1 | %FileCheck -check-prefix=CHECK-DIAGS -check-prefix=CHECK-DIAGS-3 %s
@@ -138,6 +138,40 @@ func testRenamedProtocolMembers(obj: ProtoWithManyRenames) {
   // CHECK-DIAGS-3: [[@LINE+1]]:{{[0-9]+}}: error: 'finalClassProperty' has been renamed to 'swift3ClassProperty'
   _ = type(of: obj).finalClassProperty
   // CHECK-DIAGS-4-NOT: :[[@LINE-1]]:{{[0-9]+}}:
+}
+
+extension PrintingRenamed {
+  func testDroppingRenamedPrints() {
+    // CHECK-DIAGS-3: [[@LINE+1]]:{{[0-9]+}}: warning: use of 'print' treated as a reference to instance method
+    print()
+    // CHECK-DIAGS-4-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+    // CHECK-DIAGS-3: [[@LINE+1]]:{{[0-9]+}}: warning: use of 'print' treated as a reference to instance method
+    print(self)
+    // CHECK-DIAGS-4-NOT: [[@LINE-1]]:{{[0-9]+}}:
+  }
+
+  static func testDroppingRenamedPrints() {
+    // CHECK-DIAGS-3: [[@LINE+1]]:{{[0-9]+}}: warning: use of 'print' treated as a reference to class method
+    print()
+    // CHECK-DIAGS-4-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+    // CHECK-DIAGS-3: [[@LINE+1]]:{{[0-9]+}}: warning: use of 'print' treated as a reference to class method
+    print(self)
+    // CHECK-DIAGS-4-NOT: [[@LINE-1]]:{{[0-9]+}}:
+  }
+}
+
+extension PrintingInterference {
+  func testDroppingRenamedPrints() {
+    // CHECK-DIAGS-3: [[@LINE+1]]:{{[0-9]+}}: warning: use of 'print' treated as a reference to instance method
+    print(self)
+    // CHECK-DIAGS-4: [[@LINE-1]]:{{[0-9]+}}: error: use of 'print' nearly matches global function 'print(_:separator:terminator:)' in module 'Swift' rather than instance method 'print(_:extra:)'
+
+    // CHECK-DIAGS-3-NOT: [[@LINE+1]]:{{[0-9]+}}:
+    print(self, extra: self)
+    // CHECK-DIAGS-4-NOT: [[@LINE-1]]:{{[0-9]+}}:
+  }
 }
 
 let unrelatedDiagnostic: Int = nil

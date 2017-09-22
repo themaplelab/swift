@@ -107,8 +107,6 @@ public struct Zip2Iterator<
 ///     // Prints "two: 2
 ///     // Prints "three: 3"
 ///     // Prints "four: 4"
-///
-/// - SeeAlso: `zip(_:_:)`
 public struct Zip2Sequence<Sequence1 : Sequence, Sequence2 : Sequence>
   : Sequence {
 
@@ -121,9 +119,6 @@ public struct Zip2Sequence<Sequence1 : Sequence, Sequence2 : Sequence>
   /// A type whose instances can produce the elements of this
   /// sequence, in order.
   public typealias Iterator = Zip2Iterator<Sequence1.Iterator, Sequence2.Iterator>
-
-  @available(*, unavailable, renamed: "Iterator")
-  public typealias Generator = Iterator
 
   /// Creates an instance that makes pairs of elements from `sequence1` and
   /// `sequence2`.
@@ -141,11 +136,4 @@ public struct Zip2Sequence<Sequence1 : Sequence, Sequence2 : Sequence>
 
   internal let _sequence1: Sequence1
   internal let _sequence2: Sequence2
-}
-
-extension Zip2Sequence {
-  @available(*, unavailable, message: "use zip(_:_:) free function instead")
-  public init(_ sequence1: Sequence1, _ sequence2: Sequence2) {
-    Builtin.unreachable()
-  }
 }

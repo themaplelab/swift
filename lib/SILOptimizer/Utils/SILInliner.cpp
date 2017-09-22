@@ -17,6 +17,10 @@
 #include "llvm/Support/Debug.h"
 using namespace swift;
 
+bool SILInliner::canInlineFunction(FullApplySite AI) {
+  return AI.getFunction() != &Original;
+}
+
 /// \brief Inlines the callee of a given ApplyInst (which must be the value of a
 /// FunctionRefInst referencing a function with a known body), into the caller
 /// containing the ApplyInst, which must be the same function as provided to the
@@ -28,13 +32,12 @@ using namespace swift;
 ///
 /// \returns true on success or false if it is unable to inline the function
 /// (for any reason).
-bool SILInliner::inlineFunction(FullApplySite AI, ArrayRef<SILValue> Args) {
-  SILFunction *CalleeFunction = &Original;
-  this->CalleeFunction = CalleeFunction;
+void SILInliner::inlineFunction(FullApplySite AI, ArrayRef<SILValue> Args) {
+  assert(canInlineFunction(AI) &&
+         "Asked to inline function that is unable to be inlined?!");
 
-  // Do not attempt to inline an apply into its parent function.
-  if (AI.getFunction() == CalleeFunction)
-    return false;
+  // Setup the callee function.
+  CalleeFunction = &Original;
 
   SILFunction &F = getBuilder().getFunction();
   assert(AI.getFunction() && AI.getFunction() == &F &&
@@ -113,7 +116,7 @@ bool SILInliner::inlineFunction(FullApplySite AI, ArrayRef<SILValue> Args) {
       // Replace all uses of the apply instruction with the operands of the
       // return instruction, appropriately mapped.
       nonTryAI->replaceAllUsesWith(remapValue(RI->getOperand()));
-      return true;
+      return;
     }
   }
 
@@ -177,8 +180,6 @@ bool SILInliner::inlineFunction(FullApplySite AI, ArrayRef<SILValue> Args) {
     // but remaps basic blocks and values.
     visit(BI->first->getTerminator());
   }
-
-  return true;
 }
 
 void SILInliner::visitDebugValueInst(DebugValueInst *Inst) {
@@ -370,7 +371,7 @@ InlineCost swift::instructionInlineCost(SILInstruction &I) {
     case ValueKind::DeallocStackInst:
     case ValueKind::DeallocValueBufferInst:
     case ValueKind::DeinitExistentialAddrInst:
-    case ValueKind::DeinitExistentialOpaqueInst:
+    case ValueKind::DeinitExistentialValueInst:
     case ValueKind::DestroyAddrInst:
     case ValueKind::ProjectValueBufferInst:
     case ValueKind::ProjectBoxInst:
@@ -389,7 +390,7 @@ InlineCost swift::instructionInlineCost(SILInstruction &I) {
     case ValueKind::IndexRawPointerInst:
     case ValueKind::InitEnumDataAddrInst:
     case ValueKind::InitExistentialAddrInst:
-    case ValueKind::InitExistentialOpaqueInst:
+    case ValueKind::InitExistentialValueInst:
     case ValueKind::InitExistentialMetatypeInst:
     case ValueKind::InitExistentialRefInst:
     case ValueKind::InjectEnumAddrInst:
@@ -400,9 +401,10 @@ InlineCost swift::instructionInlineCost(SILInstruction &I) {
     case ValueKind::LoadWeakInst:
     case ValueKind::OpenExistentialAddrInst:
     case ValueKind::OpenExistentialBoxInst:
+    case ValueKind::OpenExistentialBoxValueInst:
     case ValueKind::OpenExistentialMetatypeInst:
     case ValueKind::OpenExistentialRefInst:
-    case ValueKind::OpenExistentialOpaqueInst:
+    case ValueKind::OpenExistentialValueInst:
     case ValueKind::PartialApplyInst:
     case ValueKind::ExistentialMetatypeInst:
     case ValueKind::RefElementAddrInst:
@@ -439,6 +441,7 @@ InlineCost swift::instructionInlineCost(SILInstruction &I) {
     case ValueKind::SelectEnumInst:
     case ValueKind::SelectValueInst:
     case ValueKind::KeyPathInst:
+    case ValueKind::GlobalValueInst:
       return InlineCost::Expensive;
 
     case ValueKind::BuiltinInst: {
@@ -460,6 +463,8 @@ InlineCost swift::instructionInlineCost(SILInstruction &I) {
     case ValueKind::MarkUninitializedInst:
     case ValueKind::MarkUninitializedBehaviorInst:
       llvm_unreachable("not valid in canonical sil");
+    case ValueKind::ObjectInst:
+      llvm_unreachable("not valid in a function");
   }
 
   llvm_unreachable("Unhandled ValueKind in switch.");

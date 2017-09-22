@@ -270,12 +270,6 @@ public:
 
   /// Gets the type being declared by this context.
   ///
-  /// - Generic types returns an unbound generic type.
-  /// - Non-type contexts returns a null type.
-  Type getDeclaredTypeOfContext() const;
-
-  /// Gets the type being declared by this context.
-  ///
   /// - Generic types return a bound generic type using archetypes.
   /// - Non-type contexts return a null type.
   Type getDeclaredTypeInContext() const;
@@ -493,6 +487,19 @@ public:
                        SmallVectorImpl<ConformanceDiagnostic> *diagnostics
                          = nullptr,
                        bool sorted = false) const;
+
+  /// Retrieve the syntactic depth of this declaration context, i.e.,
+  /// the number of non-module-scoped contexts.
+  ///
+  /// For an extension of a nested type, the extension is depth 1.
+  unsigned getSyntacticDepth() const;
+
+  /// Retrieve the semantic depth of this declaration context, i.e.,
+  /// the number of non-module-scoped contexts.
+  ///
+  /// For an extension of a nested type, the depth of the nested type itself
+  /// is also included.
+  unsigned getSemanticDepth() const;
 
   /// \returns true if traversal was aborted, false otherwise.
   bool walkContext(ASTWalker &Walker);

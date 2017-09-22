@@ -119,7 +119,10 @@ swift::ide::api::TypeMemberDiffItem::getSubKind() const {
   DeclNameViewer NewName = getNewName();
   if (!OldName.isFunction()) {
     assert(!NewName.isFunction());
-    return TypeMemberDiffItemSubKind::SimpleReplacement;
+    if (oldTypeName.empty())
+      return TypeMemberDiffItemSubKind::SimpleReplacement;
+    else
+      return TypeMemberDiffItemSubKind::QualifiedReplacement;
   }
   assert(OldName.isFunction());
   bool ToProperty = !NewName.isFunction();
@@ -134,17 +137,23 @@ swift::ide::api::TypeMemberDiffItem::getSubKind() const {
     } else if (ToProperty) {
       assert(OldName.argSize() == 1);
       return TypeMemberDiffItemSubKind::HoistSelfAndUseProperty;
-    } else {
+    } else if (oldTypeName.empty()) {
       assert(NewName.argSize() + 1 == OldName.argSize());
       return TypeMemberDiffItemSubKind::HoistSelfOnly;
+    } else {
+      assert(NewName.argSize() == OldName.argSize());
+      return TypeMemberDiffItemSubKind::QualifiedReplacement;
     }
   } else if (ToProperty) {
     assert(OldName.argSize() == 0);
     assert(!removedIndex);
     return TypeMemberDiffItemSubKind::GlobalFuncToStaticProperty;
-  } else {
+  } else if (oldTypeName.empty()){
     assert(NewName.argSize() == OldName.argSize());
     return TypeMemberDiffItemSubKind::SimpleReplacement;
+  } else {
+    assert(NewName.argSize() == OldName.argSize());
+    return TypeMemberDiffItemSubKind::QualifiedReplacement;
   }
 }
 
@@ -242,7 +251,9 @@ bool APIDiffItem::operator==(const APIDiffItem &Other) const {
   case APIDiffItemKind::ADK_CommonDiffItem: {
     auto *Left = static_cast<const CommonDiffItem*>(this);
     auto *Right = static_cast<const CommonDiffItem*>(&Other);
-    return Left->ChildIndex == Right->ChildIndex;
+    return
+      Left->DiffKind == Right->DiffKind &&
+      Left->ChildIndex == Right->ChildIndex;
   }
   case APIDiffItemKind::ADK_NoEscapeFuncParam: {
     auto *Left = static_cast<const NoEscapeFuncParam*>(this);
@@ -325,7 +336,7 @@ serializeDiffItem(llvm::BumpPtrAllocator &Alloc,
       RemovedIndexShort = RemovedIndex.getValue();
     return new (Alloc.Allocate<TypeMemberDiffItem>())
       TypeMemberDiffItem(Usr, NewTypeName, NewPrintedName, SelfIndexShort,
-                         RemovedIndexShort, OldPrintedName);
+                         RemovedIndexShort, OldTypeName, OldPrintedName);
   }
   case APIDiffItemKind::ADK_NoEscapeFuncParam: {
     return new (Alloc.Allocate<NoEscapeFuncParam>())
@@ -393,6 +404,8 @@ struct ObjectTraits<APIDiffItem*> {
       out.mapRequired(getKeyContent(DiffItemKeyKind::KK_Usr), Item->usr);
       out.mapRequired(getKeyContent(DiffItemKeyKind::KK_OldPrintedName),
                       Item->oldPrintedName);
+      out.mapRequired(getKeyContent(DiffItemKeyKind::KK_OldTypeName),
+                      Item->oldTypeName);
       out.mapRequired(getKeyContent(DiffItemKeyKind::KK_NewPrintedName),
                       Item->newPrintedName);
       out.mapRequired(getKeyContent(DiffItemKeyKind::KK_NewTypeName),

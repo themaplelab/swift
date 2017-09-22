@@ -1,3 +1,5 @@
+// RUN: %empty-directory(%t)
+
 // RUN: %swiftc_driver -typecheck -driver-print-actions -import-objc-header %S/Inputs/bridging-header.h %s 2>&1 | %FileCheck %s -check-prefix=YESPCHACT
 // YESPCHACT: 0: input, "{{.*}}Inputs/bridging-header.h", objc-header
 // YESPCHACT: 1: generate-pch, {0}, pch
@@ -18,6 +20,10 @@
 // RUN: echo "{\"\": {\"swift-dependencies\": \"master.swiftdeps\"}}" > %t.json
 // RUN: %swiftc_driver -typecheck -incremental -enable-bridging-pch -output-file-map %t.json -import-objc-header %S/Inputs/bridging-header.h %s
 
+// RUN: mkdir %t/tmp
+// RUN: not env TMPDIR="%t/tmp/" %swiftc_driver -typecheck -import-objc-header %S/../Inputs/empty.h -driver-use-frontend-path %S/Inputs/crash-after-generating-pch.py %s
+// RUN: ls %t/tmp/*.pch
+
 // Test persistent PCH
 
 // RUN: %swiftc_driver -typecheck -driver-print-actions -import-objc-header %S/Inputs/bridging-header.h -pch-output-dir %t/pch %s 2>&1 | %FileCheck %s -check-prefix=PERSISTENT-YESPCHACT
@@ -25,6 +31,12 @@
 // PERSISTENT-YESPCHACT: 1: generate-pch, {0}, none
 // PERSISTENT-YESPCHACT: 2: input, "{{.*}}bridging-pch.swift", swift
 // PERSISTENT-YESPCHACT: 3: compile, {2, 1}, none
+
+// RUN: %swiftc_driver -c -driver-print-actions -embed-bitcode -import-objc-header %S/Inputs/bridging-header.h -pch-output-dir %t/pch %s 2>&1 | %FileCheck %s -check-prefix=PERSISTENT-YESPCHACTBC
+// PERSISTENT-YESPCHACTBC: 0: input, "{{.*}}Inputs/bridging-header.h", objc-header
+// PERSISTENT-YESPCHACTBC: 1: generate-pch, {0}, none
+// PERSISTENT-YESPCHACTBC: 2: input, "{{.*}}bridging-pch.swift", swift
+// PERSISTENT-YESPCHACTBC: 3: compile, {2, 1}, llvm-bc
 
 // RUN: %swiftc_driver -typecheck -disable-bridging-pch -driver-print-actions -import-objc-header %S/Inputs/bridging-header.h -pch-output-dir %t/pch %s 2>&1 | %FileCheck %s -check-prefix=NOPCHACT
 
@@ -36,6 +48,12 @@
 // PERSISTENT-YESPCHJOB: {{.*}}swift -frontend {{.*}} -emit-pch -pch-output-dir {{.*}}/pch
 // PERSISTENT-YESPCHJOB: {{.*}}swift -frontend {{.*}} -import-objc-header {{.*}}bridging-header.h -pch-output-dir {{.*}}/pch -pch-disable-validation
 
+// RUN: %swiftc_driver -typecheck -driver-print-jobs -import-objc-header %S/Inputs/bridging-header.h -pch-output-dir %t/pch -serialize-diagnostics %s 2>&1 | %FileCheck %s -check-prefix=PERSISTENT-YESPCHJOB-DIAG1
+// PERSISTENT-YESPCHJOB-DIAG1: {{.*}}swift -frontend {{.*}} -serialize-diagnostics-path {{.*}}bridging-header-{{.*}}.dia {{.*}} -emit-pch -pch-output-dir {{.*}}/pch
+
+// RUN: %swiftc_driver -typecheck -driver-print-jobs -import-objc-header %S/Inputs/bridging-header.h -pch-output-dir %t/pch-out-dir -serialize-diagnostics %s -emit-module -emit-module-path /module-path-dir 2>&1 | %FileCheck %s -check-prefix=PERSISTENT-YESPCHJOB-DIAG2
+// PERSISTENT-YESPCHJOB-DIAG2: {{.*}}swift -frontend {{.*}} -serialize-diagnostics-path {{.*}}/pch-out-dir/bridging-header-{{.*}}.dia {{.*}} -emit-pch -pch-output-dir {{.*}}/pch-out-dir
+
 // RUN: %swiftc_driver -typecheck -import-objc-header %S/Inputs/bridging-header.h -pch-output-dir %t/pch -parseable-output -driver-skip-execution %s 2>&1 | %FileCheck %s -check-prefix=PERSISTENT-OUTPUT
 // PERSISTENT-OUTPUT-NOT: "outputs": [
 
@@ -44,3 +62,8 @@
 
 // RUN: %swiftc_driver -typecheck -disable-bridging-pch  -driver-print-jobs -import-objc-header %S/Inputs/bridging-header.h -pch-output-dir %t/pch %s 2>&1 | %FileCheck %s -check-prefix=NOPCHJOB
 // RUN: %swiftc_driver -typecheck -incremental -enable-bridging-pch -output-file-map %t.json -import-objc-header %S/Inputs/bridging-header.h -pch-output-dir %t/pch %s
+
+// RUN: %swiftc_driver -### -typecheck -O -import-objc-header %S/Inputs/bridging-header.h %s 2>&1 | %FileCheck %s -check-prefix=OPTPCH
+// OPTPCH: swift -frontend
+// OPTPCH-SAME: -O{{ }}
+// OPTPCH-SAME: -emit-pch

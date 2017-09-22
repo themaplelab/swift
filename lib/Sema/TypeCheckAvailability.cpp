@@ -1623,12 +1623,31 @@ static void fixItAvailableAttrRename(TypeChecker &TC,
     CharSourceRange selfExprRange =
         Lexer::getCharSourceRangeFromSourceRange(sourceMgr,
                                                  selfExpr->getSourceRange());
-    bool needsParens = !selfExpr->canAppendCallParentheses();
+    bool needsParens = !selfExpr->canAppendPostfixExpression();
 
     SmallString<64> selfReplace;
     if (needsParens)
       selfReplace.push_back('(');
-    selfReplace += sourceMgr.extractText(selfExprRange);
+
+    // If the base is contextual member lookup and we know the type,
+    // let's just prepend it, otherwise we'll end up with an incorrect fix-it.
+    auto base = sourceMgr.extractText(selfExprRange);
+    if (!base.empty() && base.front() == '.') {
+      auto newName = attr->Rename;
+      // If this is not a rename, let's not
+      // even try to emit a fix-it because
+      // it's going to be invalid.
+      if (newName.empty())
+        return;
+
+      auto parts = newName.split('.');
+      auto nominalName = parts.first;
+      assert(!nominalName.empty());
+
+      selfReplace += nominalName;
+    }
+
+    selfReplace += base;
     if (needsParens)
       selfReplace.push_back(')');
     selfReplace.push_back('.');
@@ -1951,10 +1970,10 @@ void TypeChecker::diagnoseUnavailableOverride(ValueDecl *override,
                                               const AvailableAttr *attr) {
   if (attr->Rename.empty()) {
     if (attr->Message.empty())
-      diagnose(override, diag::override_unavailable, override->getName());
+      diagnose(override, diag::override_unavailable, override->getBaseName());
     else
       diagnose(override, diag::override_unavailable_msg,
-               override->getName(), attr->Message);
+               override->getBaseName(), attr->Message);
     diagnose(base, diag::availability_marked_unavailable,
              base->getFullName());
     return;
@@ -2442,8 +2461,8 @@ bool AvailabilityWalker::diagnoseIncDecRemoval(const ValueDecl *D,
                                                SourceRange R,
                                                const AvailableAttr *Attr) {
   // We can only produce a fixit if we're talking about ++ or --.
-  bool isInc = D->getNameStr() == "++";
-  if (!isInc && D->getNameStr() != "--")
+  bool isInc = D->getBaseName() == "++";
+  if (!isInc && D->getBaseName() != "--")
     return false;
 
   // We can only handle the simple cases of lvalue++ and ++lvalue.  This is
@@ -2503,11 +2522,15 @@ bool AvailabilityWalker::diagnoseMemoryLayoutMigration(const ValueDecl *D,
   if (!D->getModuleContext()->isStdlibModule())
     return false;
 
-  StringRef Property = llvm::StringSwitch<StringRef>(D->getNameStr())
-    .Case("sizeof", "size")
-    .Case("alignof", "alignment")
-    .Case("strideof", "stride")
-    .Default(StringRef());
+  StringRef Property;
+  if (D->getBaseName() == "sizeof") {
+    Property = "size";
+  } else if (D->getBaseName() == "alignof") {
+    Property = "alignment";
+  } else if (D->getBaseName() == "strideof") {
+    Property = "stride";
+  }
+
   if (Property.empty())
     return false;
 

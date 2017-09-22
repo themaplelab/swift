@@ -467,8 +467,8 @@ void ConstraintGraph::gatherConstraints(
        TypeVariableType *typeVar,
        SmallVectorImpl<Constraint *> &constraints,
        GatheringKind kind) {
-  auto &node = (*this)[CS.getRepresentative(typeVar)];
-  auto equivClass = node.getEquivalenceClass();
+  auto &reprNode = (*this)[CS.getRepresentative(typeVar)];
+  auto equivClass = reprNode.getEquivalenceClass();
   llvm::SmallPtrSet<TypeVariableType *, 4> typeVars;
   for (auto typeVar : equivClass) {
     if (!typeVars.insert(typeVar).second)
@@ -476,38 +476,40 @@ void ConstraintGraph::gatherConstraints(
 
     for (auto constraint : (*this)[typeVar].getConstraints())
       constraints.push_back(constraint);
-  }
 
-  // Retrieve the constraints from adjacent bindings.
-  for (auto adjTypeVar : node.getAdjacencies()) {
-    switch (kind) {
-    case GatheringKind::EquivalenceClass:
-      if (!node.getAdjacency(adjTypeVar).FixedBinding)
-        continue;
-      break;
+    auto &node = (*this)[typeVar];
 
-    case GatheringKind::AllMentions:
-      break;
-    }
+    // Retrieve the constraints from adjacent bindings.
+    for (auto adjTypeVar : node.getAdjacencies()) {
+      switch (kind) {
+      case GatheringKind::EquivalenceClass:
+        if (!node.getAdjacency(adjTypeVar).FixedBinding)
+          continue;
+        break;
 
-    ArrayRef<TypeVariableType *> adjTypeVarsToVisit;
-    switch (kind) {
-    case GatheringKind::EquivalenceClass:
-      adjTypeVarsToVisit = adjTypeVar;
-      break;
+      case GatheringKind::AllMentions:
+        break;
+      }
 
-    case GatheringKind::AllMentions:
-      adjTypeVarsToVisit
-        = (*this)[CS.getRepresentative(adjTypeVar)].getEquivalenceClass();
-      break;
-    }
+      ArrayRef<TypeVariableType *> adjTypeVarsToVisit;
+      switch (kind) {
+      case GatheringKind::EquivalenceClass:
+        adjTypeVarsToVisit = adjTypeVar;
+        break;
 
-    for (auto adjTypeVarEquiv : adjTypeVarsToVisit) {
-      if (!typeVars.insert(adjTypeVarEquiv).second)
-        continue;
+      case GatheringKind::AllMentions:
+        adjTypeVarsToVisit
+          = (*this)[CS.getRepresentative(adjTypeVar)].getEquivalenceClass();
+        break;
+      }
 
-      for (auto constraint : (*this)[adjTypeVarEquiv].getConstraints())
-        constraints.push_back(constraint);
+      for (auto adjTypeVarEquiv : adjTypeVarsToVisit) {
+        if (!typeVars.insert(adjTypeVarEquiv).second)
+          continue;
+
+        for (auto constraint : (*this)[adjTypeVarEquiv].getConstraints())
+          constraints.push_back(constraint);
+      }
     }
   }
 }
@@ -639,14 +641,6 @@ static bool shouldContractEdge(ConstraintKind kind) {
   case ConstraintKind::BindParam:
   case ConstraintKind::BindToPointerType:
   case ConstraintKind::Equal:
-  case ConstraintKind::BindOverload:
-
-  // We currently only allow subtype contractions for the purpose of 
-  // parameter binding constraints.
-  // TODO: We do this because of how inout parameter bindings are handled
-  // for implicit closure parameters. We should consider adjusting our
-  // current approach to unlock more opportunities for subtype contractions.
-  case ConstraintKind::Subtype:
     return true;
 
   default:
@@ -670,12 +664,7 @@ static bool isStrictInoutSubtypeConstraint(Constraint *constraint) {
     t1 = tt->getElementType(0).getPointer();
   }
 
-  auto iot = t1->getAs<InOutType>();
-
-  if (!iot)
-    return false;
-
-  return !iot->getObjectType()->isTypeVariableOrMember();
+  return t1->is<InOutType>();
 }
 
 bool ConstraintGraph::contractEdges() {
@@ -697,14 +686,6 @@ bool ConstraintGraph::contractEdges() {
         auto t1 = constraint->getFirstType()->getDesugaredType();
         auto t2 = constraint->getSecondType()->getDesugaredType();
 
-        if (kind == ConstraintKind::Subtype) {
-          if (auto iot1 = t1->getAs<InOutType>()) {
-            t1 = iot1->getObjectType().getPointer();
-          } else {
-            continue;
-          }
-        }
-
         auto tyvar1 = t1->getAs<TypeVariableType>();
         auto tyvar2 = t2->getAs<TypeVariableType>();
 
@@ -719,18 +700,13 @@ bool ConstraintGraph::contractEdges() {
         // being present in this case, so it can generate the appropriate lvalue
         // wrapper for the argument type.
         if (isParamBindingConstraint) {
-          auto node = tyvar1->getImpl().getGraphNode();
-          auto hasDependentConstraint = false;
-
-          for (auto t1Constraint : node->getConstraints()) {
-            if (isStrictInoutSubtypeConstraint(t1Constraint)) {
-              hasDependentConstraint = true;
-              break;
-            }
-          }
-
-          if (hasDependentConstraint)
+          auto *node = tyvar1->getImpl().getGraphNode();
+          auto constraints = node->getConstraints();
+          if (llvm::any_of(constraints, [](Constraint *constraint) {
+                            return isStrictInoutSubtypeConstraint(constraint);
+                          })) {
             continue;
+          }
         }
 
         auto rep1 = CS.getRepresentative(tyvar1);

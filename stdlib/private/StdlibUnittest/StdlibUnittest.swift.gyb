@@ -20,13 +20,26 @@ import SwiftPrivateLibcExtras
 
 #if os(OSX) || os(iOS) || os(watchOS) || os(tvOS)
 import Darwin
-#elseif os(Linux) || os(FreeBSD) || os(PS4) || os(Android) || CYGWIN
+#elseif os(Linux) || os(FreeBSD) || os(PS4) || os(Android) || os(Cygwin)
 import Glibc
 #endif
 
 #if _runtime(_ObjC)
 import ObjectiveC
 #endif
+
+extension String {
+  /// Returns the lines in `self`.
+  public var _lines : [String] {
+    return _split(separator: "\n")
+  }
+
+  /// Splits `self` at occurrences of `separator`.
+  public func _split(separator: Unicode.Scalar) -> [String] {
+    let scalarSlices = unicodeScalars.split { $0 == separator }
+    return scalarSlices.map { String(String.UnicodeScalarView($0)) }
+  }
+}
 
 public struct SourceLoc {
   public let file: String
@@ -519,6 +532,27 @@ public func expectFalse(_ actual: Bool, ${TRACE}) {
   }
 }
 
+public func expectThrows<ErrorType: Error & Equatable>(
+  _ expectedError: ErrorType? = nil, _ test: () throws -> Void, ${TRACE}) {
+  do {
+    try test()
+  } catch let error as ErrorType {
+    if let expectedError = expectedError {
+      expectEqual(expectedError, error)
+    }
+  } catch {
+    expectationFailure("unexpected error thrown: \"\(error)\"", trace: ${trace})
+  }
+}
+
+public func expectDoesNotThrow(_ test: () throws -> Void, ${TRACE}) {
+  do {
+    try test()
+  } catch {
+    expectationFailure("unexpected error thrown: \"\(error)\"", trace: ${trace})
+  }
+}
+
 public func expectNil<T>(_ value: T?, ${TRACE}) {
   if value != nil {
     expectationFailure(
@@ -624,6 +658,8 @@ func _stdlib_installTrapInterceptor()
 }
 #endif
 
+// Avoid serializing references to objc_setUncaughtExceptionHandler in SIL.
+@inline(never) @_semantics("stdlib_binary_only")
 func _childProcess() {
   _stdlib_installTrapInterceptor()
 
@@ -764,7 +800,7 @@ struct _ParentProcess {
     parameter: Int?
   ) -> (anyExpectFailed: Bool, seenExpectCrash: Bool,
         status: ProcessTerminationStatus?,
-        crashStdout: [String], crashStderr: [String]) {
+        crashStdout: [Substring], crashStderr: [Substring]) {
     if _pid == nil {
       _spawnChild()
     }
@@ -788,15 +824,15 @@ struct _ParentProcess {
     var stderrSeenCrashDelimiter = false
     var stdoutEnd = false
     var stderrEnd = false
-    var capturedCrashStdout: [String] = []
-    var capturedCrashStderr: [String] = []
+    var capturedCrashStdout: [Substring] = []
+    var capturedCrashStderr: [Substring] = []
     var anyExpectFailedInChild = false
 
     func processLine(_ line: String, isStdout: Bool) -> (done: Bool, Void) {
-      var line = line
+      var line = line[...]
       if let index = findSubstring(line, _stdlibUnittestStreamPrefix) {
         let controlMessage =
-            line[index..<line.endIndex]._split(separator: ";")
+            line[index..<line.endIndex].split(separator: ";")
         switch controlMessage[1] {
         case "expectCrash":
           if isStdout {
@@ -828,7 +864,7 @@ struct _ParentProcess {
         if stderrSeenCrashDelimiter {
           capturedCrashStderr.append(line)
           if findSubstring(line, _crashedPrefix) != nil {
-            line = "OK: saw expected \"\(line.lowercased())\""
+            line = "OK: saw expected \"\(line.lowercased())\""[...]
           }
         }
       }
@@ -935,8 +971,8 @@ struct _ParentProcess {
 
     var expectCrash = false
     var childTerminationStatus: ProcessTerminationStatus?
-    var crashStdout: [String] = []
-    var crashStderr: [String] = []
+    var crashStdout: [Substring] = []
+    var crashStderr: [Substring] = []
     if _runTestsInProcess {
       if t.stdinText != nil {
         print("The test \(fullTestName) requires stdin input and can't be run in-process, marking as failed")
@@ -1495,7 +1531,7 @@ func _getOSVersion() -> OSVersion {
   return .ps4
 #elseif os(Android)
   return .android
-#elseif os(Windows) && CYGWIN
+#elseif os(Cygwin)
   return .windowsCygnus
 #elseif os(Windows)
   return .windows
@@ -2378,11 +2414,11 @@ public func expectEqualsUnordered<
   Expected.Iterator.Element == Actual.Iterator.Element {
 
   let x: [Expected.Iterator.Element] =
-    expected.sorted(by: compose(compare, { $0.isLT() }))
+    expected.sorted { compare($0, $1).isLT() }
   let y: [Actual.Iterator.Element] =
-    actual.sorted(by: compose(compare, { $0.isLT() }))
+    actual.sorted { compare($0, $1).isLT() }
   expectEqualSequence(
-    x, y, ${trace}, sameValue: compose(compare, { $0.isEQ() }))
+    x, y, ${trace}, sameValue: { compare($0, $1).isEQ() })
 }
 
 public func expectEqualsUnordered<
@@ -2529,12 +2565,6 @@ public func expectEqualUnicodeScalars(
       "expected elements: \"\(asHex(expected))\"\n"
       + "actual: \"\(asHex(actualUnicodeScalars))\"",
       trace: ${trace})
-  }
-}
-
-func compose<A, B, C>(_ f: @escaping (A) -> B, _ g: @escaping (B) -> C) -> (A) -> C {
-  return { a in
-    return g(f(a))
   }
 }
 

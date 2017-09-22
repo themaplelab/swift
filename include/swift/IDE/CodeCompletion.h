@@ -501,6 +501,7 @@ enum class CompletionKind {
   AssignmentRHS,
   CallArg,
   ReturnStmtExpr,
+  ForEachSequence,
   AfterPound,
   GenericParams,
   SwiftKeyPath,
@@ -799,6 +800,10 @@ public:
   CodeCompletionCache &Cache;
   CompletionKind CodeCompletionKind = CompletionKind::None;
   bool HasExpectedTypeRelation = false;
+
+  /// Whether there may be members that can use implicit member syntax,
+  /// e.g. `x = .foo`.
+  bool MayUseImplicitMemberExpr = false;
 
   CodeCompletionContext(CodeCompletionCache &Cache)
       : Cache(Cache) {}

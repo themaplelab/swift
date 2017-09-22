@@ -44,7 +44,9 @@ class Pattern;
 class ProtocolConformance;
 
 /// A serialized module, along with the tools to access it.
-class ModuleFile : public LazyMemberLoader {
+class ModuleFile
+  : public LazyMemberLoader,
+    public LazyConformanceLoader {
   friend class SerializedASTFile;
   friend class SILDeserializer;
   using Status = serialization::Status;
@@ -603,7 +605,7 @@ public:
 
   /// Searches the module's nested type decls table for the given member of
   /// the given type.
-  TypeDecl *lookupNestedType(Identifier name, const ValueDecl *parent);
+  TypeDecl *lookupNestedType(Identifier name, const NominalTypeDecl *parent);
 
   /// Searches the module's operators for one with the given name and fixity.
   ///
@@ -740,7 +742,11 @@ public:
   /// Returns the type with the given ID, deserializing it if needed.
   llvm::Expected<Type> getTypeChecked(serialization::TypeID TID);
 
-  /// Returns the identifier with the given ID, deserializing it if needed.
+  /// Returns the base name with the given ID, deserializing it if needed.
+  DeclBaseName getDeclBaseName(serialization::IdentifierID IID);
+
+  /// Convenience method to retrieve the identifier backing the name with
+  /// given ID. Asserts that the name with this ID is not special.
   Identifier getIdentifier(serialization::IdentifierID IID);
 
   /// Returns the decl with the given ID, deserializing it if needed.

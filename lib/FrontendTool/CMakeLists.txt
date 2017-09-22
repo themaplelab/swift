@@ -3,8 +3,10 @@ add_swift_library(swiftFrontendTool STATIC
   ImportedModules.cpp
   ReferenceDependencies.cpp
   TBD.cpp
-  DEPENDS SwiftOptions
+  DEPENDS
+    swift-syntax-generated-headers SwiftOptions
   LINK_LIBRARIES
+    swiftIndex
     swiftIDE
     swiftTBDGen swiftIRGen swiftSIL swiftSILGen swiftSILOptimizer
     swiftDemangling
@@ -14,6 +16,9 @@ add_swift_library(swiftFrontendTool STATIC
     swiftFrontend
     swiftClangImporter
     swiftOption
+    swiftWALASupport
     clangAPINotes
     clangBasic
+  LINK_FLAGS
+    -L$ENV{WALA_HOME}/com.ibm.wala.cast/target/classes -lcast
 )

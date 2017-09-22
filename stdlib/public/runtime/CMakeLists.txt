@@ -18,11 +18,6 @@ if(SWIFT_RUNTIME_ENABLE_LEAK_CHECKER)
   set(swift_runtime_leaks_sources Leaks.mm)
 endif()
 
-if(SWIFT_RUNTIME_ENABLE_COW_EXISTENTIALS)
-  list(APPEND swift_runtime_compile_flags
-    "-DSWIFT_RUNTIME_ENABLE_COW_EXISTENTIALS=1")
-endif()
-
 set(section_magic_compile_flags ${swift_runtime_compile_flags})
 
 list(APPEND swift_runtime_compile_flags
@@ -38,6 +33,7 @@ set(swift_runtime_objc_sources
 
 set(swift_runtime_sources
     AnyHashableSupport.cpp
+    Array.cpp
     Casting.cpp
     CygwinPort.cpp
     Demangle.cpp
@@ -62,6 +58,7 @@ set(swift_runtime_sources
     ProtocolConformance.cpp
     RefCount.cpp
     RuntimeEntrySymbols.cpp
+    RuntimeInvocationsTracking.cpp
     "${SWIFT_SOURCE_DIR}/lib/Demangling/OldDemangler.cpp"
     "${SWIFT_SOURCE_DIR}/lib/Demangling/Demangler.cpp"
     "${SWIFT_SOURCE_DIR}/lib/Demangling/NodePrinter.cpp"

@@ -390,3 +390,77 @@ func r25341015_inner() {
   func r25341015_local() {}
   r25341015_local(x: 1, y: 2) // expected-error {{argument passed to call that takes no arguments}}
 }
+
+// rdar://problem/32854314 - Emit shadowing diagnostics even if argument types do not much completely
+
+func foo_32854314() -> Double {
+  return 42
+}
+
+func bar_32854314() -> Int {
+  return 0
+}
+
+extension Array where Element == Int {
+  func foo() {
+    let _ = min(foo_32854314(), bar_32854314()) // expected-note {{use 'Swift.' to reference the global function in module 'Swift'}} {{13-13=Swift.}}
+    // expected-error@-1 {{use of 'min' nearly matches global function 'min' in module 'Swift' rather than instance method 'min()'}}
+  }
+
+  func foo(_ x: Int, _ y: Double) {
+    let _ = min(x, y) // expected-note {{use 'Swift.' to reference the global function in module 'Swift'}} {{13-13=Swift.}}
+    // expected-error@-1 {{use of 'min' nearly matches global function 'min' in module 'Swift' rather than instance method 'min()'}}
+  }
+
+  func bar() {
+    let _ = min(1.0, 2) // expected-note {{use 'Swift.' to reference the global function in module 'Swift'}} {{13-13=Swift.}}
+    // expected-error@-1 {{use of 'min' nearly matches global function 'min' in module 'Swift' rather than instance method 'min()'}}
+  }
+}
+
+// Crash in diagnoseImplicitSelfErrors()
+
+struct Aardvark {
+  var snout: Int
+
+  mutating func burrow() {
+    dig(&snout, .y) // expected-error {{type 'Int' has no member 'y'}}
+  }
+
+  func dig(_: inout Int, _: Int) {}
+}
+
+func rdar33914444() {
+  struct A {
+    enum R<E: Error> {
+      case e(E)
+      // expected-note@-1  {{did you mean 'e'}}
+    }
+
+    struct S {
+      enum E: Error {
+        case e1
+      }
+
+      let e: R<E>
+    }
+  }
+
+  _ = A.S(e: .e1)
+  // expected-error@-1 {{type 'A.R<A.S.E>' has no member 'e1'}}
+}
+
+// SR-5324: Better diagnostic when instance member of outer type is referenced from nested type
+
+struct Outer {
+  var outer: Int
+
+  struct Inner {
+    var inner: Int
+
+    func sum() -> Int {
+      return inner + outer
+      // expected-error@-1 {{instance member 'outer' of type 'Outer' cannot be used on instance of nested type 'Outer.Inner'}}
+    }
+  }
+}

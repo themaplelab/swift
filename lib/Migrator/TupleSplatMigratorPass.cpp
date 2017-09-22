@@ -58,15 +58,15 @@ public:
     if (!Expr->hasAnonymousClosureVars())
       return;
     References.clear();
-    for(auto *Param: *Expr->getParameters()) {
+    for (auto *Param: *Expr->getParameters()) {
       References[Param] = {};
     }
     Expr->walk(*this);
   }
 
   void forEachReference(llvm::function_ref<void(Expr*, ParamDecl*)> Callback) {
-    for(auto Entry: References) {
-      for(auto *Expr : Entry.getSecond()) {
+    for (auto Entry: References) {
+      for (auto *Expr : Entry.getSecond()) {
         Callback(Expr, Entry.getFirst());
       }
     }
@@ -88,28 +88,12 @@ struct TupleSplatMigratorPass : public ASTMigratorPass,
 
     FunctionType *FuncTy = FC->getType()->getAs<FunctionType>();
 
-    unsigned NativeArity = 0;
-    if (isa<ParenType>(FuncTy->getInput().getPointer())) {
-      NativeArity = 1;
-    } else if (auto TT = FuncTy->getInput()->getAs<TupleType>()) {
-      NativeArity = TT->getNumElements();
-    }
-
+    unsigned NativeArity = FuncTy->getParams().size();
     unsigned ClosureArity = Closure->getParameters()->size();
-    if (NativeArity == ClosureArity)
+    if (NativeArity <= ClosureArity)
       return false;
 
     ShorthandFinder Finder(Closure);
-    if (NativeArity == 1 && ClosureArity > 1) {
-      // Prepend $0. to existing references
-      Finder.forEachReference([this](Expr *Ref, ParamDecl* Def) {
-        if (auto *TE = dyn_cast<TupleElementExpr>(Ref))
-          Ref = TE->getBase();
-        SourceLoc AfterDollar = Ref->getStartLoc().getAdvancedLoc(1);
-        Editor.insert(AfterDollar, "0.");
-      });
-      return true;
-    }
 
     if (ClosureArity == 1 && NativeArity > 1) {
       // Remove $0. from existing references or if it's only $0, replace it
@@ -159,10 +143,10 @@ struct TupleSplatMigratorPass : public ASTMigratorPass,
       auto fnTy = E->getFn()->getType()->getAs<FunctionType>();
       if (!fnTy)
         return false;
-      auto parenT = dyn_cast<ParenType>(fnTy->getInput().getPointer());
-      if (!parenT)
+      if (!(fnTy->getParams().size() == 1 &&
+            fnTy->getParams().front().getLabel().empty()))
         return false;
-      auto inp = dyn_cast<TupleType>(parenT->getUnderlyingType().getPointer());
+      auto inp = fnTy->getParams().front().getType()->getAs<TupleType>();
       if (!inp)
         return false;
       if (inp->getNumElements() != 0)
@@ -176,134 +160,7 @@ struct TupleSplatMigratorPass : public ASTMigratorPass,
       return true;
     };
 
-    // Handles such kind of cases:
-    // \code
-    //   func test(_: ((Int, Int)) -> ()) {}
-    //   test({ (x,y) in })
-    // \endcode
-    // This compiles fine in Swift 3 but Swift 4 complains with
-    //   error: cannot convert value of type '(_, _) -> ()' to expected
-    //   argument type '((Int, Int)) -> ()'
-    //
-    // It will fix the code to "test({ let (x,y) = $0; })".
-    //
-    auto handleTupleMapToClosureArgs = [&](const CallExpr *E) -> bool {
-      auto fnTy = E->getFn()->getType()->getAs<FunctionType>();
-      if (!fnTy)
-        return false;
-      auto fnTy2 = fnTy->getInput()->getAs<FunctionType>();
-      if (!fnTy2)
-        return false;
-      auto parenT = dyn_cast<ParenType>(fnTy2->getInput().getPointer());
-      if (!parenT)
-        return false;
-      auto tupleInFn = parenT->getAs<TupleType>();
-      if (!tupleInFn)
-        return false;
-      if (!E->getArg())
-        return false;
-      auto argE = E->getArg()->getSemanticsProvidingExpr();
-      while (auto *ICE = dyn_cast<ImplicitConversionExpr>(argE))
-        argE = ICE->getSubExpr();
-      argE = argE->getSemanticsProvidingExpr();
-      auto closureE = dyn_cast<ClosureExpr>(argE);
-      if (!closureE)
-        return false;
-      if (closureE->getInLoc().isInvalid())
-        return false;
-      auto paramList = closureE->getParameters();
-      if (!paramList ||
-          paramList->getLParenLoc().isInvalid() || paramList->getRParenLoc().isInvalid())
-        return false;
-      if (paramList->size() != tupleInFn->getNumElements())
-        return false;
-      if (paramList->size() == 0)
-        return false;
-
-      auto hasParamListWithNoTypes = [&]() {
-        if (closureE->hasExplicitResultType())
-          return false;
-        for (auto *param : *paramList) {
-          auto tyLoc = param->getTypeLoc();
-          if (!tyLoc.isNull())
-            return false;
-        }
-        return true;
-      };
-
-      if (hasParamListWithNoTypes()) {
-        // Simpler form depending on type inference.
-        // Change "(x, y) in " to "let (x, y) = $0;".
-
-        Editor.insert(paramList->getLParenLoc(), "let ");
-        for (auto *param : *paramList) {
-          // If the argument list is like "(_ x, _ y)", remove the underscores.
-          if (param->getArgumentNameLoc().isValid()) {
-            Editor.remove(CharSourceRange(SM, param->getArgumentNameLoc(),
-                                          param->getNameLoc()));
-          }
-          // If the argument list has type annotations, remove them.
-          auto tyLoc = param->getTypeLoc();
-          if (!tyLoc.isNull() && !tyLoc.getSourceRange().isInvalid()) {
-            auto nameRange = CharSourceRange(param->getNameLoc(),
-                                             param->getNameStr().size());
-            auto tyRange = Lexer::getCharSourceRangeFromSourceRange(SM,
-                                                        tyLoc.getSourceRange());
-            Editor.remove(CharSourceRange(SM, nameRange.getEnd(),
-                                          tyRange.getEnd()));
-          }
-        }
-
-        Editor.replaceToken(closureE->getInLoc(), "= $0;");
-        return true;
-      }
-
-      // Includes types in the closure signature. The following will do a
-      // more complicated edit than the above:
-      //   (x: Int, y: Int) -> Int in
-      // to
-      //   (__val:(Int, Int)) -> Int in let (x,y) = __val;
-
-      std::string paramListText;
-      {
-        llvm::raw_string_ostream OS(paramListText);
-        OS << "(__val:(";
-        for (size_t i = 0, e = paramList->size(); i != e; ++i) {
-          if (i != 0)
-            OS << ", ";
-          auto param = paramList->get(i);
-          auto tyLoc = param->getTypeLoc();
-          if (!tyLoc.isNull() && !tyLoc.getSourceRange().isInvalid()) {
-            OS << SM.extractText(
-              Lexer::getCharSourceRangeFromSourceRange(SM,
-                                                       tyLoc.getSourceRange()));
-          } else {
-            param->getType().print(OS);
-          }
-        }
-        OS << "))";
-      }
-      std::string varBindText;
-      {
-        llvm::raw_string_ostream OS(varBindText);
-        OS << " let (";
-        for (size_t i = 0, e = paramList->size(); i != e; ++i) {
-          if (i != 0)
-            OS << ",";
-          auto param = paramList->get(i);
-          OS << param->getNameStr();
-        }
-        OS << ") = __val; ";
-      }
-
-      Editor.replace(paramList->getSourceRange(), paramListText);
-      Editor.insertAfterToken(closureE->getInLoc(), varBindText);
-      return true;
-    };
-
     if (handleCallsToEmptyTuple(E))
-      return;
-    if (handleTupleMapToClosureArgs(E))
       return;
   }
 

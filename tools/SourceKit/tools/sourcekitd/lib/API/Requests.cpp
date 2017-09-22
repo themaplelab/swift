@@ -35,7 +35,6 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/TargetSelect.h"
 #include <mutex>
 
 // FIXME: Portability.
@@ -61,79 +60,19 @@ public:
   operator sourcekitd_uid_t() const {
     return get();
   }
+
+  StringRef str() const {
+    return StringRef(Name);
+  }
 };
 } // anonymous namespace
 
-static LazySKDUID RequestProtocolVersion("source.request.protocol_version");
+#define REQUEST(NAME, CONTENT) static LazySKDUID Request##NAME(CONTENT);
+#define KIND(NAME, CONTENT) static LazySKDUID Kind##NAME(CONTENT);
+#include "SourceKit/Core/ProtocolUIDs.def"
 
-static LazySKDUID RequestCrashWithExit("source.request.crash_exit");
-
-static LazySKDUID RequestDemangle("source.request.demangle");
-static LazySKDUID RequestMangleSimpleClass("source.request.mangle_simple_class");
-
-static LazySKDUID RequestIndex("source.request.indexsource");
-static LazySKDUID RequestDocInfo("source.request.docinfo");
-static LazySKDUID RequestCodeComplete("source.request.codecomplete");
-static LazySKDUID RequestCodeCompleteOpen("source.request.codecomplete.open");
-static LazySKDUID RequestCodeCompleteClose("source.request.codecomplete.close");
-static LazySKDUID
-    RequestCodeCompleteUpdate("source.request.codecomplete.update");
-static LazySKDUID
-    RequestCodeCompleteCacheOnDisk("source.request.codecomplete.cache.ondisk");
-static LazySKDUID RequestCodeCompleteSetPopularAPI(
-    "source.request.codecomplete.setpopularapi");
-static LazySKDUID
-    RequestCodeCompleteSetCustom("source.request.codecomplete.setcustom");
-static LazySKDUID RequestCursorInfo("source.request.cursorinfo");
-static LazySKDUID RequestRangeInfo("source.request.rangeinfo");
-static LazySKDUID RequestRelatedIdents("source.request.relatedidents");
-static LazySKDUID RequestEditorOpen("source.request.editor.open");
-static LazySKDUID RequestEditorOpenInterface(
-    "source.request.editor.open.interface");
-static LazySKDUID RequestEditorOpenHeaderInterface(
-    "source.request.editor.open.interface.header");
-static LazySKDUID RequestEditorOpenSwiftSourceInterface(
-    "source.request.editor.open.interface.swiftsource");
-static LazySKDUID RequestEditorOpenSwiftTypeInterface(
-    "source.request.editor.open.interface.swifttype");
-static LazySKDUID RequestEditorExtractTextFromComment(
-    "source.request.editor.extract.comment");
-static LazySKDUID RequestEditorClose("source.request.editor.close");
-static LazySKDUID RequestEditorReplaceText("source.request.editor.replacetext");
-static LazySKDUID RequestEditorFormatText("source.request.editor.formattext");
-static LazySKDUID RequestEditorExpandPlaceholder(
-    "source.request.editor.expand_placeholder");
-static LazySKDUID RequestEditorFindUSR("source.request.editor.find_usr");
-static LazySKDUID RequestEditorFindInterfaceDoc(
-    "source.request.editor.find_interface_doc");
-static LazySKDUID RequestBuildSettingsRegister(
-    "source.request.buildsettings.register");
-static LazySKDUID RequestModuleGroups(
-    "source.request.module.groups");
-static LazySKDUID RequestNameTranslation("source.request.name.translation");
-static LazySKDUID RequestMarkupToXML("source.request.convert.markup.xml");
-
-static LazySKDUID KindExpr("source.lang.swift.expr");
-static LazySKDUID KindStmt("source.lang.swift.stmt");
-static LazySKDUID KindType("source.lang.swift.type");
-
-static LazySKDUID KindEverything("source.codecompletion.everything");
-static LazySKDUID KindModule("source.codecompletion.module");
-static LazySKDUID KindKeyword("source.codecompletion.keyword");
-static LazySKDUID KindLiteral("source.codecompletion.literal");
-static LazySKDUID KindCustom("source.codecompletion.custom");
-static LazySKDUID KindIdentifier("source.codecompletion.identifier");
-
-static UIdent DiagKindNote("source.diagnostic.severity.note");
-static UIdent DiagKindWarning("source.diagnostic.severity.warning");
-static UIdent DiagKindError("source.diagnostic.severity.error");
-
-
-static UIdent KindNameObjc("source.lang.name.kind.objc");
-static UIdent KindNameSwift("source.lang.name.kind.swift");
-
-static LazySKDUID SwiftNameKind("source.lang.name.kind.swift");
-static LazySKDUID ObjcNameKind("source.lang.name.kind.objc");
+#define REFACTORING(KIND, NAME, ID) static LazySKDUID Kind##Refactoring##KIND("source.refactoring.kind."#ID);
+#include "swift/IDE/RefactoringKinds.def"
 
 static void onDocumentUpdateNotification(StringRef DocumentName) {
   static UIdent DocumentUpdateNotificationUID(
@@ -150,11 +89,6 @@ static void onDocumentUpdateNotification(StringRef DocumentName) {
 static SourceKit::Context *GlobalCtx = nullptr;
 
 void sourcekitd::initialize() {
-  llvm::InitializeAllTargets();
-  llvm::InitializeAllTargetMCs();
-  llvm::InitializeAllAsmPrinters();
-  llvm::InitializeAllAsmParsers();
-
   GlobalCtx = new SourceKit::Context(sourcekitd::getRuntimeLibPath(),
                                      SourceKit::createSwiftLangSupport);
   GlobalCtx->getNotificationCenter().addDocumentUpdateNotificationReceiver(
@@ -184,7 +118,7 @@ static sourcekitd_response_t reportDocInfo(llvm::MemoryBuffer *InputBuf,
                                            StringRef ModuleName,
                                            ArrayRef<const char *> Args);
 
-static void reportCursorInfo(const CursorInfo &Info, ResponseReceiver Rec);
+static void reportCursorInfo(const CursorInfoData &Info, ResponseReceiver Rec);
 
 static void reportRangeInfo(const RangeInfo &Info, ResponseReceiver Rec);
 
@@ -226,6 +160,7 @@ editorOpenInterface(StringRef Name, StringRef ModuleName,
 static sourcekitd_response_t
 editorOpenHeaderInterface(StringRef Name, StringRef HeaderName,
                           ArrayRef<const char *> Args,
+                          bool UsingSwiftArgs,
                           bool SynthesizedExtensions,
                           Optional<unsigned> swiftVersion);
 
@@ -267,6 +202,29 @@ editorFindInterfaceDoc(StringRef ModuleName, ArrayRef<const char *> Args);
 
 static sourcekitd_response_t
 editorFindModuleGroups(StringRef ModuleName, ArrayRef<const char *> Args);
+
+static bool
+buildRenameLocationsFromDict(RequestDict &Req, bool UseNewName,
+                             std::vector<RenameLocations> &RenameLocations,
+                             llvm::SmallString<64> &Error);
+
+static sourcekitd_response_t
+createCategorizedEditsResponse(ArrayRef<CategorizedEdits> AllEdits,
+                               StringRef Error);
+
+static sourcekitd_response_t
+syntacticRename(llvm::MemoryBuffer *InputBuf,
+                ArrayRef<RenameLocations> RenameLocations,
+                ArrayRef<const char*> Args);
+
+static sourcekitd_response_t
+createCategorizedRenameRangesResponse(ArrayRef<CategorizedRenameRanges> Ranges,
+                                      StringRef Error);
+
+static sourcekitd_response_t
+findRenameRanges(llvm::MemoryBuffer *InputBuf,
+                 ArrayRef<RenameLocations> RenameLocations,
+                 ArrayRef<const char *> Args);
 
 static bool isSemanticEditorDisabled();
 
@@ -526,11 +484,13 @@ void handleRequestImpl(sourcekitd_object_t ReqObj, ResponseReceiver Rec) {
     int64_t SynthesizedExtension = false;
     Req.getInt64(KeySynthesizedExtension, SynthesizedExtension,
                  /*isOptional=*/true);
+    Optional<int64_t> UsingSwiftArgs = Req.getOptionalInt64(KeyUsingSwiftArgs);
     Optional<int64_t> swiftVerVal = Req.getOptionalInt64(KeySwiftVersion);
     Optional<unsigned> swiftVer;
     if (swiftVerVal.hasValue())
       swiftVer = *swiftVerVal;
     return Rec(editorOpenHeaderInterface(*Name, *HeaderName, Args,
+                                         UsingSwiftArgs.getValueOr(false),
                                          SynthesizedExtension, swiftVer));
   }
 
@@ -587,6 +547,30 @@ void handleRequestImpl(sourcekitd_object_t ReqObj, ResponseReceiver Rec) {
     if (!ModuleName.hasValue())
       return Rec(createErrorRequestInvalid("missing 'key.modulename'"));
     return Rec(editorFindModuleGroups(*ModuleName, Args));
+  }
+
+  if (ReqUID == RequestSyntacticRename) {
+    std::unique_ptr<llvm::MemoryBuffer>
+    InputBuf = getInputBufForRequest(SourceFile, SourceText, ErrBuf);
+    if (!InputBuf)
+      return Rec(createErrorRequestFailed(ErrBuf.c_str()));
+
+    std::vector<RenameLocations> RenameLocations;
+    if (buildRenameLocationsFromDict(Req, true, RenameLocations, ErrBuf))
+      return Rec(createErrorRequestFailed(ErrBuf.c_str()));
+    return Rec(syntacticRename(InputBuf.get(), RenameLocations, Args));
+  }
+
+  if (ReqUID == RequestFindRenameRanges) {
+    std::unique_ptr<llvm::MemoryBuffer> InputBuf =
+        getInputBufForRequest(SourceFile, SourceText, ErrBuf);
+    if (!InputBuf)
+      return Rec(createErrorRequestFailed(ErrBuf.c_str()));
+
+    std::vector<RenameLocations> RenameLocations;
+    if (buildRenameLocationsFromDict(Req, false, RenameLocations, ErrBuf))
+      return Rec(createErrorRequestFailed(ErrBuf.c_str()));
+    return Rec(findRenameRanges(InputBuf.get(), RenameLocations, Args));
   }
 
   if (ReqUID == RequestCodeCompleteClose) {
@@ -653,6 +637,8 @@ void handleRequestImpl(sourcekitd_object_t ReqObj, ResponseReceiver Rec) {
           CCInfo.Contexts |= CustomCompletionInfo::Stmt;
         } else if (context == KindType) {
           CCInfo.Contexts |= CustomCompletionInfo::Type;
+        } else if (context == KindForEachSequence) {
+          CCInfo.Contexts |= CustomCompletionInfo::ForEachSequence;
         } else {
           err = createErrorRequestInvalid("invalid value for 'key.context'");
           return true;
@@ -769,15 +755,15 @@ handleSemanticRequest(RequestDict Req,
       int64_t Length = 0;
       Req.getInt64(KeyLength, Length, /*isOptional=*/true);
       int64_t Actionables = false;
-      Req.getInt64(KeyActionable, Actionables, /*isOptional=*/true);
+      Req.getInt64(KeyRetrieveRefactorActions, Actionables, /*isOptional=*/true);
       return Lang.getCursorInfo(
           *SourceFile, Offset, Length, Actionables, CancelOnSubsequentRequest,
-          Args, [Rec](const CursorInfo &Info) { reportCursorInfo(Info, Rec); });
+          Args, [Rec](const CursorInfoData &Info) { reportCursorInfo(Info, Rec); });
     }
     if (auto USR = Req.getString(KeyUSR)) {
       return Lang.getCursorInfoFromUSR(
           *SourceFile, *USR, CancelOnSubsequentRequest, Args,
-          [Rec](const CursorInfo &Info) { reportCursorInfo(Info, Rec); });
+          [Rec](const CursorInfoData &Info) { reportCursorInfo(Info, Rec); });
     }
 
     return Rec(createErrorRequestInvalid(
@@ -804,6 +790,58 @@ handleSemanticRequest(RequestDict Req,
       "'key.offset' or 'key.length' is required"));
   }
 
+  if (ReqUID == RequestSemanticRefactoring) {
+    int64_t Line = 0;
+    int64_t Column = 0;
+    int64_t Length = 0;
+    auto KA = Req.getUID(KeyActionUID);
+    if (!KA) {
+      return Rec(createErrorRequestInvalid("'key.actionuid' is required"));
+    }
+    SemanticRefactoringInfo Info;
+    Info.Kind = SemanticRefactoringKind::None;
+
+#define SEMANTIC_REFACTORING(KIND, NAME, ID)                                   \
+  if (KA == KindRefactoring##KIND) Info.Kind = SemanticRefactoringKind::KIND;
+#include "swift/IDE/RefactoringKinds.def"
+
+    if (Info.Kind == SemanticRefactoringKind::None)
+      return Rec(createErrorRequestInvalid("'key.actionuid' isn't recognized"));
+
+    if (!Req.getInt64(KeyLine, Line, /*isOptional=*/false)) {
+      if (!Req.getInt64(KeyColumn, Column, /*isOptional=*/false)) {
+        Req.getInt64(KeyLength, Length, /*isOptional=*/true);
+        if (auto N = Req.getString(KeyName))
+          Info.PreferredName = *N;
+        LangSupport &Lang = getGlobalContext().getSwiftLangSupport();
+        Info.Line = Line;
+        Info.Column = Column;
+        Info.Length = Length;
+        return Lang.semanticRefactoring(*SourceFile, Info, Args,
+          [Rec](ArrayRef<CategorizedEdits> CategorizedEdits, StringRef Error) {
+            Rec(createCategorizedEditsResponse(CategorizedEdits, Error));
+        });
+      }
+    }
+    return Rec(createErrorRequestInvalid("'key.line' or 'key.column' are required"));
+  }
+
+  if (ReqUID == RequestFindLocalRenameRanges) {
+    int64_t Line = 0, Column = 0, Length = 0;
+    if (Req.getInt64(KeyLine, Line, /*isOptional=*/false))
+      return Rec(createErrorRequestInvalid("'key.line' is required"));
+    if (Req.getInt64(KeyColumn, Column, /*isOptional=*/false))
+      return Rec(createErrorRequestInvalid("'key.column' is required"));
+    Req.getInt64(KeyLength, Length, /*isOptional=*/true);
+
+    LangSupport &Lang = getGlobalContext().getSwiftLangSupport();
+    return Lang.findLocalRenameRanges(
+        *SourceFile, Line, Column, Length, Args,
+        [Rec](ArrayRef<CategorizedRenameRanges> Ranges, StringRef Error) {
+          Rec(createCategorizedRenameRangesResponse(Ranges, Error));
+        });
+  }
+
   if (ReqUID == RequestNameTranslation) {
     LangSupport &Lang = getGlobalContext().getSwiftLangSupport();
     int64_t Offset;
@@ -815,10 +853,14 @@ handleSemanticRequest(RequestDict Req,
     if (!NK) {
       return Rec(createErrorRequestInvalid("'key.namekind' is required"));
     }
-    if (NK == SwiftNameKind)
-      Input.NameKind = KindNameSwift;
-    else if (NK == ObjcNameKind)
-      Input.NameKind = KindNameObjc;
+
+    static UIdent UIDKindNameSwift(KindNameSwift.str());
+    static UIdent UIDKindNameObjc(KindNameObjc.str());
+
+    if (NK == KindNameSwift.get())
+      Input.NameKind = UIDKindNameSwift;
+    else if (NK == KindNameObjc.get())
+      Input.NameKind = UIDKindNameObjc;
     else
       return Rec(createErrorRequestInvalid("'key.namekind' is unrecognizable"));
     if (auto Base = Req.getString(KeyBaseName)) {
@@ -1373,12 +1415,14 @@ bool SKDocConsumer::handleDiagnostic(const DiagnosticEntryInfo &Info) {
 
   auto Elem = Arr.appendDictionary();
   UIdent SeverityUID;
+  static UIdent UIDKindDiagWarning(KindDiagWarning.str());
+  static UIdent UIDKindDiagError(KindDiagError.str());
   switch (Info.Severity) {
   case DiagnosticSeverityKind::Warning:
-    SeverityUID = DiagKindWarning;
+    SeverityUID = UIDKindDiagWarning;
     break;
   case DiagnosticSeverityKind::Error:
-    SeverityUID = DiagKindError;
+    SeverityUID = UIDKindDiagError;
     break;
   }
 
@@ -1389,7 +1433,7 @@ bool SKDocConsumer::handleDiagnostic(const DiagnosticEntryInfo &Info) {
     auto NotesArr = Elem.setArray(KeyDiagnostics);
     for (auto &NoteDiag : Info.Notes) {
       auto NoteElem = NotesArr.appendDictionary();
-      NoteElem.set(KeySeverity, DiagKindNote);
+      NoteElem.set(KeySeverity, KindDiagNote);
       fillDictionaryForDiagnosticInfo(NoteElem, NoteDiag);
     }
   }
@@ -1401,7 +1445,7 @@ bool SKDocConsumer::handleDiagnostic(const DiagnosticEntryInfo &Info) {
 // ReportCursorInfo
 //===----------------------------------------------------------------------===//
 
-static void reportCursorInfo(const CursorInfo &Info, ResponseReceiver Rec) {
+static void reportCursorInfo(const CursorInfoData &Info, ResponseReceiver Rec) {
 
   if (Info.IsCancelled)
     return Rec(createErrorRequestCancelled());
@@ -1452,10 +1496,13 @@ static void reportCursorInfo(const CursorInfo &Info, ResponseReceiver Rec) {
     }
   }
   if (!Info.AvailableActions.empty()) {
-    auto Actions = Elem.setArray(KeyActionable);
-    for (auto Name : Info.AvailableActions) {
+    auto Actions = Elem.setArray(KeyRefactorActions);
+    for (auto Info : Info.AvailableActions) {
       auto Entry = Actions.appendDictionary();
-      Entry.set(KeyActionName, Name);
+      Entry.set(KeyActionUID, Info.Kind);
+      Entry.set(KeyActionName, Info.KindName);
+      if (!Info.UnavailableReason.empty())
+        Entry.set(KeyActionUnavailableReason, Info.UnavailableReason);
     }
   }
   if (Info.ParentNameOffset) {
@@ -1516,8 +1563,9 @@ static void reportNameInfo(const NameTranslatingInfo &Info, ResponseReceiver Rec
     Elem.set(KeyBaseName, Info.BaseName);
   }
   if (!Info.ArgNames.empty()) {
-    auto Arr = Elem.setArray(Info.NameKind == KindNameSwift ? KeyArgNames :
-                             KeySelectorPieces);
+    static UIdent UIDKindNameSwift(KindNameSwift.str());
+    auto Arr = Elem.setArray(Info.NameKind == UIDKindNameSwift ?
+                             KeyArgNames : KeySelectorPieces);
     for (auto N : Info.ArgNames) {
       auto NameEle = Arr.appendDictionary();
       NameEle.set(KeyName, N);
@@ -1707,18 +1755,20 @@ static sourcekitd_response_t codeCompleteOpen(StringRef Name,
     optionsDict->dictionaryArrayApply(KeyFilterRules, [&](RequestDict dict) {
       FilterRule rule;
       auto kind = dict.getUID(KeyKind);
-      if (kind == KindEverything) {
+      if (kind == KindCodeCompletionEverything) {
         rule.kind = FilterRule::Everything;
-      } else if (kind == KindModule) {
+      } else if (kind == KindCodeCompletionModule) {
         rule.kind = FilterRule::Module;
-      } else if (kind == KindKeyword) {
+      } else if (kind == KindCodeCompletionKeyword) {
         rule.kind = FilterRule::Keyword;
-      } else if (kind == KindLiteral) {
+      } else if (kind == KindCodeCompletionLiteral) {
         rule.kind = FilterRule::Literal;
-      } else if (kind == KindCustom) {
+      } else if (kind == KindCodeCompletionCustom) {
         rule.kind = FilterRule::CustomCompletion;
-      } else if (kind == KindIdentifier) {
+      } else if (kind == KindCodeCompletionIdentifier) {
         rule.kind = FilterRule::Identifier;
+      } else if (kind == KindCodeCompletionDescription) {
+        rule.kind = FilterRule::Description;
       } else {
         // Warning: unknown
       }
@@ -1737,6 +1787,16 @@ static sourcekitd_response_t codeCompleteOpen(StringRef Name,
         break;
       case FilterRule::Module:
       case FilterRule::Identifier: {
+        SmallVector<const char *, 8> names;
+        if (dict.getStringArray(KeyNames, names, false)) {
+          failed = true;
+          CCC.failed("filter rule missing required key 'key.names'");
+          return true;
+        }
+        rule.names.assign(names.begin(), names.end());
+        break;
+      }
+      case FilterRule::Description: {
         SmallVector<const char *, 8> names;
         if (dict.getStringArray(KeyNames, names, false)) {
           failed = true;
@@ -1933,12 +1993,14 @@ public:
                                  unsigned NameLength,
                                  unsigned BodyOffset,
                                  unsigned BodyLength,
+                                 unsigned DocOffset,
+                                 unsigned DocLength,
                                  StringRef DisplayName,
                                  StringRef TypeName,
                                  StringRef RuntimeName,
                                  StringRef SelectorName,
                                  ArrayRef<StringRef> InheritedTypes,
-                                 ArrayRef<UIdent> Attrs) override;
+                                 ArrayRef<std::tuple<UIdent, unsigned, unsigned>> Attrs) override;
 
   bool endDocumentSubStructure() override;
 
@@ -2043,6 +2105,7 @@ static sourcekitd_response_t editorConvertMarkupToXML(StringRef Source) {
 static sourcekitd_response_t
 editorOpenHeaderInterface(StringRef Name, StringRef HeaderName,
                           ArrayRef<const char *> Args,
+                          bool UsingSwiftArgs,
                           bool SynthesizedExtensions,
                           Optional<unsigned> swiftVersion) {
   SKEditorConsumer EditC(/*EnableSyntaxMap=*/true,
@@ -2050,7 +2113,7 @@ editorOpenHeaderInterface(StringRef Name, StringRef HeaderName,
                          /*EnableDiagnostics=*/false,
                          /*SyntacticOnly=*/false);
   LangSupport &Lang = getGlobalContext().getSwiftLangSupport();
-  Lang.editorOpenHeaderInterface(EditC, Name, HeaderName, Args,
+  Lang.editorOpenHeaderInterface(EditC, Name, HeaderName, Args, UsingSwiftArgs,
                                  SynthesizedExtensions, swiftVersion);
   return EditC.createResponse();
 }
@@ -2157,17 +2220,19 @@ SKEditorConsumer::beginDocumentSubStructure(unsigned Offset,
                                             unsigned NameLength,
                                             unsigned BodyOffset,
                                             unsigned BodyLength,
+                                            unsigned DocOffset,
+                                            unsigned DocLength,
                                             StringRef DisplayName,
                                             StringRef TypeName,
                                             StringRef RuntimeName,
                                             StringRef SelectorName,
                                             ArrayRef<StringRef> InheritedTypes,
-                                            ArrayRef<UIdent> Attrs) {
+                                            ArrayRef<std::tuple<UIdent, unsigned, unsigned>> Attrs) {
   if (EnableStructure) {
     DocStructure.beginSubStructure(
         Offset, Length, Kind, AccessLevel, SetterAccessLevel, NameOffset,
-        NameLength, BodyOffset, BodyLength, DisplayName, TypeName, RuntimeName,
-        SelectorName, InheritedTypes, Attrs);
+        NameLength, BodyOffset, BodyLength, DocOffset, DocLength, DisplayName,
+        TypeName, RuntimeName, SelectorName, InheritedTypes, Attrs);
   }
   return true;
 }
@@ -2255,12 +2320,14 @@ bool SKEditorConsumer::handleDiagnostic(const DiagnosticEntryInfo &Info,
 
   auto Elem = Arr.appendDictionary();
   UIdent SeverityUID;
+  static UIdent UIDKindDiagWarning(KindDiagWarning.str());
+  static UIdent UIDKindDiagError(KindDiagError.str());
   switch (Info.Severity) {
   case DiagnosticSeverityKind::Warning:
-    SeverityUID = DiagKindWarning;
+    SeverityUID = UIDKindDiagWarning;
     break;
   case DiagnosticSeverityKind::Error:
-    SeverityUID = DiagKindError;
+    SeverityUID = UIDKindDiagError;
     break;
   }
 
@@ -2272,7 +2339,7 @@ bool SKEditorConsumer::handleDiagnostic(const DiagnosticEntryInfo &Info,
     auto NotesArr = Elem.setArray(KeyDiagnostics);
     for (auto &NoteDiag : Info.Notes) {
       auto NoteElem = NotesArr.appendDictionary();
-      NoteElem.set(KeySeverity, DiagKindNote);
+      NoteElem.set(KeySeverity, KindDiagNote);
       fillDictionaryForDiagnosticInfo(NoteElem, NoteDiag);
     }
   }
@@ -2348,6 +2415,183 @@ editorFindModuleGroups(StringRef ModuleName, ArrayRef<const char *> Args) {
     Resp = RespBuilder.createResponse();
   });
   return Resp;
+}
+
+static bool
+buildRenameLocationsFromDict(RequestDict &Req, bool UseNewName,
+                             std::vector<RenameLocations> &RenameLocations,
+                             llvm::SmallString<64> &Error) {
+  bool Failed = Req.dictionaryArrayApply(KeyRenameLocations,
+                                         [&](RequestDict RenameLocation) {
+    int64_t IsFunctionLike = false;
+    if (RenameLocation.getInt64(KeyIsFunctionLike, IsFunctionLike, false)) {
+      Error = "missing key.is_function_like";
+      return true;
+    }
+
+    int64_t IsNonProtocolType = false;
+    if (RenameLocation.getInt64(KeyIsNonProtocolType, IsNonProtocolType, false)) {
+      Error = "missing key.is_non_protocol_type";
+      return true;
+    }
+
+    Optional<StringRef> OldName = RenameLocation.getString(KeyName);
+    if (!OldName.hasValue()) {
+      Error = "missing key.name";
+      return true;
+    }
+
+    Optional<StringRef> NewName;
+    if (UseNewName) {
+      NewName = RenameLocation.getString(KeyNewName);
+      if (!NewName.hasValue()) {
+        Error = "missing key.newname";
+        return true;
+      }
+    }
+
+    RenameLocations.push_back({*OldName,
+                               UseNewName ? *NewName : "",
+                               static_cast<bool>(IsFunctionLike),
+                               static_cast<bool>(IsNonProtocolType),
+                               {}});
+    auto &LineCols = RenameLocations.back().LineColumnLocs;
+    bool Failed = RenameLocation.dictionaryArrayApply(KeyLocations,
+                                                      [&](RequestDict LineAndCol) {
+      int64_t Line = 0;
+      int64_t Column = 0;
+
+      if (LineAndCol.getInt64(KeyLine, Line, false)) {
+        Error = "missing key.line";
+        return true;
+      }
+      if (LineAndCol.getInt64(KeyColumn, Column, false)) {
+        Error = "missing key.column";
+        return true;
+      }
+
+      sourcekitd_uid_t NameType = LineAndCol.getUID(KeyNameType);
+      if (!NameType) {
+        Error = "missing key.nametype";
+        return true;
+      }
+      RenameType RenameType = RenameType::Unknown;
+      if (NameType == KindDefinition) {
+        RenameType = RenameType::Definition;
+      } else if (NameType == KindReference) {
+        RenameType = RenameType::Reference;
+      } else if (NameType == KindCall) {
+        RenameType = RenameType::Call;
+      } else if (NameType != KindUnknown) {
+        Error = "invalid value for 'key.nametype'";
+        return true;
+      }
+      LineCols.push_back({static_cast<unsigned>(Line),
+        static_cast<unsigned>(Column), RenameType});
+      return false;
+    });
+    if (Failed && Error.empty()) {
+      Error = "invalid key.locations";
+    }
+    return Failed;
+  });
+  if (Failed && Error.empty()) {
+    Error = "invalid key.renamelocations";
+  }
+  return Failed;
+}
+
+static sourcekitd_response_t
+createCategorizedEditsResponse(ArrayRef<CategorizedEdits> AllEdits,
+                               StringRef Error) {
+  if (!Error.empty()) {
+    return createErrorRequestFailed(Error.str().c_str());
+  }
+  ResponseBuilder RespBuilder;
+  auto Dict = RespBuilder.getDictionary();
+  auto Arr = Dict.setArray(KeyCategorizedEdits);
+  for (auto &TheEdit : AllEdits) {
+    auto Entry = Arr.appendDictionary();
+    Entry.set(KeyCategory, TheEdit.Category);
+    auto Edits = Entry.setArray(KeyEdits);
+    for(auto E: TheEdit.Edits) {
+      auto Edit = Edits.appendDictionary();
+      Edit.set(KeyLine, E.StartLine);
+      Edit.set(KeyColumn, E.StartColumn);
+      Edit.set(KeyEndLine, E.EndLine);
+      Edit.set(KeyEndColumn, E.EndColumn);
+      Edit.set(KeyText, E.NewText);
+      if (!E.RegionsWithNote.empty()) {
+        auto Notes = Edit.setArray(KeyRangesWorthNote);
+        for (auto R : E.RegionsWithNote) {
+          auto N = Notes.appendDictionary();
+          N.set(KeyKind, R.Kind);
+          N.set(KeyLine, R.StartLine);
+          N.set(KeyColumn, R.StartColumn);
+          N.set(KeyEndLine, R.EndLine);
+          N.set(KeyEndColumn, R.EndColumn);
+          if (R.ArgIndex)
+            N.set(KeyArgIndex, *R.ArgIndex);
+        }
+      }
+    }
+  }
+  return RespBuilder.createResponse();
+}
+
+static sourcekitd_response_t
+syntacticRename(llvm::MemoryBuffer *InputBuf,
+                ArrayRef<RenameLocations> RenameLocations,
+                ArrayRef<const char*> Args) {
+  LangSupport &Lang = getGlobalContext().getSwiftLangSupport();
+  sourcekitd_response_t Result;
+  Lang.syntacticRename(InputBuf, RenameLocations, Args,
+    [&](ArrayRef<CategorizedEdits> AllEdits, StringRef Error) {
+      Result = createCategorizedEditsResponse(AllEdits, Error);
+  });
+  return Result;
+}
+
+static sourcekitd_response_t
+createCategorizedRenameRangesResponse(ArrayRef<CategorizedRenameRanges> Ranges,
+                                      StringRef Error) {
+  if (!Error.empty()) {
+    return createErrorRequestFailed(Error.str().c_str());
+  }
+  ResponseBuilder RespBuilder;
+  auto Dict = RespBuilder.getDictionary();
+  auto Arr = Dict.setArray(KeyCategorizedRanges);
+  for (const auto &CategorizedRange : Ranges) {
+    auto Entry = Arr.appendDictionary();
+    Entry.set(KeyCategory, CategorizedRange.Category);
+    auto Ranges = Entry.setArray(KeyRanges);
+    for (const auto &R : CategorizedRange.Ranges) {
+      auto Range = Ranges.appendDictionary();
+      Range.set(KeyLine, R.StartLine);
+      Range.set(KeyColumn, R.StartColumn);
+      Range.set(KeyEndLine, R.EndLine);
+      Range.set(KeyEndColumn, R.EndColumn);
+      Range.set(KeyKind, R.Kind);
+      if (R.ArgIndex) {
+        Range.set(KeyArgIndex, *R.ArgIndex);
+      }
+    }
+  }
+  return RespBuilder.createResponse();
+}
+
+static sourcekitd_response_t
+findRenameRanges(llvm::MemoryBuffer *InputBuf,
+                 ArrayRef<RenameLocations> RenameLocations,
+                 ArrayRef<const char *> Args) {
+  LangSupport &Lang = getGlobalContext().getSwiftLangSupport();
+  sourcekitd_response_t Result;
+  Lang.findRenameRanges(
+      InputBuf, RenameLocations, Args,
+      [&](ArrayRef<CategorizedRenameRanges> Ranges, StringRef Error) {
+        Result = createCategorizedRenameRangesResponse(Ranges, Error);
+      });
+  return Result;
 }
 
 static bool isSemanticEditorDisabled() {

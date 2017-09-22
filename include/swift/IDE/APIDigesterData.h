@@ -118,6 +118,17 @@ public:
       return false;
     }
   }
+
+  bool isToPropertyChange() const {
+    switch (DiffKind) {
+    case NodeAnnotation::GetterToProperty:
+    case NodeAnnotation::SetterToProperty:
+      return true;
+    default:
+      return false;
+    }
+  }
+
   StringRef getNewName() const { assert(isRename()); return RightComment; }
   APIDiffItemKind getKind() const override {
     return APIDiffItemKind::ADK_CommonDiffItem;
@@ -208,6 +219,7 @@ public:
 //
 enum class TypeMemberDiffItemSubKind {
   SimpleReplacement,
+  QualifiedReplacement,
   GlobalFuncToStaticProperty,
   HoistSelfOnly,
   HoistSelfAndRemoveParam,
@@ -220,6 +232,7 @@ struct TypeMemberDiffItem: public APIDiffItem {
   StringRef newPrintedName;
   Optional<uint8_t> selfIndex;
   Optional<uint8_t> removedIndex;
+  StringRef oldTypeName;
   StringRef oldPrintedName;
 
 private:
@@ -232,10 +245,10 @@ public:
 public:
   TypeMemberDiffItem(StringRef usr, StringRef newTypeName,
                      StringRef newPrintedName, Optional<uint8_t> selfIndex,
-                     Optional<uint8_t> removedIndex,
+                     Optional<uint8_t> removedIndex, StringRef oldTypeName,
                      StringRef oldPrintedName) : usr(usr),
     newTypeName(newTypeName), newPrintedName(newPrintedName),
-    selfIndex(selfIndex), removedIndex(removedIndex),
+    selfIndex(selfIndex), removedIndex(removedIndex), oldTypeName(oldTypeName),
     oldPrintedName(oldPrintedName), OldNameViewer(oldPrintedName),
     NewNameViewer(newPrintedName), Subkind(getSubKind()) {}
   static StringRef head();

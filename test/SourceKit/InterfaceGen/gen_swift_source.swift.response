@@ -390,6 +390,8 @@ internal enum Colors {
     key.namelength: 19,
     key.bodyoffset: 200,
     key.bodylength: 51,
+    key.docoffset: 139,
+    key.doclength: 27,
     key.substructure: [
       {
         key.kind: source.lang.swift.decl.function.method.instance,
@@ -447,6 +449,8 @@ internal enum Colors {
         key.namelength: 3,
         key.attributes: [
           {
+            key.offset: 319,
+            key.length: 8,
             key.attribute: source.decl.attribute.override
           }
         ]
@@ -498,7 +502,9 @@ internal enum Colors {
         key.length: 13,
         key.typename: "Int",
         key.nameoffset: 512,
-        key.namelength: 4
+        key.namelength: 4,
+        key.docoffset: 473,
+        key.doclength: 22
       },
       {
         key.kind: source.lang.swift.decl.var.instance,
@@ -509,7 +515,9 @@ internal enum Colors {
         key.length: 24,
         key.typename: "(Int, Int)",
         key.nameoffset: 564,
-        key.namelength: 2
+        key.namelength: 2,
+        key.docoffset: 527,
+        key.doclength: 19
       }
     ]
   },

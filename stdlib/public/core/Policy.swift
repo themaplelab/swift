@@ -104,7 +104,7 @@ public typealias StringLiteralType = String
 // IEEE Binary64, and we need 1 bit to represent the sign.  Instead of using
 // 1025, we use the next round number -- 2048.
 public typealias _MaxBuiltinIntegerType = Builtin.Int2048
-#if (!os(Windows) || CYGWIN) && (arch(i386) || arch(x86_64))
+#if !os(Windows) && (arch(i386) || arch(x86_64))
 public typealias _MaxBuiltinFloatType = Builtin.FPIEEE80
 #else
 public typealias _MaxBuiltinFloatType = Builtin.FPIEEE64
@@ -248,14 +248,11 @@ public typealias _MaxBuiltinFloatType = Builtin.FPIEEE64
 ///         print("'obj' does not have a 'getIntegerValue()' method")
 ///     }
 ///     // Prints "The value of 'obj' is 100"
-///
-/// - SeeAlso: `AnyClass`
+public typealias AnyObject = Builtin.AnyObject
 #else
 /// The protocol to which all classes implicitly conform.
-///
-/// - SeeAlso: `AnyClass`
-#endif
 public typealias AnyObject = Builtin.AnyObject
+#endif
 
 /// The protocol to which all class types implicitly conform.
 ///
@@ -284,8 +281,6 @@ public typealias AnyObject = Builtin.AnyObject
 ///
 ///     print(getDefaultValue(NSString.self))
 ///     // Prints "nil"
-///
-/// - SeeAlso: `AnyObject`
 public typealias AnyClass = AnyObject.Type
 
 /// A type that supports standard bitwise arithmetic operators.
@@ -377,8 +372,6 @@ public typealias AnyClass = AnyObject.Type
 /// - `x & Self.allZeros == .allZeros`
 /// - `x & ~Self.allZeros == x`
 /// - `~x == x ^ ~Self.allZeros`
-///
-/// - SeeAlso: `OptionSet`
 @available(swift, deprecated: 3.1, obsoleted: 4.0, message: "Use FixedWidthInteger protocol instead")
 public typealias BitwiseOperations = _BitwiseOperations
 
@@ -609,6 +602,7 @@ precedencegroup BitwiseShiftPrecedence {
 // Standard postfix operators.
 postfix operator ++
 postfix operator --
+postfix operator ...
 
 // Optional<T> unwrapping operator is built into the compiler as a part of
 // postfix expression grammar.
@@ -622,13 +616,17 @@ prefix operator !
 prefix operator ~
 prefix operator +
 prefix operator -
+prefix operator ...
+prefix operator ..<
 
 // Standard infix operators.
 
 // "Exponentiative"
 
-infix operator << : BitwiseShiftPrecedence
-infix operator >> : BitwiseShiftPrecedence
+infix operator  << : BitwiseShiftPrecedence
+infix operator &<< : BitwiseShiftPrecedence
+infix operator  >> : BitwiseShiftPrecedence
+infix operator &>> : BitwiseShiftPrecedence
 
 // "Multiplicative"
 
@@ -650,15 +648,13 @@ infix operator   ^ : AdditionPrecedence
 // FIXME: is this the right precedence level for "..." ?
 infix operator  ... : RangeFormationPrecedence
 infix operator  ..< : RangeFormationPrecedence
-postfix operator ...
-prefix operator ...
-prefix operator ..<
 
 // The cast operators 'as' and 'is' are hardcoded as if they had the
 // following attributes:
 // infix operator as : CastingPrecedence
 
 // "Coalescing"
+
 infix operator ?? : NilCoalescingPrecedence
 
 // "Comparative"
@@ -682,7 +678,6 @@ infix operator && : LogicalConjunctionPrecedence
 
 infix operator || : LogicalDisjunctionPrecedence
 
-
 // User-defined ternary operators are not supported. The ? : operator is
 // hardcoded as if it had the following attributes:
 // operator ternary ? : : TernaryPrecedence
@@ -693,16 +688,18 @@ infix operator || : LogicalDisjunctionPrecedence
 
 // Compound
 
-infix operator  *= : AssignmentPrecedence
-infix operator  /= : AssignmentPrecedence
-infix operator  %= : AssignmentPrecedence
-infix operator  += : AssignmentPrecedence
-infix operator  -= : AssignmentPrecedence
-infix operator <<= : AssignmentPrecedence
-infix operator >>= : AssignmentPrecedence
-infix operator  &= : AssignmentPrecedence
-infix operator  ^= : AssignmentPrecedence
-infix operator  |= : AssignmentPrecedence
+infix operator   *= : AssignmentPrecedence
+infix operator   /= : AssignmentPrecedence
+infix operator   %= : AssignmentPrecedence
+infix operator   += : AssignmentPrecedence
+infix operator   -= : AssignmentPrecedence
+infix operator  <<= : AssignmentPrecedence
+infix operator &<<= : AssignmentPrecedence
+infix operator  >>= : AssignmentPrecedence
+infix operator &>>= : AssignmentPrecedence
+infix operator   &= : AssignmentPrecedence
+infix operator   ^= : AssignmentPrecedence
+infix operator   |= : AssignmentPrecedence
 
 // Workaround for <rdar://problem/14011860> SubTLF: Default
 // implementations in protocols.  Library authors should ensure

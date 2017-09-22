@@ -167,7 +167,7 @@ func rdar21080030() {
 }
 
 // <rdar://problem/21248136> QoI: problem with return type inference mis-diagnosed as invalid arguments
-func r21248136<T>() -> T { preconditionFailure() } // expected-note 2 {{in call to function 'r21248136'}}
+func r21248136<T>() -> T { preconditionFailure() } // expected-note 2 {{in call to function 'r21248136()'}}
 
 r21248136()            // expected-error {{generic parameter 'T' could not be inferred}}
 let _ = r21248136()    // expected-error {{generic parameter 'T' could not be inferred}}
@@ -281,7 +281,7 @@ func r18800223(_ i : Int) {
 
   
   var buttonTextColor: String?
-  _ = (buttonTextColor != nil) ? 42 : {$0}; // expected-error {{result values in '? :' expression have mismatching types 'Int' and '(_) -> _'}}
+  _ = (buttonTextColor != nil) ? 42 : {$0}; // expected-error {{type of expression is ambiguous without more context}}
 }
 
 // <rdar://problem/21883806> Bogus "'_' can only appear in a pattern or on the left side of an assignment" is back
@@ -635,7 +635,7 @@ func r23272739(_ contentType: String) {
 // <rdar://problem/23641896> QoI: Strings in Swift cannot be indexed directly with integer offsets
 func r23641896() {
   var g = "Hello World"
-  g.replaceSubrange(0...2, with: "ce")  // expected-error {{cannot convert value of type 'CountableClosedRange<Int>' to expected argument type 'Range<String.Index>' (aka 'Range<String.CharacterView.Index>')}}
+  g.replaceSubrange(0...2, with: "ce")  // expected-error {{cannot convert value of type 'CountableClosedRange<Int>' to expected argument type 'Range<String.Index>'}}
 
   _ = g[12]  // expected-error {{'subscript' is unavailable: cannot subscript String with an Int, see the documentation comment for discussion}}
 
@@ -760,7 +760,7 @@ func read<T : BinaryInteger>() -> T? {
 
 func f23213302() {
   var s = Set<Int>()
-  s.subtractInPlace(1) // expected-error {{cannot convert value of type 'Int' to expected argument type 'Set<Int>'}}
+  s.subtract(1) // expected-error {{cannot convert value of type 'Int' to expected argument type 'Set<Int>'}}
 }
 
 // <rdar://problem/24202058> QoI: Return of call to overloaded function in void-return context
@@ -816,14 +816,14 @@ func r27212391(a: Int, x: Int, _ y: Int) {
 
 r27212391(3, 5)             // expected-error {{missing argument label 'x' in call}}
 r27212391(3, y: 5)          // expected-error {{missing argument label 'x' in call}}
-r27212391(3, x: 5)          // expected-error {{argument 'x' must precede unnamed argument #1}}
-r27212391(y: 3, x: 5)       // expected-error {{argument 'x' must precede argument 'y'}}
+r27212391(3, x: 5)          // expected-error {{argument 'x' must precede unnamed argument #1}} {{11-11=x: 5, }} {{12-18=}}
+r27212391(y: 3, x: 5)       // expected-error {{argument 'x' must precede argument 'y'}} {{11-11=x: 5, }} {{15-21=}}
 r27212391(y: 3, 5)          // expected-error {{incorrect argument label in call (have 'y:_:', expected 'x:_:')}}
 r27212391(x: 3, x: 5)       // expected-error {{extraneous argument label 'x:' in call}}
 r27212391(a: 1, 3, y: 5)    // expected-error {{missing argument label 'x' in call}}
 r27212391(1, x: 3, y: 5)    // expected-error {{missing argument label 'a' in call}}
-r27212391(a: 1, y: 3, x: 5) // expected-error {{argument 'x' must precede argument 'y'}}
-r27212391(a: 1, 3, x: 5)    // expected-error {{argument 'x' must precede unnamed argument #2}}
+r27212391(a: 1, y: 3, x: 5) // expected-error {{argument 'x' must precede argument 'y'}} {{17-17=x: 5, }} {{21-27=}}
+r27212391(a: 1, 3, x: 5)    // expected-error {{argument 'x' must precede unnamed argument #2}} {{17-17=x: 5, }} {{18-24=}}
 
 // SR-1255
 func foo1255_1() {
@@ -971,10 +971,134 @@ class SR_4692_b {
 
 struct R32101765 { let prop32101765 = 0 }
 let _: KeyPath<R32101765, Float> = \.prop32101765
-// expected-error@-1 {{KeyPath value type 'Int' cannot be converted to contextual type 'Float'}}
+// expected-error@-1 {{key path value type 'Int' cannot be converted to contextual type 'Float'}}
 let _: KeyPath<R32101765, Float> = \R32101765.prop32101765
-// expected-error@-1 {{KeyPath value type 'Int' cannot be converted to contextual type 'Float'}}
+// expected-error@-1 {{key path value type 'Int' cannot be converted to contextual type 'Float'}}
 let _: KeyPath<R32101765, Float> = \.prop32101765.unknown
 // expected-error@-1 {{type 'Int' has no member 'unknown'}}
 let _: KeyPath<R32101765, Float> = \R32101765.prop32101765.unknown
 // expected-error@-1 {{type 'Int' has no member 'unknown'}}
+
+// rdar://problem/32390726 - Bad Diagnostic: Don't suggest `var` to `let` when binding inside for-statement
+for var i in 0..<10 { // expected-warning {{variable 'i' was never mutated; consider changing to 'let' constant}} {{5-9=}}
+  _ = i + 1
+}
+
+// rdar://problem/32726044 - shrink reduced domains too far
+
+public protocol P_32726044 {}
+
+extension Int: P_32726044 {}
+extension Float: P_32726044 {}
+
+public func *(lhs: P_32726044, rhs: P_32726044) -> Double {
+  fatalError()
+}
+
+func rdar32726044() -> Float {
+  var f: Float = 0
+  f = Float(1) * 100 // Ok
+  let _: Float = Float(42) + 0 // Ok
+  return f
+}
+
+// SR-5045 - Attempting to return result of reduce(_:_:) in a method with no return produces ambiguous error
+func sr5045() {
+  let doubles: [Double] = [1, 2, 3]
+  return doubles.reduce(0, +)
+  // expected-error@-1 {{unexpected non-void return value in void function}}
+}
+
+// rdar://problem/32934129 - QoI: misleading diagnostic
+class L_32934129<T : Comparable> {
+  init(_ value: T) { self.value = value }
+  init(_ value: T, _ next: L_32934129<T>?) {
+    self.value = value
+    self.next = next
+  }
+
+  var value: T
+  var next: L_32934129<T>? = nil
+
+  func length() -> Int {
+    func inner(_ list: L_32934129<T>?, _ count: Int) {
+    guard let list = list else { return count } // expected-error {{unexpected non-void return value in void function}}
+      return inner(list.next, count + 1)
+    }
+
+    return inner(self, 0) // expected-error {{cannot convert return expression of type '()' to return type 'Int'}}
+  }
+}
+
+// rdar://problem/31671195 - QoI: erroneous diagnostic - cannot call value of non-function type
+
+class C_31671195 {
+  var name: Int { fatalError() }
+  func name(_: Int) { fatalError() }
+}
+C_31671195().name(UInt(0))
+// expected-error@-1 {{cannot convert value of type 'UInt' to expected argument type 'Int'}}
+
+
+// rdar://problem/28456467 - QoI: erroneous diagnostic - cannot call value of non-function type
+
+class AST_28456467 {
+  var hasStateDef: Bool { return false }
+}
+
+protocol Expr_28456467 {}
+
+class ListExpr_28456467 : AST_28456467, Expr_28456467 {
+  let elems: [Expr_28456467]
+
+  init(_ elems:[Expr_28456467] ) {
+    self.elems = elems
+  }
+
+  override var hasStateDef: Bool {
+    return elems.first(where: { $0.hasStateDef }) != nil
+    // expected-error@-1 {{value of type 'Expr_28456467' has no member 'hasStateDef'}}
+  }
+}
+
+// rdar://problem/31849281 - Let's play "bump the argument"
+
+struct rdar31849281 { var foo, a, b, c: Int }
+_ = rdar31849281(a: 101, b: 102, c: 103, foo: 104) // expected-error {{argument 'foo' must precede argument 'a'}} {{18-18=foo: 104, }} {{40-50=}}
+
+_ = rdar31849281(a: 101, c: 103, b: 102, foo: 104) // expected-error {{argument 'foo' must precede argument 'a'}} {{18-18=foo: 104, }} {{40-50=}}
+_ = rdar31849281(foo: 104, a: 101, c: 103, b: 102) // expected-error {{argument 'b' must precede argument 'c'}} {{36-36=b: 102, }} {{42-50=}}
+
+_ = rdar31849281(b: 102, c: 103, a: 101, foo: 104) // expected-error {{argument 'foo' must precede argument 'b'}} {{18-18=foo: 104, }} {{40-50=}}
+_ = rdar31849281(foo: 104, b: 102, c: 103, a: 101) // expected-error {{argument 'a' must precede argument 'b'}} {{28-28=a: 101, }} {{42-50=}}
+
+func var_31849281(_ a: Int, _ b: Int..., c: Int) {}
+var_31849281(1, c: 10, 3, 4, 5, 6, 7, 8, 9) // expected-error {{unnamed argument #3 must precede argument 'c'}} {{17-17=3, 4, 5, 6, 7, 8, 9, }} {{22-43=}}
+
+func fun_31849281(a: (Bool) -> Bool, b: (Int) -> (String), c: [Int?]) {}
+fun_31849281(c: [nil, 42], a: { !$0 }, b: { (num: Int) -> String in return "\(num)" })
+// expected-error @-1 {{argument 'a' must precede argument 'c'}} {{14-14=a: { !$0 }, }} {{26-38=}}
+fun_31849281(a: { !$0 }, c: [nil, 42], b: { (num: Int) -> String in return String(describing: num) })
+// expected-error @-1 {{argument 'b' must precede argument 'c'}} {{26-26=b: { (num: Int) -> String in return String(describing: num) }, }} {{38-101=}}
+fun_31849281(a: { !$0 }, c: [nil, 42], b: { "\($0)" })
+// expected-error @-1 {{argument 'b' must precede argument 'c'}} {{26-26=b: { "\\($0)" }, }} {{38-54=}}
+
+func f_31849281(x: Int, y: Int, z: Int) {}
+f_31849281(42, y: 10, x: 20) // expected-error {{argument 'x' must precede unnamed argument #1}} {{12-12=x: 20, }} {{21-28=}}
+
+func sr5081() {
+  var a = ["1", "2", "3", "4", "5"]
+  var b = [String]()
+  b = a[2...4] // expected-error {{cannot assign value of type 'ArraySlice<String>' to type '[String]'}}
+}
+
+func rdar17170728() {
+  var i: Int? = 1
+  var j: Int?
+  var k: Int? = 2
+
+  let _ = [i, j, k].reduce(0 as Int?) {
+    $0 && $1 ? $0! + $1! : ($0 ? $0! : ($1 ? $1! : nil))
+    // expected-error@-1 {{type of expression is ambiguous without more context}}
+  }
+}

@@ -23,7 +23,7 @@ In order for the Swift project to be able to advance quickly, it is important th
 
 ### @swift-ci
 
-swift-ci pull request testing is triggered by writing a comment on this PR addressed to the GitHub user @swift-ci. Different tests will run depending on the specific comment that you use. The current test types are:
+Users with [commit access](https://swift.org/contributing/#commit-access) can trigger pull request testing by writing a comment on a PR addressed to the GitHub user @swift-ci. Different tests will run depending on the specific comment used. The current test types are:
 
 1. Smoke Testing
 2. Validation Testing
@@ -79,7 +79,8 @@ All supported platforms     | @swift-ci Please test and merge               | Sw
 All supported platforms     | @swift-ci Please clean test and merge               | Swift Test Linux Platform (smoke test)<br>Swift Test OS X Platform (smoke test)<br> Swift Test Linux Platform <br>Swift Test OS X Platform
 macOS platform               | @swift-ci Please test OS X platform           | Swift Test OS X Platform (smoke test)<br>Swift Test OS X Platform
 macOS platform               | @swift-ci Please clean test OS X platform     | Swift Test OS X Platform (smoke test)<br>Swift Test OS X Platform
-macOS platform               | @swift-ci Please benchmark                    | Swift Benchmark on OS X Platform
+macOS platform               | @swift-ci Please benchmark                    | Swift Benchmark on OS X Platform (many runs - rigorous)
+macOS platform               | @swift-ci Please smoke benchmark              | Swift Benchmark on OS X Platform (few runs - sanity)
 Linux platform               | @swift-ci Please test Linux platform          | Swift Test Linux Platform (smoke test)<br>Swift Test Linux Platform
 Linux platform               | @swift-ci Please clean test Linux platform    | Swift Test Linux Platform (smoke test)<br>Swift Test Linux Platform
 macOS platform               | @swift-ci Please ASAN test                    | Swift ASAN Test OS X Platform
@@ -117,7 +118,8 @@ A validation test on Linux does the following:
 
 Platform        | Comment | Check Status
 ------------    | ------- | ------------
-macOS platform  | @swift-ci Please benchmark | Swift Benchmark on OS X Platform
+macOS platform  | @swift-ci Please benchmark       | Swift Benchmark on OS X Platform (many runs - rigorous)
+macOS platform  | @swift-ci Please smoke benchmark | Swift Benchmark on OS X Platform (few runs - sanity)
 
 ### Lint Testing
 

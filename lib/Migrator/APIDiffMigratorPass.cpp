@@ -12,6 +12,7 @@
 
 #include "swift/AST/USRGeneration.h"
 #include "swift/AST/ASTVisitor.h"
+#include "swift/Basic/StringExtras.h"
 #include "swift/Frontend/Frontend.h"
 #include "swift/IDE/Utils.h"
 #include "swift/Index/Utils.h"
@@ -154,6 +155,10 @@ public:
   FoundResult visitInOutTypeRepr(InOutTypeRepr *T) {
     return visit(T->getBase());
   }
+  
+  FoundResult visitSharedTypeRepr(SharedTypeRepr *T) {
+    return visit(T->getBase());
+  }
 
   FoundResult visitArrayTypeRepr(ArrayTypeRepr *T) {
     return handleParent(T, T->getBase());
@@ -168,9 +173,11 @@ public:
     // as their own index level
     if (T->getNumElements() == 1) {
       ParentIsOptional = false;
-      return visit(T->getElement(0));
+      return visit(T->getElementType(0));
     }
-    return handleParent(T, T->getElements());
+    llvm::SmallVector<TypeRepr *, 8> Children;
+    T->getElementTypes(Children);
+    return handleParent(T, ArrayRef<TypeRepr *>(Children));
   }
 
   FoundResult visitFunctionTypeRepr(FunctionTypeRepr *T) {
@@ -325,6 +332,7 @@ struct APIDiffMigratorPass : public ASTMigratorPass, public SourceEntityWalker {
     unsigned Idx = 0;
     auto Ranges = getCallArgLabelRanges(SM, Arg,
                                         LabelRangeEndAt::LabelNameOnly);
+    llvm::SmallVector<uint8_t, 2> ToRemoveIndices;
     for (unsigned I = 0; I < Ranges.size(); I ++) {
       if (std::any_of(IgnoreArgIndex.begin(), IgnoreArgIndex.end(),
                       [I](unsigned Ig) { return Ig == I; }))
@@ -333,13 +341,22 @@ struct APIDiffMigratorPass : public ASTMigratorPass, public SourceEntityWalker {
       if (Idx < NewName.argSize()) {
         auto Label = NewName.args()[Idx++];
 
-        // FIXME: We update only when args are consistently valid.
-        if (Label != "_") {
+        if (!Label.empty()) {
           if (LR.getByteLength())
             Editor.replace(LR, Label);
           else
             Editor.insert(LR.getStart(), (llvm::Twine(Label) + ": ").str());
+        } else if (LR.getByteLength()){
+          // New label is "_" however the old label is explicit.
+          ToRemoveIndices.push_back(I);
         }
+      }
+    }
+    if (!ToRemoveIndices.empty()) {
+      auto Ranges = getCallArgLabelRanges(SM, Arg,
+                                         LabelRangeEndAt::BeforeElemStart);
+      for (auto I : ToRemoveIndices) {
+        Editor.remove(Ranges[I]);
       }
     }
   }
@@ -354,6 +371,31 @@ struct APIDiffMigratorPass : public ASTMigratorPass, public SourceEntityWalker {
       }
       emitRenameLabelChanges(Arg, View, {});
     }
+  }
+
+  bool handleQualifiedReplacement(Expr* Call) {
+    auto handleDecl = [&](ValueDecl *VD, SourceRange ToReplace) {
+      for (auto *I: getRelatedDiffItems(VD)) {
+        if (auto *Item = dyn_cast<TypeMemberDiffItem>(I)) {
+          if (Item->Subkind == TypeMemberDiffItemSubKind::QualifiedReplacement) {
+            Editor.replace(ToReplace, (llvm::Twine(Item->newTypeName) + "." +
+              Item->getNewName().base()).str());
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+    if (auto *DSC = dyn_cast<DotSyntaxCallExpr>(Call)) {
+      if (auto FD = DSC->getFn()->getReferencedDecl().getDecl()) {
+        if (handleDecl(FD, Call->getSourceRange()))
+          return true;
+      }
+    } else if (auto MRE = dyn_cast<MemberRefExpr>(Call)) {
+      if (handleDecl(MRE->getReferencedDecl().getDecl(), MRE->getSourceRange()))
+        return true;
+    }
+    return false;
   }
 
   bool handleSpecialCases(ValueDecl *FD, CallExpr* Call, Expr *Arg) {
@@ -417,6 +459,59 @@ struct APIDiffMigratorPass : public ASTMigratorPass, public SourceEntityWalker {
       // Swift.abs(1.0)
       Editor.replace(Call->getFn()->getSourceRange(), "Swift.abs");
       return true;
+    case SpecialCaseId::ToUIntMax:
+      if (const auto *DotCall = dyn_cast<DotSyntaxCallExpr>(Call->getFn())) {
+        Editor.insert(DotCall->getStartLoc(), "UInt64(");
+        Editor.replace({ DotCall->getDotLoc(), Call->getEndLoc() }, ")");
+        return true;
+      }
+      return false;
+    case SpecialCaseId::ToIntMax:
+      if (const auto *DotCall = dyn_cast<DotSyntaxCallExpr>(Call->getFn())) {
+        Editor.insert(DotCall->getStartLoc(), "Int64(");
+        Editor.replace({ DotCall->getDotLoc(), Call->getEndLoc() }, ")");
+        return true;
+      }
+      return false;
+    case SpecialCaseId::NSOpenGLGetVersion: {
+      if (const auto *Tuple = dyn_cast<TupleExpr>(Arg)) {
+        if (Tuple->getNumElements() != 2) {
+          return false;
+        }
+
+        auto extractArg = [](const Expr *Arg) -> const DeclRefExpr * {
+          while (const auto *ICE = dyn_cast<ImplicitConversionExpr>(Arg)) {
+            Arg = ICE->getSubExpr();
+          }
+          if (const auto *IOE = dyn_cast<InOutExpr>(Arg)) {
+            return dyn_cast<DeclRefExpr>(IOE->getSubExpr());
+          }
+          return nullptr;
+        };
+
+        const auto *Arg0 = extractArg(Tuple->getElement(0));
+        const auto *Arg1 = extractArg(Tuple->getElement(1));
+
+        if (!(Arg0 && Arg1)) {
+          return false;
+        }
+        SmallString<256> Scratch;
+        llvm::raw_svector_ostream OS(Scratch);
+        auto StartLoc = Call->getStartLoc();
+        Editor.insert(StartLoc, "(");
+        Editor.insert(StartLoc,
+          SM.extractText(Lexer::getCharSourceRangeFromSourceRange(SM,
+            Arg0->getSourceRange())));
+        Editor.insert(StartLoc, ", ");
+        Editor.insert(StartLoc,
+          SM.extractText(Lexer::getCharSourceRangeFromSourceRange(SM,
+            Arg1->getSourceRange())));
+        Editor.insert(StartLoc, ") = ");
+        Editor.replace(Call->getSourceRange(), "NSOpenGLContext.openGLVersion");
+        return true;
+      }
+      return false;
+    }
     }
   }
 
@@ -429,7 +524,8 @@ struct APIDiffMigratorPass : public ASTMigratorPass, public SourceEntityWalker {
     }
     if (!Item)
       return false;
-    if (Item->Subkind == TypeMemberDiffItemSubKind::SimpleReplacement)
+    if (Item->Subkind == TypeMemberDiffItemSubKind::SimpleReplacement ||
+        Item->Subkind == TypeMemberDiffItemSubKind::QualifiedReplacement)
       return false;
 
     if (Item->Subkind == TypeMemberDiffItemSubKind::GlobalFuncToStaticProperty) {
@@ -453,7 +549,7 @@ struct APIDiffMigratorPass : public ASTMigratorPass, public SourceEntityWalker {
     auto *SelfExpr = AllArgs[0].ArgExp;
     if (auto *IOE = dyn_cast<InOutExpr>(SelfExpr))
       SelfExpr = IOE->getSubExpr();
-    const bool NeedParen = !SelfExpr->canAppendCallParentheses();
+    const bool NeedParen = !SelfExpr->canAppendPostfixExpression();
 
     // Remove the global function name: "Foo(a, b..." to "a, b..."
     Editor.remove(CharSourceRange(SM, Call->getStartLoc(),
@@ -480,6 +576,7 @@ struct APIDiffMigratorPass : public ASTMigratorPass, public SourceEntityWalker {
     switch (Item->Subkind) {
     case TypeMemberDiffItemSubKind::GlobalFuncToStaticProperty:
     case TypeMemberDiffItemSubKind::SimpleReplacement:
+    case TypeMemberDiffItemSubKind::QualifiedReplacement:
       llvm_unreachable("should be handled elsewhere");
     case TypeMemberDiffItemSubKind::HoistSelfOnly:
       // we are done here.
@@ -521,8 +618,12 @@ struct APIDiffMigratorPass : public ASTMigratorPass, public SourceEntityWalker {
                                           Arg->getStartLoc().getAdvancedLoc(1));
 
           // Replace "x.getY(" with "x.Y =".
-          Editor.replace(ReplaceRange, (llvm::Twine(Walker.Result.str().
-                                                   substr(3)) + " = ").str());
+          auto Replacement = (llvm::Twine(Walker.Result.str()
+                                          .substr(3)) + " = ").str();
+          SmallString<64> Scratch;
+          Editor.replace(ReplaceRange,
+                         camel_case::toLowercaseInitialisms(Replacement, Scratch));
+
           // Remove ")"
           Editor.remove(CharSourceRange(SM, Arg->getEndLoc(), Arg->getEndLoc().
                                         getAdvancedLoc(1)));
@@ -536,8 +637,9 @@ struct APIDiffMigratorPass : public ASTMigratorPass, public SourceEntityWalker {
   }
 
   bool walkToExprPre(Expr *E) override {
+    if (handleQualifiedReplacement(E))
+      return false;
     if (auto *CE = dyn_cast<CallExpr>(E)) {
-
       auto Fn = CE->getFn();
       auto Args = CE->getArg();
       switch (Fn->getKind()) {
@@ -605,6 +707,84 @@ struct APIDiffMigratorPass : public ASTMigratorPass, public SourceEntityWalker {
     return Replacement.contains('&') || Replacement.contains("->");
   }
 
+  void handleOverridingTypeChange(AbstractFunctionDecl *AFD,
+                                  CommonDiffItem *DiffItem) {
+    assert(AFD);
+    assert(DiffItem->isTypeChange());
+    ChildIndexFinder Finder(DiffItem->getChildIndices());
+    auto Result = Finder.findChild(AFD);
+    if (!Result.isValid())
+      return;
+
+    switch (DiffItem->DiffKind) {
+      case ide::api::NodeAnnotation::WrapOptional:
+        if (Result.Suffixable) {
+          Editor.insertAfterToken(Result.TokenRange.End, "?");
+        } else {
+          Editor.insertWrap("(", Result.TokenRange, ")?");
+        }
+        break;
+      case ide::api::NodeAnnotation::WrapImplicitOptional:
+        if (Result.Suffixable) {
+          Editor.insertAfterToken(Result.TokenRange.End, "!");
+        } else {
+          Editor.insertWrap("(", Result.TokenRange, (")!"));
+        }
+        break;
+      case ide::api::NodeAnnotation::UnwrapOptional:
+        if (Result.Optional)
+          Editor.remove(Result.TokenRange.End);
+        break;
+      case ide::api::NodeAnnotation::ImplicitOptionalToOptional:
+        if (Result.Optional)
+          Editor.replace(Result.TokenRange.End, "?");
+        break;
+      case ide::api::NodeAnnotation::TypeRewritten:
+        Editor.replace(Result.TokenRange, DiffItem->RightComment);
+        if (Result.Suffixed && typeReplacementMayNeedParens(DiffItem->RightComment)) {
+          Editor.insertBefore(Result.TokenRange.Start, "(");
+          Editor.insertAfterToken(Result.TokenRange.End, ")");
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  void handleOverridingPropertyChange(AbstractFunctionDecl *AFD,
+                                      CommonDiffItem *DiffItem) {
+    assert(AFD);
+    assert(DiffItem->isToPropertyChange());
+    auto FD = dyn_cast<FuncDecl>(AFD);
+    if (!FD)
+      return;
+
+    switch (DiffItem->DiffKind) {
+    case NodeAnnotation::GetterToProperty: {
+      auto FuncLoc = FD->getFuncLoc();
+      auto ReturnTyLoc = FD->getBodyResultTypeLoc().getSourceRange().Start;
+      auto NameLoc = FD->getNameLoc();
+      if (FuncLoc.isInvalid() || ReturnTyLoc.isInvalid() || NameLoc.isInvalid())
+        break;
+
+      // Replace "func" with "var"
+      Editor.replaceToken(FuncLoc, "var");
+
+      // Replace "() -> " with ": "
+      Editor.replace(CharSourceRange(SM, Lexer::getLocForEndOfToken(SM, NameLoc),
+        ReturnTyLoc), ": ");
+
+      break;
+    }
+    case NodeAnnotation::SetterToProperty: {
+      // FIXME: we should migrate this case too.
+      break;
+    }
+    default:
+      llvm_unreachable("should not be handled here.");
+    }
+  }
+
   bool walkToDeclPre(Decl *D, CharSourceRange Range) override {
     if (D->isImplicit())
       return true;
@@ -612,47 +792,10 @@ struct APIDiffMigratorPass : public ASTMigratorPass, public SourceEntityWalker {
       handleFuncDeclRename(AFD, Range);
       for (auto *Item: getRelatedDiffItems(AFD)) {
         if (auto *DiffItem = dyn_cast<CommonDiffItem>(Item)) {
-          if (!DiffItem->isTypeChange())
-            continue;
-
-          ChildIndexFinder Finder(DiffItem->getChildIndices());
-          auto Result = Finder.findChild(AFD);
-          if (!Result.isValid())
-            return false;
-
-          switch (DiffItem->DiffKind) {
-          case ide::api::NodeAnnotation::WrapOptional:
-            if (Result.Suffixable) {
-              Editor.insertAfterToken(Result.TokenRange.End, "?");
-            } else {
-              Editor.insertWrap("(", Result.TokenRange, ")?");
-            }
-            break;
-          case ide::api::NodeAnnotation::WrapImplicitOptional:
-            if (Result.Suffixable) {
-              Editor.insertAfterToken(Result.TokenRange.End, "!");
-            } else {
-              Editor.insertWrap("(", Result.TokenRange, (")!"));
-            }
-            break;
-          case ide::api::NodeAnnotation::UnwrapOptional:
-            if (Result.Optional)
-              Editor.remove(Result.TokenRange.End);
-            break;
-          case ide::api::NodeAnnotation::ImplicitOptionalToOptional:
-            if (Result.Optional)
-              Editor.replace(Result.TokenRange.End, "?");
-            break;
-          case ide::api::NodeAnnotation::TypeRewritten:
-            Editor.replace(Result.TokenRange, DiffItem->RightComment);
-            if (Result.Suffixed && typeReplacementMayNeedParens(DiffItem->RightComment)) {
-              Editor.insertBefore(Result.TokenRange.Start, "(");
-              Editor.insertAfterToken(Result.TokenRange.End, ")");
-            }
-            break;
-          default:
-            break;
-          }
+          if (DiffItem->isTypeChange())
+            handleOverridingTypeChange(AFD, DiffItem);
+          else if (DiffItem->isToPropertyChange())
+            handleOverridingPropertyChange(AFD, DiffItem);
         }
       }
     }

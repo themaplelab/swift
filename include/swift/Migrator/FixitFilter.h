@@ -96,19 +96,22 @@ struct FixitFilter {
       return false;
     }
 
+    // The type-checker can erroneously report this diagnostic in the case of
+    // mismatching closure arguments to things that now take a tuple via SE-0110.
+    if (Info.ID == diag::extra_argument_labels.ID) {
+      return false;
+    }
+
     if (Kind == DiagnosticKind::Error)
       return true;
 
     // Fixits from warnings/notes that should be applied.
     if (Info.ID == diag::forced_downcast_coercion.ID ||
         Info.ID == diag::forced_downcast_noop.ID ||
-        Info.ID == diag::variable_never_mutated.ID ||
         Info.ID == diag::function_type_no_parens.ID ||
         Info.ID == diag::convert_let_to_var.ID ||
         Info.ID == diag::parameter_extraneous_double_up.ID ||
-        Info.ID == diag::attr_decl_attr_now_on_type.ID ||
         Info.ID == diag::noescape_parameter.ID ||
-        Info.ID == diag::noescape_autoclosure.ID ||
         Info.ID == diag::where_inside_brackets.ID ||
         Info.ID == diag::selector_construction_suggest.ID ||
         Info.ID == diag::selector_literal_deprecated_suggest.ID ||

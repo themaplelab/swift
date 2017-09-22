@@ -55,8 +55,7 @@ std::string CompilerInvocation::getPCHHash() const {
 void CompilerInstance::createSILModule(bool WholeModule) {
   assert(MainModule && "main module not created yet");
   TheSILModule = SILModule::createEmptyModule(
-      getMainModule(), Invocation.getSILOptions(), WholeModule,
-      Invocation.getFrontendOptions().SILSerializeAll);
+    getMainModule(), Invocation.getSILOptions(), WholeModule);
 }
 
 void CompilerInstance::setPrimarySourceFile(SourceFile *SF) {
@@ -97,6 +96,12 @@ bool CompilerInstance::setup(const CompilerInvocation &Invok) {
   // parsing to remember comments.
   if (!Invocation.getFrontendOptions().ModuleDocOutputPath.empty())
     Invocation.getLangOptions().AttachCommentsToDecls = true;
+
+  // If we are doing index-while-building, configure lexing and parsing to
+  // remember comments.
+  if (!Invocation.getFrontendOptions().IndexStorePath.empty()) {
+    Invocation.getLangOptions().AttachCommentsToDecls = true;
+  }
 
   Context.reset(new ASTContext(Invocation.getLangOptions(),
                                Invocation.getSearchPathOptions(),
@@ -250,7 +255,7 @@ ModuleDecl *CompilerInstance::getMainModule() {
 
     if (Invocation.getFrontendOptions().EnableResilience)
       MainModule->setResilienceStrategy(ResilienceStrategy::Resilient);
-    else if (Invocation.getFrontendOptions().SILSerializeAll)
+    else if (Invocation.getSILOptions().SILSerializeAll)
       MainModule->setResilienceStrategy(ResilienceStrategy::Fragile);
   }
   return MainModule;
@@ -259,6 +264,7 @@ ModuleDecl *CompilerInstance::getMainModule() {
 void CompilerInstance::performSema() {
   const FrontendOptions &options = Invocation.getFrontendOptions();
   const InputFileKind Kind = Invocation.getInputKind();
+  bool KeepTokens = Invocation.getLangOptions().KeepTokensInSourceFile;
   ModuleDecl *MainModule = getMainModule();
   Context->LoadedModules[MainModule->getName()] = MainModule;
 
@@ -387,7 +393,7 @@ void CompilerInstance::performSema() {
   if (Kind == InputFileKind::IFK_Swift_REPL) {
     auto *SingleInputFile =
       new (*Context) SourceFile(*MainModule, Invocation.getSourceFileKind(),
-                                None, modImpKind);
+                                None, modImpKind, KeepTokens);
     MainModule->addFile(*SingleInputFile);
     addAdditionalInitialImports(SingleInputFile);
     return;
@@ -415,7 +421,8 @@ void CompilerInstance::performSema() {
 
     auto *MainFile = new (*Context) SourceFile(*MainModule,
                                                Invocation.getSourceFileKind(),
-                                               MainBufferID, modImpKind);
+                                               MainBufferID, modImpKind,
+                                               KeepTokens);
     MainModule->addFile(*MainFile);
     addAdditionalInitialImports(MainFile);
 
@@ -441,7 +448,8 @@ void CompilerInstance::performSema() {
     auto *NextInput = new (*Context) SourceFile(*MainModule,
                                                 SourceFileKind::Library,
                                                 BufferID,
-                                                modImpKind);
+                                                modImpKind,
+                                                KeepTokens);
     MainModule->addFile(*NextInput);
     addAdditionalInitialImports(NextInput);
 
@@ -519,7 +527,9 @@ void CompilerInstance::performSema() {
       if (mainIsPrimary) {
         performTypeChecking(MainFile, PersistentState.getTopLevelContext(),
                             TypeCheckOptions, CurTUElem,
-                            options.WarnLongFunctionBodies);
+                            options.WarnLongFunctionBodies,
+                            options.WarnLongExpressionTypeChecking,
+                            options.SolverExpressionTimeThreshold);
       }
       CurTUElem = MainFile.Decls.size();
     } while (!Done);
@@ -546,8 +556,10 @@ void CompilerInstance::performSema() {
     if (auto SF = dyn_cast<SourceFile>(File))
       if (PrimaryBufferID == NO_SUCH_BUFFER || SF == PrimarySourceFile)
         performTypeChecking(*SF, PersistentState.getTopLevelContext(),
-                            TypeCheckOptions, /*curElem*/0,
-                            options.WarnLongFunctionBodies);
+                            TypeCheckOptions, /*curElem*/ 0,
+                            options.WarnLongFunctionBodies,
+                            options.WarnLongExpressionTypeChecking,
+                            options.SolverExpressionTimeThreshold);
 
   // Even if there were no source files, we should still record known
   // protocols.
@@ -572,10 +584,11 @@ void CompilerInstance::performSema() {
         finishTypeChecking(*SF);
 }
 
-void CompilerInstance::performParseOnly() {
+void CompilerInstance::performParseOnly(bool EvaluateConditionals) {
   const InputFileKind Kind = Invocation.getInputKind();
   ModuleDecl *MainModule = getMainModule();
   Context->LoadedModules[MainModule->getName()] = MainModule;
+  bool KeepTokens = Invocation.getLangOptions().KeepTokensInSourceFile;
 
   assert((Kind == InputFileKind::IFK_Swift ||
           Kind == InputFileKind::IFK_Swift_Library) &&
@@ -591,7 +604,8 @@ void CompilerInstance::performParseOnly() {
     SourceMgr.setHashbangBufferID(MainBufferID);
 
     auto *MainFile = new (*Context) SourceFile(
-        *MainModule, Invocation.getSourceFileKind(), MainBufferID, modImpKind);
+        *MainModule, Invocation.getSourceFileKind(), MainBufferID, modImpKind,
+                                               KeepTokens);
     MainModule->addFile(*MainFile);
 
     if (MainBufferID == PrimaryBufferID)
@@ -599,13 +613,16 @@ void CompilerInstance::performParseOnly() {
   }
 
   PersistentParserState PersistentState;
+  PersistentState.PerformConditionEvaluation = EvaluateConditionals;
   // Parse all the library files.
   for (auto BufferID : BufferIDs) {
     if (BufferID == MainBufferID)
       continue;
 
     auto *NextInput = new (*Context)
-        SourceFile(*MainModule, SourceFileKind::Library, BufferID, modImpKind);
+        SourceFile(*MainModule, SourceFileKind::Library, BufferID, modImpKind,
+                   KeepTokens);
+
     MainModule->addFile(*NextInput);
     if (BufferID == PrimaryBufferID)
       setPrimarySourceFile(NextInput);

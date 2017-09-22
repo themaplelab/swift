@@ -166,12 +166,19 @@ public struct AffineTransform : ReferenceConvertible, Hashable, CustomStringConv
          [    0       0    1 ]
      */
     public mutating func rotate(byRadians angle: CGFloat) {
-        let α = Double(angle)
-        
-        let sine = CGFloat(sin(α))
-        let cosine = CGFloat(cos(α))
-        
-        append(AffineTransform(m11: cosine, m12: sine, m21: -sine, m22: cosine, tX: 0, tY: 0))
+        let t2 = self
+        let t1 = AffineTransform(rotationByRadians: angle)
+
+        var t = AffineTransform.identity
+
+        t.m11 = t1.m11 * t2.m11 + t1.m12 * t2.m21
+        t.m12 = t1.m11 * t2.m12 + t1.m12 * t2.m22
+        t.m21 = t1.m21 * t2.m11 + t1.m22 * t2.m21
+        t.m22 = t1.m21 * t2.m12 + t1.m22 * t2.m22
+        t.tX = t1.tX * t2.m11 + t1.tY * t2.m21 + t2.tX
+        t.tY = t1.tX * t2.m12 + t1.tY * t2.m22 + t2.tY
+
+        self = t
     }
     
     /**
@@ -270,13 +277,7 @@ public struct AffineTransform : ReferenceConvertible, Hashable, CustomStringConv
     }
     
     public var hashValue : Int {
-        // FIXME(integers): the expression was broken into pieces to speed up
-        // compilation.
-        // Used to be just: return Int(m11 + m12 + m21 + m22 + tX + tY)
-        let a: CGFloat = m11 + m12
-        let b: CGFloat = m21 + m22
-        let c: CGFloat = tX + tY
-        return Int(a + b + c)
+        return Int(m11 + m12 + m21 + m22 + tX + tY)
     }
     
     public var description: String {

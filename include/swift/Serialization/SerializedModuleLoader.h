@@ -132,6 +132,10 @@ public:
 
   virtual TypeDecl *lookupLocalType(StringRef MangledName) const override;
 
+  virtual TypeDecl *
+  lookupNestedType(Identifier name,
+                   const NominalTypeDecl *parent) const override;
+
   virtual OperatorDecl *lookupOperator(Identifier name,
                                        DeclKind fixity) const override;
 
@@ -189,7 +193,7 @@ public:
 
   bool hasEntryPoint() const override;
 
-  virtual const clang::Module *getUnderlyingClangModule() override;
+  virtual const clang::Module *getUnderlyingClangModule() const override;
 
   static bool classof(const FileUnit *file) {
     return file->getKind() == FileUnitKind::SerializedAST;

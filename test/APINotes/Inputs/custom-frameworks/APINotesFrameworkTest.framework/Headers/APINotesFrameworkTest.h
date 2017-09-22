@@ -22,10 +22,17 @@ __attribute__((objc_root_class))
 @interface Base
 @end
 
+@interface B : A
+@end
+
+@interface C : B
+@end
+
 #endif // __OBJC__
 
 #import <APINotesFrameworkTest/Classes.h>
 #import <APINotesFrameworkTest/Enums.h>
+#import <APINotesFrameworkTest/Globals.h>
 #import <APINotesFrameworkTest/ImportAsMember.h>
 #import <APINotesFrameworkTest/Properties.h>
 #import <APINotesFrameworkTest/Protocols.h>

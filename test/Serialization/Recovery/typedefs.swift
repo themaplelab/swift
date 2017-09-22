@@ -1,4 +1,4 @@
-// RUN: rm -rf %t && mkdir -p %t
+// RUN: %empty-directory(%t)
 // RUN: %target-swift-frontend -emit-sil -o - -emit-module-path %t/Lib.swiftmodule -module-name Lib -I %S/Inputs/custom-modules -disable-objc-attr-requires-foundation-module %s | %FileCheck -check-prefix CHECK-VTABLE %s
 
 // RUN: %target-swift-ide-test -source-filename=x -print-module -module-to-print Lib -I %t -I %S/Inputs/custom-modules | %FileCheck %s
@@ -21,9 +21,9 @@ import Lib
 // CHECK-SIL-LABEL: sil hidden @_T08typedefs11testSymbolsyyF
 func testSymbols() {
   // Check that the symbols are not using 'Bool'.
-  // CHECK-SIL: function_ref @_T03Lib1xs5Int32Vfau
+  // CHECK-SIL: function_ref @_T03Lib1xs5Int32Vvau
   _ = Lib.x
-  // CHECK-SIL: function_ref @_T03Lib9usesAssocs5Int32VSgfau
+  // CHECK-SIL: function_ref @_T03Lib9usesAssocs5Int32VSgvau
   _ = Lib.usesAssoc
 } // CHECK-SIL: end sil function '_T08typedefs11testSymbolsyyF'
 
@@ -38,11 +38,11 @@ public func testVTableBuilding(user: User) {
 } // CHECK-IR: ret void
 
 #if VERIFY
-let _: String = useAssoc(ImportedType.self) // expected-error {{cannot convert call result type '_.Assoc?' to expected type 'String'}}
+let _: String = useAssoc(ImportedType.self) // expected-error {{cannot convert value of type 'Int32?' to specified type 'String'}}
 let _: Bool? = useAssoc(ImportedType.self) // expected-error {{cannot convert value of type 'Int32?' to specified type 'Bool?'}}
 let _: Int32? = useAssoc(ImportedType.self)
 
-let _: String = useAssoc(AnotherType.self) // expected-error {{cannot convert call result type '_.Assoc?' to expected type 'String'}}
+let _: String = useAssoc(AnotherType.self) // expected-error {{cannot convert value of type 'AnotherType.Assoc?' (aka 'Optional<Int32>') to specified type 'String'}}
 let _: Bool? = useAssoc(AnotherType.self) // expected-error {{cannot convert value of type 'AnotherType.Assoc?' (aka 'Optional<Int32>') to specified type 'Bool?'}}
 let _: Int32? = useAssoc(AnotherType.self)
 
@@ -51,6 +51,17 @@ let _ = unwrapped // okay
 
 _ = usesWrapped(nil) // expected-error {{use of unresolved identifier 'usesWrapped'}}
 _ = usesUnwrapped(nil) // expected-error {{nil is not compatible with expected argument type 'Int32'}}
+
+func testExtensions(wrapped: WrappedInt, unwrapped: UnwrappedInt) {
+  wrapped.wrappedMethod() // expected-error {{value of type 'WrappedInt' (aka 'Int32') has no member 'wrappedMethod'}}
+  unwrapped.unwrappedMethod() // expected-error {{value of type 'UnwrappedInt' has no member 'unwrappedMethod'}}
+
+  ***wrapped // This one works because of the UnwrappedInt extension.
+  ***unwrapped // expected-error {{cannot convert value of type 'UnwrappedInt' to expected argument type 'Int32'}}
+
+  let _: WrappedProto = wrapped // expected-error {{value of type 'WrappedInt' (aka 'Int32') does not conform to specified type 'WrappedProto'}}
+  let _: UnwrappedProto = unwrapped // expected-error {{value of type 'UnwrappedInt' does not conform to specified type 'UnwrappedProto'}}
+}
 
 public class UserDynamicSub: UserDynamic {
   override init() {}
@@ -71,6 +82,31 @@ public class UserSub : User {} // expected-error {{cannot inherit from class 'Us
 #else // TEST
 
 import Typedefs
+
+prefix operator ***
+
+// CHECK-LABEL: extension WrappedInt : WrappedProto {
+// CHECK-NEXT: func wrappedMethod()
+// CHECK-NEXT: prefix static func *** (x: WrappedInt)
+// CHECK-NEXT: }
+// CHECK-RECOVERY-NEGATIVE-NOT: extension WrappedInt
+extension WrappedInt: WrappedProto {
+  public func wrappedMethod() {}
+  public static prefix func ***(x: WrappedInt) {}
+}
+// CHECK-LABEL: extension Int32 : UnwrappedProto {
+// CHECK-NEXT: func unwrappedMethod()
+// CHECK-NEXT: prefix static func *** (x: UnwrappedInt)
+// CHECK-NEXT: }
+// CHECK-RECOVERY-LABEL: extension Int32 : UnwrappedProto {
+// CHECK-RECOVERY-NEXT: func unwrappedMethod()
+// CHECK-RECOVERY-NEXT: prefix static func *** (x: Int32)
+// CHECK-RECOVERY-NEXT: }
+// CHECK-RECOVERY-NEGATIVE-NOT: extension UnwrappedInt
+extension UnwrappedInt: UnwrappedProto {
+  public func unwrappedMethod() {}
+  public static prefix func ***(x: UnwrappedInt) {}
+}
 
 // CHECK-LABEL: class User {
 // CHECK-RECOVERY-LABEL: class User {
@@ -304,5 +340,8 @@ public func returnsWrapped() -> WrappedInt { fatalError() }
 // CHECK-DAG: func returnsWrappedGeneric<T>(_: T.Type) -> WrappedInt
 // CHECK-RECOVERY-NEGATIVE-NOT: func returnsWrappedGeneric<
 public func returnsWrappedGeneric<T>(_: T.Type) -> WrappedInt { fatalError() }
+
+public protocol WrappedProto {}
+public protocol UnwrappedProto {}
 
 #endif // TEST

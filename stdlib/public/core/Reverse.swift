@@ -52,7 +52,7 @@ public struct _ReverseIndexingIterator<
   
   @_inlineable
   @inline(__always)
-  public mutating func next() -> Elements._Element? {
+  public mutating func next() -> Elements.Element? {
     guard _fastPath(_position != _elements.startIndex) else { return nil }
     _position = _elements.index(before: _position)
     return _elements[_position]
@@ -532,69 +532,6 @@ extension LazyCollectionProtocol
     ReversedRandomAccessCollection<Elements>
   > {
     return ReversedRandomAccessCollection(_base: elements).lazy
-  }
-}
-
-@available(*, unavailable, renamed: "ReversedCollection")
-public typealias ReverseCollection<Base : BidirectionalCollection> =
-  ReversedCollection<Base>
-
-@available(*, unavailable, renamed: "ReversedRandomAccessCollection")
-public typealias ReverseRandomAccessCollection<Base : RandomAccessCollection> =
-  ReversedRandomAccessCollection<Base>
-
-extension ReversedCollection {
-  @available(*, unavailable, renamed: "BidirectionalCollection.reversed(self:)")
-  public init(_ base: Base) {
-    Builtin.unreachable()
-  }
-}
-
-extension ReversedRandomAccessCollection {
-  @available(*, unavailable, renamed: "RandomAccessCollection.reversed(self:)")
-  public init(_ base: Base) {
-    Builtin.unreachable()
-  }
-}
-
-extension BidirectionalCollection {
-  @available(*, unavailable, renamed: "reversed()")
-  public func reverse() -> ReversedCollection<Self> {
-    Builtin.unreachable()
-  }
-}
-
-extension RandomAccessCollection {
-  @available(*, unavailable, renamed: "reversed()")
-  public func reverse() -> ReversedRandomAccessCollection<Self> {
-    Builtin.unreachable()
-  }
-}
-
-extension LazyCollectionProtocol
-  where
-  Self : BidirectionalCollection,
-  Elements : BidirectionalCollection
-{
-
-  @available(*, unavailable, renamed: "reversed()")
-  public func reverse() -> LazyCollection<
-    ReversedCollection<Elements>
-  > {
-    Builtin.unreachable()
-  }
-}
-
-extension LazyCollectionProtocol
-  where
-  Self : RandomAccessCollection,
-  Elements : RandomAccessCollection
-{
-  @available(*, unavailable, renamed: "reversed()")
-  public func reverse() -> LazyCollection<
-    ReversedRandomAccessCollection<Elements>
-  > {
-    Builtin.unreachable()
   }
 }
 

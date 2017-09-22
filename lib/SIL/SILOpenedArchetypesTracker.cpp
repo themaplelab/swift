@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILOpenedArchetypesTracker.h"
 
 using namespace swift;
@@ -17,13 +18,17 @@ using namespace swift;
 void SILOpenedArchetypesTracker::addOpenedArchetypeDef(CanArchetypeType archetype,
                                                        SILValue Def) {
   auto OldDef = getOpenedArchetypeDef(archetype);
-  if (OldDef && isa<GlobalAddrInst>(OldDef)) {
-    // It is a forward definition created during deserialization.
-    // Replace it with the real definition now.
-    OldDef->replaceAllUsesWith(Def);
-    OldDef = SILValue();
+  if (OldDef) {
+    if (auto *OldI = dyn_cast<GlobalAddrInst>(OldDef)) {
+      // It is a forward definition created during deserialization.
+      // Replace it with the real definition now.
+      OldDef->replaceAllUsesWith(Def);
+      // Remove the placeholder instruction.
+      OldI->eraseFromParent();
+      OldDef = SILValue();
+    }
   }
-  assert(!OldDef &&
+  assert((!OldDef || OldDef == Def) &&
          "There can be only one definition of an opened archetype");
   OpenedArchetypeDefs[archetype] = Def;
 }
@@ -56,11 +61,22 @@ bool SILOpenedArchetypesTracker::registerUsedOpenedArchetypes(CanType Ty) {
     if (getOpenedArchetypeDef(archetypeTy))
       return;
 
-    auto &SILMod = this->getFunction().getModule();
+    auto *CurF = const_cast<SILFunction *>(this->getFunction());
+    auto &SILMod = CurF->getModule();
     // Create a placeholder representing a forward definition.
-    auto Placeholder = new (SILMod)
-        GlobalAddrInst(SILDebugLocation(),
-                       SILMod.Types.getLoweredType(archetypeTy));
+    // Add the placeholder at the beginning of the entry block.
+    SILValue Placeholder;
+    if (!CurF->getEntryBlock()->empty()) {
+      SILBuilder B(CurF->getEntryBlock()->begin());
+      Placeholder =
+          B.createGlobalAddr(ArtificialUnreachableLocation(),
+                             SILMod.Types.getLoweredType(archetypeTy));
+    } else {
+      SILBuilder B(CurF->getEntryBlock());
+      Placeholder =
+          B.createGlobalAddr(ArtificialUnreachableLocation(),
+                             SILMod.Types.getLoweredType(archetypeTy));
+    }
     // Make it available to SILBuilder, so that instructions using this
     // archetype can be constructed.
     addOpenedArchetypeDef(archetypeTy, Placeholder);
@@ -74,7 +90,7 @@ bool SILOpenedArchetypesTracker::registerUsedOpenedArchetypes(CanType Ty) {
 // inside a function.
 bool SILOpenedArchetypesTracker::registerOpenedArchetypes(
     const SILInstruction *I) {
-  assert((!I->getParent() || I->getFunction() == &F) &&
+  assert((!I->getParent() || I->getFunction() == getFunction()) &&
          "Instruction does not belong to a proper SILFunction");
   auto Archetype = getOpenedArchetypeOf(I);
   if (!Archetype)
@@ -87,7 +103,7 @@ bool SILOpenedArchetypesTracker::registerOpenedArchetypes(
 // the typedef operands of this instruction.
 bool SILOpenedArchetypesTracker::registerUsedOpenedArchetypes(
     const SILInstruction *I) {
-  assert((!I->getParent() || I->getFunction() == &F) &&
+  assert((!I->getParent() || I->getFunction() == getFunction()) &&
          "Instruction does not belong to a proper SILFunction");
   bool Registered = false;
   for (auto &Op : I->getTypeDependentOperands()) {
@@ -104,17 +120,22 @@ bool SILOpenedArchetypesTracker::registerUsedOpenedArchetypes(
 // Should be only called when this instruction is to be removed.
 void SILOpenedArchetypesTracker::unregisterOpenedArchetypes(
     const SILInstruction *I) {
-  assert(I->getFunction() == &F &&
+  assert(I->getFunction() == getFunction() &&
          "Instruction does not belong to a proper SILFunction");
   auto Archetype = getOpenedArchetypeOf(I);
-  if (Archetype)
+  // Remove the archetype definition if it was registered before.
+  // It may happen that this archetype was not registered in the
+  // SILOpenedArchetypesTracker, because the tracker was created
+  // without scanning the whole function and thus may not aware
+  // of all opened archetypes of the function.
+  if (Archetype && getOpenedArchetypeDef(Archetype))
     removeOpenedArchetypeDef(Archetype, I);
 }
 
 void SILOpenedArchetypesTracker::handleDeleteNotification(
     swift::ValueBase *Value) {
   if (auto I = dyn_cast<SILInstruction>(Value))
-    if (I->getFunction() == &F)
+    if (I->getFunction() == getFunction())
       unregisterOpenedArchetypes(I);
 }
 
@@ -122,8 +143,8 @@ void SILOpenedArchetypesTracker::handleDeleteNotification(
 /// \returns The found archetype or empty type otherwise.
 CanArchetypeType swift::getOpenedArchetypeOf(const SILInstruction *I) {
   if (isa<OpenExistentialAddrInst>(I) || isa<OpenExistentialRefInst>(I) ||
-      isa<OpenExistentialBoxInst>(I) || isa<OpenExistentialMetatypeInst>(I) ||
-      isa<OpenExistentialOpaqueInst>(I)) {
+      isa<OpenExistentialBoxInst>(I) || isa<OpenExistentialBoxValueInst>(I) ||
+      isa<OpenExistentialMetatypeInst>(I) || isa<OpenExistentialValueInst>(I)) {
     auto Ty = getOpenedArchetypeOf(I->getType().getSwiftRValueType());
     assert(Ty && Ty->isOpenedExistential() &&
            "Type should be an opened archetype");
@@ -159,7 +180,8 @@ SILValue SILOpenedArchetypesState::getOpenedArchetypeDef(
   // First perform a quick check.
   for (auto &Op : OpenedArchetypeOperands) {
     auto Def = Op.get();
-    if (getOpenedArchetypeOf(cast<SILInstruction>(Def)) == archetypeTy)
+    if (isa<SILInstruction>(Def) &&
+        getOpenedArchetypeOf(cast<SILInstruction>(Def)) == archetypeTy)
       return Def;
   }
   // Then use a regular lookup.
@@ -170,8 +192,8 @@ SILValue SILOpenedArchetypesState::getOpenedArchetypeDef(
 
 void SILOpenedArchetypesTracker::dump() const {
   llvm::dbgs() << "SILOpenedArchetypesTracker {\n";
-  llvm::dbgs() << "Tracks open archetypes for function: " << F.getName()
-               << "\n";
+  llvm::dbgs() << "Tracks open archetypes for function: "
+               << getFunction()->getName() << "\n";
   llvm::dbgs() << "Open archetype operands and their definitions:\n";
   for (auto &KV : OpenedArchetypeDefs) {
     auto Archetype = KV.first;

@@ -232,7 +232,6 @@ extension BidirectionalCollection where SubSequence == Self {
   ///   or more elements; otherwise, `nil`.
   ///
   /// - Complexity: O(1).
-  /// - SeeAlso: `removeLast()`
   public mutating func popLast() -> Element? {
     guard !isEmpty else { return nil }
     let element = last!
@@ -248,7 +247,6 @@ extension BidirectionalCollection where SubSequence == Self {
   /// - Returns: The last element of the collection.
   ///
   /// - Complexity: O(1)
-  /// - SeeAlso: `popLast()`
   @discardableResult
   public mutating func removeLast() -> Element {
     let element = last!
@@ -267,9 +265,9 @@ extension BidirectionalCollection where SubSequence == Self {
   ///   of the collection.
   public mutating func removeLast(_ n: Int) {
     if n == 0 { return }
-    _precondition(n >= 0, "number of elements to remove should be non-negative")
+    _precondition(n >= 0, "Number of elements to remove should be non-negative")
     _precondition(count >= numericCast(n),
-      "can't remove more items from a collection than it contains")
+      "Can't remove more items from a collection than it contains")
     self = self[startIndex..<index(endIndex, offsetBy: numericCast(-n))]
   }
 }

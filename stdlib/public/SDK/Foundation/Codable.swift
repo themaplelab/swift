@@ -14,59 +14,9 @@
 // Errors
 //===----------------------------------------------------------------------===//
 
-// Adding the following extensions to EncodingError and DecodingError allows them to bridge to NSErrors implicitly.
-
-fileprivate let NSCodingPathErrorKey = "NSCodingPath"
-fileprivate let NSDebugDescriptionErrorKey = "NSDebugDescription"
-
-extension EncodingError : CustomNSError {
-    public static var errorDomain: String = NSCocoaErrorDomain
-
-    public var errorCode: Int {
-        switch self {
-        case .invalidValue(_, _): return CocoaError.coderInvalidValue.rawValue
-        }
-    }
-
-    public var errorUserInfo: [String : Any] {
-        let context: Context
-        switch self {
-        case .invalidValue(_, let c): context = c
-        }
-
-        return [NSCodingPathErrorKey: context.codingPath,
-                NSDebugDescriptionErrorKey: context.debugDescription]
-    }
-}
-
-extension DecodingError : CustomNSError {
-    public static var errorDomain: String = NSCocoaErrorDomain
-
-    public var errorCode: Int {
-        switch self {
-        case .valueNotFound(_, _): fallthrough
-        case .keyNotFound(_, _):
-            return CocoaError._coderValueNotFound.rawValue
-
-        case .typeMismatch(_, _): fallthrough
-        case .dataCorrupted(_):
-            return CocoaError._coderReadCorrupt.rawValue
-        }
-    }
-
-    public var errorUserInfo: [String : Any]? {
-        let context: Context
-        switch self {
-        case .typeMismatch(_, let c): context = c
-        case .valueNotFound(_, let c): context = c
-        case .keyNotFound(_, let c): context = c
-        case .dataCorrupted(let c): context = c
-        }
-
-        return [NSCodingPathErrorKey: context.codingPath,
-                NSDebugDescriptionErrorKey: context.debugDescription]
-    }
-}
+// Both of these error types bridge to NSError, and through the entry points they use, no further work is needed to make them localized.
+extension EncodingError : LocalizedError {}
+extension DecodingError : LocalizedError {}
 
 //===----------------------------------------------------------------------===//
 // Error Utilities
@@ -79,7 +29,7 @@ internal extension DecodingError {
     /// - parameter expectation: The type expected to be encountered.
     /// - parameter reality: The value that was encountered instead of the expected type.
     /// - returns: A `DecodingError` with the appropriate path and debug description.
-    internal static func _typeMismatch(at path: [CodingKey?], expectation: Any.Type, reality: Any) -> DecodingError {
+    internal static func _typeMismatch(at path: [CodingKey], expectation: Any.Type, reality: Any) -> DecodingError {
         let description = "Expected to decode \(expectation) but found \(_typeDescription(of: reality)) instead."
         return .typeMismatch(expectation, Context(codingPath: path, debugDescription: description))
     }
@@ -101,8 +51,7 @@ internal extension DecodingError {
         } else if value is [String : Any] {
             return "a dictionary"
         } else {
-            // This should never happen -- we somehow have a non-JSON type here.
-            preconditionFailure("Invalid storage type \(type(of: value)).")
+            return "\(type(of: value))"
         }
     }
 }

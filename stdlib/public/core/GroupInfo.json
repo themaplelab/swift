@@ -17,10 +17,12 @@
     "StringComparable.swift",
     "StringCore.swift",
     "StringHashable.swift",
+    "StringIndex.swift",
     "StringIndexConversions.swift",
     "StringInterpolation.swift",
     "StringLegacy.swift",
     "StringRangeReplaceableCollection.swift",
+    "StringSwitch.swift",
     "StringUTF16.swift",
     "StringUTF8.swift",
     "StringUnicodeScalarView.swift",
@@ -29,12 +31,12 @@
     "UnicodeEncoding.swift",
     "UnicodeParser.swift",
     "UnicodeScalar.swift",
-    "UnicodeTrie.swift",
     "UnavailableStringAPIs.swift",
     "UTFEncoding.swift",
     "UTF8.swift",
     "UTF16.swift",
-    "UTF32.swift"
+    "UTF32.swift",
+    "ValidUTF8Buffer.swift"
   ],
   "Bool": [
     "Bool.swift"
@@ -91,6 +93,7 @@
         "Arrays.swift",
         "CocoaArray.swift",
         "ContiguousArrayBuffer.swift",
+        "FixedArray.swift",
         "SliceBuffer.swift",
         "SwiftNativeNSArray.swift"],
       "HashedCollections": [
@@ -123,6 +126,7 @@
     "BuiltinMath.swift",
     {
     "Integers": [
+      "DoubleWidth.swift",
       "Integers.swift",
       "IntegerParsing.swift"],
     "Floating": [
@@ -161,6 +165,7 @@
     "Print.swift",
     "REPL.swift",
     "Runtime.swift",
+    "RuntimeFunctionCounters.swift",
     "Shims.swift",
     "ThreadLocalStorage.swift",
     "Unmanaged.swift",

@@ -162,12 +162,20 @@ public:
   std::unique_ptr<Job> constructJob(const JobAction &JA,
                                     Compilation &C,
                                     SmallVectorImpl<const Job *> &&inputs,
-                                    const ActionList &inputActions,
+                                    ArrayRef<const Action *> inputActions,
                                     std::unique_ptr<CommandOutput> output,
                                     const OutputInfo &OI) const;
 
   /// Return the default language type to use for the given extension.
   virtual types::ID lookupTypeForExtension(StringRef Ext) const;
+
+  /// Check whether a clang library with a given name exists.
+  ///
+  /// \param args Invocation arguments.
+  /// \param sanitizer Sanitizer name.
+  virtual bool sanitizerRuntimeLibExists(const llvm::opt::ArgList &args,
+                                         StringRef sanitizer) const;
+
 };
 } // end namespace driver
 } // end namespace swift

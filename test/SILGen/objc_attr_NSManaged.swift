@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -sdk %S/Inputs %s -I %S/Inputs -enable-source-import -emit-silgen | %FileCheck %s
+// RUN: %target-swift-frontend -sdk %S/Inputs %s -I %S/Inputs -enable-source-import -emit-silgen -enable-sil-ownership | %FileCheck %s
 
 // REQUIRES: objc_interop
 
@@ -23,10 +23,10 @@ class SwiftGizmo : Gizmo {
   // Make sure that we're calling through the @objc entry points.
   // CHECK-LABEL: sil hidden @_T019objc_attr_NSManaged10SwiftGizmoC7modifyX{{[_0-9a-zA-Z]*}}F : $@convention(method) (@guaranteed SwiftGizmo) -> () {
   func modifyX() {
-    // CHECK:   [[GETTER:%[0-9]+]] = class_method [volatile] [[SELF:%.*]] : $SwiftGizmo, #SwiftGizmo.x!getter.1.foreign : (SwiftGizmo) -> () -> X, $@convention(objc_method) (SwiftGizmo) -> @autoreleased X
+    // CHECK:   [[SETTER:%[0-9]+]] = class_method [volatile] [[SELF:%.*]] : $SwiftGizmo, #SwiftGizmo.x!setter.1.foreign : (SwiftGizmo) -> (X) -> (), $@convention(objc_method) (X, SwiftGizmo) -> ()
+    // CHECK:   [[GETTER:%[0-9]+]] = class_method [volatile] [[SELF]] : $SwiftGizmo, #SwiftGizmo.x!getter.1.foreign : (SwiftGizmo) -> () -> X, $@convention(objc_method) (SwiftGizmo) -> @autoreleased X
     // CHECK-NEXT: apply [[GETTER]]([[SELF]]) : $@convention(objc_method) (SwiftGizmo) -> @autoreleased X
     // CHECK-NOT: return
-    // CHECK:   [[SETTER:%[0-9]+]] = class_method [volatile] [[SELF]] : $SwiftGizmo, #SwiftGizmo.x!setter.1.foreign : (SwiftGizmo) -> (X) -> (), $@convention(objc_method) (X, SwiftGizmo) -> ()
     // CHECK:  apply [[SETTER]]([[XMOD:%.*]], [[SELF]]) : $@convention(objc_method) (X, SwiftGizmo) -> ()
     x = x.foo()
     // CHECK: return
@@ -69,7 +69,7 @@ extension FinalGizmo {
 }
 
 // CHECK-LABEL: sil hidden @_T019objc_attr_NSManaged9testFinalSSAA0E5GizmoCF : $@convention(thin) (@owned FinalGizmo) -> @owned String {
-// CHECK: bb0([[ARG:%.*]] : $FinalGizmo):
+// CHECK: bb0([[ARG:%.*]] : @owned $FinalGizmo):
 // CHECK: [[BORROWED_ARG:%.*]] = begin_borrow [[ARG]]
 // CHECK: class_method [volatile] [[BORROWED_ARG]] : $FinalGizmo, #FinalGizmo.kvc2!1.foreign : (FinalGizmo) -> () -> (), $@convention(objc_method) (FinalGizmo) -> ()
 // CHECK-NOT: return

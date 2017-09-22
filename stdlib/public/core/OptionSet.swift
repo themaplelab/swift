@@ -82,8 +82,6 @@
 ///         print("Add more to your cart for free priority shipping!")
 ///     }
 ///     // Prints "You've earned free priority shipping!"
-///
-/// - SeeAlso: `FixedWidthInteger`, `SetAlgebra`
 public protocol OptionSet : SetAlgebra, RawRepresentable {
   // We can't constrain the associated Element type to be the same as
   // Self, but we can do almost as well with a default and a
@@ -360,7 +358,3 @@ extension OptionSet where RawValue : FixedWidthInteger {
     self = Self(rawValue: self.rawValue ^ other.rawValue)
   }
 }
-
-@available(*, unavailable, renamed: "OptionSet")
-public typealias OptionSetType = OptionSet
-

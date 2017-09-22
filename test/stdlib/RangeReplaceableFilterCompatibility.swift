@@ -2,6 +2,8 @@
 // RUN: %target-build-swift %s -o %t/a.out3 -swift-version 3 && %target-run %t/a.out3
 // RUN: %target-build-swift %s -o %t/a.out4 -swift-version 4 && %target-run %t/a.out4
 
+// REQUIRES: executable_test
+
 import StdlibUnittest
 
 var tests = TestSuite("RangeReplaceableFilterCompatibility")
@@ -33,6 +35,11 @@ tests.test("ArraySlice.filter return type") {
 tests.test("String.filter can return [Character]") {
   let filtered = "Hello, World".filter { "A" <= $0 && $0 <= "Z"} as [Character]
   expectEqualSequence("HW", filtered)
+}
+
+tests.test("lazy.flatMap.filter ambiguity") {
+  // this expression should compile without ambiguity
+  _ = Array(0..<10).lazy.flatMap { .some($0) }.filter { _ in false }
 }
 
 runAllTests()

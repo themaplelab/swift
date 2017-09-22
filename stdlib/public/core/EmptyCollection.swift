@@ -18,8 +18,6 @@
 //===----------------------------------------------------------------------===//
 
 /// An iterator that never produces an element.
-///
-/// - SeeAlso: `EmptyCollection<Element>`.
 public struct EmptyIterator<Element> : IteratorProtocol, Sequence {
   /// Creates an instance.
   public init() {}
@@ -148,15 +146,5 @@ extension EmptyCollection : Equatable {
     lhs: EmptyCollection<Element>, rhs: EmptyCollection<Element>
   ) -> Bool {
     return true
-  }
-}
-
-@available(*, unavailable, renamed: "EmptyIterator")
-public struct EmptyGenerator<Element> {}
-
-extension EmptyIterator {
-  @available(*, unavailable, renamed: "makeIterator()")
-  public func generate() -> EmptyIterator<Element> {
-    Builtin.unreachable()
   }
 }

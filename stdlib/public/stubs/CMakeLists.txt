@@ -2,9 +2,10 @@ set(swift_stubs_sources
     Assert.cpp
     CommandLine.cpp
     GlobalObjects.cpp
+    KeyPaths.cpp
     LibcShims.cpp
     Stubs.cpp
-    UnicodeExtendedGraphemeClusters.cpp.gyb)
+)
 set(swift_stubs_objc_sources
     Availability.mm
     FoundationHelpers.mm

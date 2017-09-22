@@ -72,7 +72,7 @@ ValueDecl *DerivedConformance::getDerivableRequirement(NominalTypeDecl *nominal,
 
   // Functions.
   if (auto func = dyn_cast<FuncDecl>(requirement)) {
-    if (func->isOperator() && name.getBaseName().str() == "==")
+    if (func->isOperator() && name.getBaseName() == "==")
       return getRequirement(KnownProtocolKind::Equatable);
 
     // Encodable.encode(to: Encoder)
@@ -160,18 +160,18 @@ FuncDecl *DerivedConformance::declareDerivedPropertyGetter(TypeChecker &tc,
   // Compute the interface type of the getter.
   Type interfaceType = FunctionType::get(TupleType::getEmpty(C),
                                          propertyInterfaceType);
-  Type selfInterfaceType = getterDecl->computeInterfaceSelfType();
+  auto selfParam = computeSelfParam(getterDecl);
   if (auto sig = parentDC->getGenericSignatureOfContext()) {
     getterDecl->setGenericEnvironment(
         parentDC->getGenericEnvironmentOfContext());
-    interfaceType = GenericFunctionType::get(sig, selfInterfaceType,
+    interfaceType = GenericFunctionType::get(sig, {selfParam},
                                              interfaceType,
                                              FunctionType::ExtInfo());
   } else
-    interfaceType = FunctionType::get(selfInterfaceType, interfaceType);
+    interfaceType = FunctionType::get({selfParam}, interfaceType,
+                                      FunctionType::ExtInfo());
   getterDecl->setInterfaceType(interfaceType);
-  getterDecl->setAccessibility(std::max(typeDecl->getFormalAccess(),
-                                        Accessibility::Internal));
+  copyFormalAccess(getterDecl, typeDecl);
 
   // If the enum was not imported, the derived conformance is either from the
   // enum itself or an extension, in which case we will emit the declaration
@@ -195,13 +195,13 @@ DerivedConformance::declareDerivedReadOnlyProperty(TypeChecker &tc,
   auto &C = tc.Context;
   auto parentDC = cast<DeclContext>(parentDecl);
 
-  VarDecl *propDecl = new (C) VarDecl(/*IsStatic*/isStatic, /*IsLet*/false,
+  VarDecl *propDecl = new (C) VarDecl(/*IsStatic*/isStatic, VarDecl::Specifier::Var,
                                       /*IsCaptureList*/false, SourceLoc(), name,
                                       propertyContextType, parentDC);
   propDecl->setImplicit();
   propDecl->makeComputed(SourceLoc(), getterDecl, nullptr, nullptr,
                          SourceLoc());
-  propDecl->setAccessibility(getterDecl->getFormalAccess());
+  copyFormalAccess(propDecl, typeDecl);
   propDecl->setInterfaceType(propertyInterfaceType);
 
   // If this is supposed to be a final property, mark it as such.
@@ -223,4 +223,15 @@ DerivedConformance::declareDerivedReadOnlyProperty(TypeChecker &tc,
   pbDecl->setImplicit();
 
   return {propDecl, pbDecl};
+}
+
+void DerivedConformance::copyFormalAccess(ValueDecl *dest, ValueDecl *source) {
+  dest->setAccess(source->getFormalAccess());
+
+  // Inherit the @_versioned attribute.
+  if (source->getAttrs().hasAttribute<VersionedAttr>()) {
+    auto &ctx = source->getASTContext();
+    auto *clonedAttr = new (ctx) VersionedAttr(/*implicit=*/true);
+    dest->getAttrs().add(clonedAttr);
+  }
 }
