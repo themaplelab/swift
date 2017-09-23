@@ -17,9 +17,9 @@ if(NOT SWIFT_BUILT_STANDALONE)
 endif()
 
 add_library(jvm SHARED IMPORTED)
-set_property(TARGET jvm PROPERTY IMPORTED_LOCATION $ENV{JAVA_HOME}/jre/lib/server/libjvm.dylib) 
+set_property(TARGET jvm PROPERTY IMPORTED_LOCATION $ENV{JAVA_HOME}/jre/lib/amd64/server/libjvm.so) 
 target_link_libraries(swift-remoteast-test jvm)
 
 add_library(cast SHARED IMPORTED)
-set_property(TARGET cast PROPERTY IMPORTED_LOCATION $ENV{WALA_HOME}/com.ibm.wala.cast/target/classes/libcast.jnilib)
+set_property(TARGET cast PROPERTY IMPORTED_LOCATION $ENV{WALA_HOME}/com.ibm.wala.cast/target/classes/libcast.so)
 target_link_libraries(swift-remoteast-test cast)

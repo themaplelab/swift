@@ -146,8 +146,10 @@ void WALAWalker::getInstrSrcInfo(SILInstruction &instr, InstrInfo *instrInfo) {
 // appropriately.  
 // TODO: currently only returns ValueKind, switch is not descended into functionally
 ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr) {
+	raw_ostream &outs = llvm::outs();
 
 	auto instrKind = instr.getKind();
+
 	switch (instrKind) {
 	
 		case ValueKind::SILPHIArgument:
@@ -193,7 +195,40 @@ ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr) {
 		}
 		
 		case ValueKind::StringLiteralInst: {
-// 			outfile		<< "\t\t << StringLiteralInst >>" << "\n";
+
+			// Cast the instr to access methods
+			StringLiteralInst *castInst = cast<StringLiteralInst>(&instr);
+
+			// ValueKind indentifier
+ 			outs		<< "\t\t << StringLiteralInst >>" << "\n";
+
+ 			// Value: the string data for the literal, in UTF-8.
+			StringRef value = castInst->getValue();
+			outs     << "\t\t\t\t [VAL]: " << value << "\n";
+
+			// Encoding: the desired encoding of the text.
+			string encoding;
+			switch (castInst->getEncoding()) {
+				case StringLiteralInst::Encoding::UTF8: {
+					encoding = "UTF8";
+					break;
+				}
+				case StringLiteralInst::Encoding::UTF16: {
+					encoding = "UTF16";
+					break;
+				}
+				case StringLiteralInst::Encoding::ObjCSelector: {
+					encoding = "ObjCSelector";
+					break;
+				}
+			}
+			outs     << "\t\t\t\t [ENCODING]: " << encoding << "\n";
+
+			// Count: encoding-based length of the string literal in code units.
+			uint64_t codeUnitCount = castInst->getCodeUnitCount();
+			outs     << "\t\t\t\t [COUNT]: " << codeUnitCount << "\n";
+
+
 			break;
 		}
 		

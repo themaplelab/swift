@@ -14,7 +14,7 @@ add_swift_host_tool(swift
 )
 
 set_property(TARGET swift APPEND_STRING PROPERTY
-    LINK_FLAGS " $ENV{WALA_HOME}/com.ibm.wala.cast/target/classes/libcast.jnilib -L$(/usr/libexec/java_home)/jre/lib/server/ -ljvm -rpath $(/usr/libexec/java_home)/jre/lib/server/")
+    LINK_FLAGS " $ENV{WALA_HOME}/com.ibm.wala.cast/target/classes/libcast.so -L$ENV{JAVA_HOME}/jre/lib/amd64/server/ -ljvm -rpath $ENV{JAVA_HOME}/jre/lib/amd64/server/")
 
 if(HAVE_UNICODE_LIBEDIT)
   target_link_libraries(swift edit)

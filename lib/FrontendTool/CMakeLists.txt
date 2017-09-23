@@ -22,7 +22,7 @@ add_swift_library(swiftFrontendTool STATIC
   C_COMPILE_FLAGS
     -I$ENV{WALA_HOME}/com.ibm.wala.cast/source/c/include
     -I$ENV{JAVA_HOME}/include/
-    -I$ENV{JAVA_HOME}/include/darwin 
+    -I$ENV{JAVA_HOME}/include/linux 
   LINK_FLAGS
     -L$ENV{WALA_HOME}/com.ibm.wala.cast/target/classes -lcast
 )

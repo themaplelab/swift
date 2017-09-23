@@ -12,6 +12,6 @@ add_swift_library(swiftWALASupport STATIC
   C_COMPILE_FLAGS
     -I$ENV{WALA_HOME}/com.ibm.wala.cast/source/c/include
     -I$ENV{JAVA_HOME}/include/
-    -I$ENV{JAVA_HOME}/include/darwin
+    -I$ENV{JAVA_HOME}/include/linux
   ${EXTRA_TYPECHECKER_FLAGS}
 )
