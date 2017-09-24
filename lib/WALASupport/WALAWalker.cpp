@@ -239,7 +239,38 @@ ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegrati
 		}
 		
 		case ValueKind::ConstStringLiteralInst: {
-// 			outfile		<< "\t\t << ConstStringLiteralInst >>" << "\n";
+ 			outfile		<< "\t\t << ConstStringLiteralInst >>" << "\n";
+			// Cast the instr to access methods
+			ConstStringLiteralInst *castInst = cast<ConstStringLiteralInst>(&instr);
+			 			// Value: the string data for the literal, in UTF-8.
+			StringRef value = castInst->getValue();
+			outs     << "\t\t\t\t [VAL]: " << value << "\n";
+
+			// Encoding: the desired encoding of the text.
+			string encoding;
+			switch (castInst->getEncoding()) {
+				case StringLiteralInst::Encoding::UTF8: {
+					encoding = "UTF8";
+					break;
+				}
+				case StringLiteralInst::Encoding::UTF16: {
+					encoding = "UTF16";
+					break;
+				}
+				case StringLiteralInst::Encoding::ObjCSelector: {
+					encoding = "ObjCSelector";
+					break;
+				}
+			}
+			outs     << "\t\t\t\t [ENCODING]: " << encoding << "\n";
+
+			// Count: encoding-based length of the string literal in code units.
+			uint64_t codeUnitCount = castInst->getCodeUnitCount();
+			outs     << "\t\t\t\t [COUNT]: " << codeUnitCount << "\n";
+
+			// Call WALA in Java
+			jobject walaConstant = wala.makeConstant(value);
+			wala.print(walaConstant);
 			break;
 		}
 		
