@@ -53,6 +53,10 @@ jobject WALAIntegration::makePosition(int fl, int fc, int ll, int lc) {
 	return result;
 }
 
+jobject WALAIntegration::makeConstant(string value) {
+	return CAst->makeConstant(value.c_str());
+}
+
 void WALAIntegration::print(jobject obj) {
 	print_object(java_env, obj);
 	THROW_ANY_EXCEPTION(cpp_ex);
@@ -145,7 +149,7 @@ void WALAWalker::getInstrSrcInfo(SILInstruction &instr, InstrInfo *instrInfo) {
 // Gets the ValueKind of the SILInstruction then goes through the mega-switch to handle 
 // appropriately.  
 // TODO: currently only returns ValueKind, switch is not descended into functionally
-ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr) {
+ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegration &wala) {
 	raw_ostream &outs = llvm::outs();
 
 	auto instrKind = instr.getKind();
@@ -228,7 +232,9 @@ ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr) {
 			uint64_t codeUnitCount = castInst->getCodeUnitCount();
 			outs     << "\t\t\t\t [COUNT]: " << codeUnitCount << "\n";
 
-
+			// Call WALA in Java
+			jobject walaConstant = wala.makeConstant(value);
+			wala.print(walaConstant);
 			break;
 		}
 		
@@ -759,7 +765,7 @@ void WALAWalker::analyzeSILModule(SILModule &SM) {
 				instrInfo.num = i;
 				instrInfo.modInfo = &modInfo;
 				instrInfo.funcInfo = &funcInfo;
-				instrInfo.instrKind = getInstrValueKindInfo(*instr);
+				instrInfo.instrKind = getInstrValueKindInfo(*instr, wala);
 
 				// Get each operand <SILValue> and save it in a vector; get instr ID
 				ArrayRef<Operand> ops = instr->getAllOperands();

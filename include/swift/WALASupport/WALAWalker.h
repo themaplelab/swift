@@ -48,6 +48,7 @@ public:
 	void print(jobject obj);
 	
 	jobject makePosition(int, int, int, int);
+	jobject makeConstant(string value);
 	
 	WALAIntegration(JNIEnv *, Exceptions &, const char *);
 };
@@ -98,7 +99,7 @@ private:
 	
 	// The big one - gets the ValueKind of the SILInstruction then goes 			
 	// through the mega-switch to cast and handle each appropriately.
-	ValueKind getInstrValueKindInfo(SILInstruction &instr);
+	ValueKind getInstrValueKindInfo(SILInstruction &instr, WALAIntegration &wala);
 
 	// Do something per instruction
 	void perInstruction(WALAWalker::InstrInfo *instrInfo, WALAIntegration &);
