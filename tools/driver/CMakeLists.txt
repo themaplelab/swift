@@ -13,20 +13,8 @@ add_swift_host_tool(swift
   SWIFT_COMPONENT compiler
 )
 
-# Check for the underlying platform
-set(LIBJVM_PATH "")
-set(LIBCAST_PATH "")
-
-if(APPLE) # for MacOS X
-  set(LIBJVM_PATH "$ENV{JAVA_HOME}/jre/lib/server/")
-  set(LIBCAST_PATH "$ENV{WALA_HOME}/com.ibm.wala.cast/target/classes/libcast.jnilib")
-else() # for Ubuntu
-  set(LIBJVM_PATH "$ENV{JAVA_HOME}/jre/lib/amd64/server/")
-  set(LIBCAST_PATH "$ENV{WALA_HOME}/com.ibm.wala.cast/target/classes/libcast.so")
-endif()
-
 set_property(TARGET swift APPEND_STRING PROPERTY
-  LINK_FLAGS " ${LIBCAST_PATH} -L${LIBJVM_PATH} -ljvm -rpath ${LIBJVM_PATH}")
+    LINK_FLAGS " $ENV{WALA_HOME}/com.ibm.wala.cast/target/classes/libcast.jnilib -L$(/usr/libexec/java_home)/jre/lib/server/ -ljvm -rpath $(/usr/libexec/java_home)/jre/lib/server/")
 
 if(HAVE_UNICODE_LIBEDIT)
   target_link_libraries(swift edit)
@@ -65,4 +53,3 @@ swift_install_in_component(autolink-driver
 swift_install_in_component(editor-integration
     FILES "${SWIFT_RUNTIME_OUTPUT_INTDIR}/swift-format"
     DESTINATION "bin")
-

@@ -3,14 +3,6 @@ if (SWIFT_FORCE_OPTIMIZED_TYPECHECKER)
   set(EXTRA_TYPECHECKER_FLAGS "FORCE_BUILD_OPTIMIZED")
 endif()
 
-# Check for the underlying platform
-set(JNI_INCLUDE_PATH "")
-if(APPLE) # for MacOS X
-  set(JNI_INCLUDE_PATH "$ENV{JAVA_HOME}/include/darwin")
-else() # for Ubuntu
-  set(JNI_INCLUDE_PATH "$ENV{JAVA_HOME}/include/linux")
-endif()
-
 add_swift_library(swiftWALASupport STATIC
   WALAWalker.cpp
   LINK_LIBRARIES
@@ -20,7 +12,6 @@ add_swift_library(swiftWALASupport STATIC
   C_COMPILE_FLAGS
     -I$ENV{WALA_HOME}/com.ibm.wala.cast/source/c/include
     -I$ENV{JAVA_HOME}/include/
-    -I${JNI_INCLUDE_PATH}
+    -I$ENV{JAVA_HOME}/include/darwin
   ${EXTRA_TYPECHECKER_FLAGS}
 )
-
