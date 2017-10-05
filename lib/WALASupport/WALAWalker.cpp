@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <jni.h>
 #include <csetjmp>
+#include <stdio.h>
+#include <iostream>
 #include <fstream>
 #include <string>
 
@@ -13,167 +15,210 @@
 #include "CAstWrapper.h"
 
 using namespace swift;
-using ModuleInfo = WALAWalker::ModuleInfo;
-using FunctionInfo = WALAWalker::FunctionInfo;
-using InstrInfo = WALAWalker::InstrInfo;
 
-//
-// 	WALAIntegration:
-// 		Methods for passing information to and from WALA.
-//
 void print_object(JNIEnv *java_env, jobject object) {
-	jclass Object = java_env->FindClass("java/lang/Object");
-  
-	jmethodID toString = java_env->GetMethodID(Object, "toString", "()Ljava/lang/String;");
+    jclass Object = java_env->FindClass("java/lang/Object");
+	  
+    jmethodID toString = java_env->GetMethodID(Object, "toString", "()Ljava/lang/String;");
 
-	jstring msg = (jstring) java_env->CallObjectMethod(object, toString);
+    jstring msg = (jstring) java_env->CallObjectMethod(object, toString);
 
-	jboolean f = false;
-	const char *text = java_env->GetStringUTFChars(msg, &f);
-  
-	printf("FOO: %s\n", text);
-  
-	java_env->ReleaseStringUTFChars(msg, text);
+    jboolean f = false;
+    const char *text = java_env->GetStringUTFChars(msg, &f);
+	  
+    printf("FOO: %s\n", text);
+	  
+    java_env->ReleaseStringUTFChars(msg, text);
 }
 
-CAstWrapper* WALAIntegration::operator->() { return CAst; }
+// Takes the shortFilename, concatenates the $SWIFT_WALA_OUTPUT dir, and writes the result
+// to char *outfileName.  Used for dump() and open().
+void getOutputFilename(raw_ostream &outstream, string filenamePath, 
+	char *outfileName) {
+	// Get output dir	
+	string outputDir = getenv("SWIFT_WALA_OUTPUT");
 
-jobject WALAIntegration::makePosition(int fl, int fc, int ll, int lc) {
-	jclass xlatorCls = 
-		java_env->FindClass("com/ibm/wala/cast/ir/translator/NativeTranslatorToCAst");
-	THROW_ANY_EXCEPTION(cpp_ex);
+	// Get shortfilename (trailing final '/')	
+	string splitString = "/";
+	size_t splitPoint = filenamePath.find_last_of(splitString);
+	string shortFilename = filenamePath.substr(splitPoint + 1);
+	if (shortFilename.empty()) {
+		shortFilename = "_noSourceFileFound";
+	} else {
+		// Get rid of the .swift extension
+		string swiftExt = ".swift";
+		string newExt = "";
+		size_t extSplit = shortFilename.find(swiftExt);
+		shortFilename.replace(extSplit, swiftExt.length(), newExt);
+	}
 	
-	jmethodID makePos = java_env->GetMethodID(xlatorCls, 
-		"makeLocation", "(IIII)Lcom/ibm/wala/cast/tree/CAstSourcePositionMap$Position;");
-	THROW_ANY_EXCEPTION(cpp_ex);
+	// Concatenate to output full path
+	sprintf(outfileName, "%s/%s.txt", outputDir.c_str(), shortFilename.c_str());
 
-	jobject result = java_env->CallObjectMethod(xlator, makePos, fl, fc, ll, lc);
-	THROW_ANY_EXCEPTION(cpp_ex);
+	// Check if file exists; if so, try to make the file unique
+	unsigned i = 0;
+	ifstream fileCheck;
+	fileCheck.open(outfileName);
+	while (fileCheck && i < 100) {
+		fileCheck.close();
+		sprintf(outfileName, "%s/%s_%u.txt", outputDir.c_str(), shortFilename.c_str(), i);
+		fileCheck.open(outfileName);
+		i++;
+	}
 
-	return result;
+	fileCheck.close();
+	
+	// DEBUG OUTSTREAM
+	outstream << "\t [OUTPUTFILE]: " << outfileName << "\n";
+	outstream << "\t [FILENAME]: " << shortFilename << ".txt" << "\n";
 }
 
-jobject WALAIntegration::makeConstant(string value) {
-	return CAst->makeConstant(value.c_str());
+// Prints the path (after swift/) to outfile if it is open and writeable.
+void printSourceFilepath(llvm::raw_fd_ostream &outfile, string filenamePath) {
+	size_t splitPoint = filenamePath.find("swift/");
+	if (splitPoint == string::npos) {
+		outfile		<< "[SOURCE] Not Found; probably not from a file." << "\n\n";
+	} else {
+		string shortPath = filenamePath.substr(splitPoint);
+		outfile 	<< "[SOURCE] file: " << shortPath << "\n\n";
+	}
 }
 
-void WALAIntegration::print(jobject obj) {
-	print_object(java_env, obj);
-	THROW_ANY_EXCEPTION(cpp_ex);
-}
+// Prints the SIL to the outfile if it is open and writeable.
+void printSIL(char *outputFilename, SILModule &SM) {
 	
-WALAIntegration::WALAIntegration(JNIEnv *ijava_env , Exceptions &icpp_ex, 
-	const char *file_name) : java_env(ijava_env), cpp_ex(icpp_ex) {
+	// Convert <filename>.txt to <filename>.sil
+	string strFilename(outputFilename);
+	string extToReplace = ".txt";
+	string newExt = ".sil";
+ 	size_t splitPoint = strFilename.find(extToReplace);
+	const char *SILFilename = strFilename.replace(splitPoint, extToReplace.length(), newExt).c_str();
+	
+	// DEBUG OUTSTREAM
+	llvm::outs() << "\t [SIL]: " << SILFilename << "\n";
 
-	jclass xlatorCls = 
-		java_env->FindClass("com/ibm/wala/cast/swift/SwiftToCAstTranslator");
-	THROW_ANY_EXCEPTION(cpp_ex);
-	
-	jmethodID xlatorInit = java_env->GetMethodID(xlatorCls, 
-		"<init>", "(Ljava/lang/String;)V");
-	THROW_ANY_EXCEPTION(cpp_ex);
-
-	jstring javaFileName = java_env->NewStringUTF(file_name);
-	THROW_ANY_EXCEPTION(cpp_ex);
-
-	print(javaFileName);
-	
-	xlator = java_env->NewObject(xlatorCls, xlatorInit, javaFileName);
-	THROW_ANY_EXCEPTION(cpp_ex);
-	
-	CAst = new CAstWrapper(java_env, cpp_ex, xlator);
-	THROW_ANY_EXCEPTION(cpp_ex);
+	// Output to .sil
+	SM.dump(SILFilename);
 }
 
+// Outputs the mangled SILFunction name to outstream.
+void printSILFunctionInfo(llvm::raw_fd_ostream &outfile, SILFunction &func) {
 
-//
-//	WALAWalker methods
-//
-
-// Gets the mangled and demangled SILFunction and returns in a FunctionInfo.
-FunctionInfo WALAWalker::getSILFunctionInfo(SILFunction &func) {
-
-	FunctionInfo funcInfo;
-	funcInfo.name = func.getName();
-	StringRef demangled = Demangle::demangleSymbolAsString(funcInfo.name);
-	funcInfo.demangled = demangled;
-
-	return funcInfo;
+	// Output function name to written file
+	outfile 	<< "-- [FUNCTION] Name: " << func.getName() << "\n";
+	
+	// Print demangled name
+	outfile		<< "-- [FUNCTION] Demangled: ";
+	outfile 	<< Demangle::demangleSymbolAsString(func.getName()) << "\n";
 }
 
-// Gets the sourcefile, start line/col, end line/col, and writes it to the InstrInfo 
-// that is passed in.  
-// TODO: check lastBuffer vs. buffer to see if start and end are in the same file
-void WALAWalker::getInstrSrcInfo(SILInstruction &instr, InstrInfo *instrInfo) {
-	
-	SourceManager &srcMgr = instr.getModule().getSourceManager();
-	
+// Outputs the SILBasicBlock ID to outstream.
+void printSILBasicBlockInfo(llvm::raw_fd_ostream &outfile, SILBasicBlock &bb) {
+
+	// Print SILBasicBlock ID
+	SILPrintContext context(outfile);
+	SILPrintContext::ID bbID = context.getID(&bb);
+	outfile 	<< "---- [BASIC BLOCK] ID: " << bbID << "\n";
+}
+
+// Prints the sourcefile, line, and column info to outstream.
+void printInstrDebugLocInfo(llvm::raw_fd_ostream &outfile,
+	SILInstruction &instr, SourceManager &srcMgr) {
+
 	// Get file-line-col information for the source
 	SILLocation debugLoc = instr.getDebugLocation().getLocation();
 	SILLocation::DebugLoc debugInfo = debugLoc.decodeDebugLoc(srcMgr);
 	
-	instrInfo->Filename = debugInfo.Filename;
+	size_t splitPoint = debugInfo.Filename.find("swift/");
+	string splitString = debugInfo.Filename.substr(splitPoint);
 	
-	if (instr.getLoc().isNull()) {
-		instrInfo->srcType = -1;
+	if (debugInfo.Filename == "") {
+		outfile << "\t\t >>> Source: <no file>";
 	} else {
+		outfile << "\t\t >>> Source: " << splitString;
+	}
+	outfile << ", Line: " << debugInfo.Line;
+	outfile << ", Col: " << debugInfo.Column << "\n";
+}
 
-		SourceRange srcRange = instr.getLoc().getSourceRange();
-		SourceLoc srcStart = srcRange.Start;
-		SourceLoc srcEnd = srcRange.End;
-		
-		if (srcStart.isValid() ) {
+// Outputs to outstream whether instr may release, write to memory, read from memory,
+// trap the instruction, or potentially have side effects.
+void printInstrMemoryReleasingInfo(llvm::raw_fd_ostream &outfile, SILInstruction &instr) {
 
-			instrInfo->srcType = 0;
-			
-			auto startLineCol = srcMgr.getLineAndColumn(srcStart);	
-			instrInfo->startLine = startLineCol.first;
-			instrInfo->startCol = startLineCol.second;			
-
-		} else {
-			instrInfo->startLine = debugInfo.Line;
-			instrInfo->startCol = debugInfo.Column;
+	switch (instr.getMemoryBehavior()) {
+		case SILInstruction::MemoryBehavior::None: {
+			break;
 		}
-		
-		if (srcEnd.isValid() ) {
-		
-			auto endLineCol = srcMgr.getLineAndColumn(srcEnd);
-			instrInfo->endLine = endLineCol.first;
-			instrInfo->endCol = endLineCol.second;
-		} else {
-			instrInfo->srcType = 1;
+		case SILInstruction::MemoryBehavior::MayRead: {
+			outfile 	<< "\t\t +++ [MEM-R]: May read from memory. \n";
+			break;
+		}
+		case SILInstruction::MemoryBehavior::MayWrite: {
+			outfile 	<< "\t\t +++ [MEM-W]: May write to memory. \n";
+			break;
+		}
+		case SILInstruction::MemoryBehavior::MayReadWrite: {
+			outfile 	<< "\t\t +++ [MEM-RW]: May read or write memory. \n";
+			break;
+		}
+		case SILInstruction::MemoryBehavior::MayHaveSideEffects: {
+			outfile 	<< "\t\t +++ [MEM-F]: May have side effects. \n";
+		}
+	}
+	
+	switch (instr.getReleasingBehavior()) {
+		case SILInstruction::ReleasingBehavior::DoesNotRelease: {
+			outfile 	<< "\t\t +++ [REL]: Does not release memory. \n";
+			break;
+		}
+		case SILInstruction::ReleasingBehavior::MayRelease: {
+			outfile 	<< "\t\t +++ [REL]: May release memory. \n";
+			break;
 		}
 	}
 }
 
-// Gets the ValueKind of the SILInstruction then goes through the mega-switch to handle 
-// appropriately.  
-// TODO: currently only returns ValueKind, switch is not descended into functionally
-ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegration &wala) {
-	raw_ostream &outs = llvm::outs();
+// Goes over all operands on the SILInstr and prints them out.
+void printInstrOpInfo(llvm::raw_fd_ostream &outfile, SILInstruction &instr) {
 
+	if (instr.getNumOperands() == 0) {
+		outfile		<< "\t\t *** [OPER]: No Operands." << "\n";
+	} else {
+
+		// Output operand information
+		for (unsigned i = 0; i < instr.getNumOperands(); ++i) {
+			SILValue v = instr.getOperand(i);
+			outfile 	<< "\t\t *** [OPER] #" << i << ": " << v;
+		}
+	}
+}
+
+// The big one - gets the ValueKind of the SILInstruction then goes through the
+// mega-switch to handle appropriately.
+void printInstrValueKindInfo(llvm::raw_fd_ostream &outfile, SILInstruction &instr) {
+
+	//
 	auto instrKind = instr.getKind();
-
 	switch (instrKind) {
 	
 		case ValueKind::SILPHIArgument:
 		case ValueKind::SILFunctionArgument:
 		case ValueKind::SILUndef: {		
-// 			outfile		<< "\t\t << Not an instruction >>" << "\n";
+			outfile		<< "\t\t << Not an instruction >>" << "\n";
 			break;
 		}
 		
-		case ValueKind::AllocBoxInst: {
-// 			outfile		<< "\t\t << AllocBoxInst >>" << "\n";
+		case ValueKind::AllocBoxInst: {		
+			outfile		<< "\t\t << AllocBoxInst >>" << "\n";
 			break;
 		}
 	
 		case ValueKind::ApplyInst: {
 		
-// 			outfile 	<< "\t\t << ApplyInst >>" << "\n";
+			outfile 	<< "\t\t << ApplyInst >>" << "\n";
 		
-			// Cast the instr 
-// 			ApplyInst *castInst = cast<ApplyInst>(&instr);
+			// Cast to ValueKind::ApplyInst 
+// 			ApplyInst *applyInst = cast<ApplyInst>(&instr);
 			
 			// Iterate args and output SILValue
 // 			for (unsigned i = 0; i < applyInst->getNumArguments(); ++i) {
@@ -184,138 +229,72 @@ ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegrati
 		}
 		
 		case ValueKind::PartialApplyInst: {
-// 			outfile		<< "\t\t << PartialApplyInst >>" << "\n";
+			outfile		<< "\t\t << PartialApplyInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::IntegerLiteralInst: {
-// 			outfile		<< "\t\t << IntegerLiteralInst >>" << "\n";
+			outfile		<< "\t\t << IntegerLiteralInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::FloatLiteralInst: {
-// 			outfile		<< "\t\t << FloatLiteralInst >>" << "\n";
+			outfile		<< "\t\t << FloatLiteralInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::StringLiteralInst: {
-
-			// Cast the instr to access methods
-			StringLiteralInst *castInst = cast<StringLiteralInst>(&instr);
-
-			// ValueKind indentifier
- 			outs		<< "\t\t << StringLiteralInst >>" << "\n";
-
- 			// Value: the string data for the literal, in UTF-8.
-			StringRef value = castInst->getValue();
-			outs     << "\t\t\t\t [VAL]: " << value << "\n";
-
-			// Encoding: the desired encoding of the text.
-			string encoding;
-			switch (castInst->getEncoding()) {
-				case StringLiteralInst::Encoding::UTF8: {
-					encoding = "UTF8";
-					break;
-				}
-				case StringLiteralInst::Encoding::UTF16: {
-					encoding = "UTF16";
-					break;
-				}
-				case StringLiteralInst::Encoding::ObjCSelector: {
-					encoding = "ObjCSelector";
-					break;
-				}
-			}
-			outs     << "\t\t\t\t [ENCODING]: " << encoding << "\n";
-
-			// Count: encoding-based length of the string literal in code units.
-			uint64_t codeUnitCount = castInst->getCodeUnitCount();
-			outs     << "\t\t\t\t [COUNT]: " << codeUnitCount << "\n";
-
-			// Call WALA in Java
-			jobject walaConstant = wala.makeConstant(value);
-			wala.print(walaConstant);
+			outfile		<< "\t\t << StringLiteralInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::ConstStringLiteralInst: {
- 			outfile		<< "\t\t << ConstStringLiteralInst >>" << "\n";
-			// Cast the instr to access methods
-			ConstStringLiteralInst *castInst = cast<ConstStringLiteralInst>(&instr);
-			 			// Value: the string data for the literal, in UTF-8.
-			StringRef value = castInst->getValue();
-			outs     << "\t\t\t\t [VAL]: " << value << "\n";
-
-			// Encoding: the desired encoding of the text.
-			string encoding;
-			switch (castInst->getEncoding()) {
-				case StringLiteralInst::Encoding::UTF8: {
-					encoding = "UTF8";
-					break;
-				}
-				case StringLiteralInst::Encoding::UTF16: {
-					encoding = "UTF16";
-					break;
-				}
-				case StringLiteralInst::Encoding::ObjCSelector: {
-					encoding = "ObjCSelector";
-					break;
-				}
-			}
-			outs     << "\t\t\t\t [ENCODING]: " << encoding << "\n";
-
-			// Count: encoding-based length of the string literal in code units.
-			uint64_t codeUnitCount = castInst->getCodeUnitCount();
-			outs     << "\t\t\t\t [COUNT]: " << codeUnitCount << "\n";
-
-			// Call WALA in Java
-			jobject walaConstant = wala.makeConstant(value);
-			wala.print(walaConstant);
+			outfile		<< "\t\t << ConstStringLiteralInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::AllocValueBufferInst: {
-// 			outfile		<< "\t\t << AllocValueBufferInst >>" << "\n";
+			outfile		<< "\t\t << AllocValueBufferInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::ProjectValueBufferInst: {
-// 			outfile		<< "\t\t << ProjectValueBufferInst >>" << "\n";
+			outfile		<< "\t\t << ProjectValueBufferInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::DeallocValueBufferInst: {
-// 			outfile		<< "\t\t << DeallocValueBufferInst >>" << "\n";
+			outfile		<< "\t\t << DeallocValueBufferInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::ProjectBoxInst: {
-// 			outfile		<< "\t\t << ProjectBoxInst >>" << "\n";
+			outfile		<< "\t\t << ProjectBoxInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::ProjectExistentialBoxInst: {
-// 			outfile		<< "\t\t << ProjectExistentialBoxInst >>" << "\n";
+			outfile		<< "\t\t << ProjectExistentialBoxInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::FunctionRefInst: {
 
-			// Cast the instr to access methods
+			// Cast the instr to FunctionRefInst
 			FunctionRefInst *castInst = cast<FunctionRefInst>(&instr);
 
-			// ValueKind identifier
-// 			outfile		<< "\t\t << FunctionRefInst >>" << "\n";
+			// Debug output identifier
+			outfile		<< "\t\t << FunctionRefInst >>" << "\n";
 
 			// Demangled FunctionRef name
-// 			outfile		<< "\t\t === [FUNC] Ref'd: ";
+			outfile		<< "\t\t === [FUNC] Ref'd: ";
 			string funcName = Demangle::demangleSymbolAsString(castInst->getReferencedFunction()->getName());
-// 			outfile		<< 	funcName << "\n";
+			outfile		<< 	funcName << "\n";
 			break;
 		}
 		
 		case ValueKind::BuiltinInst: {
-// 			outfile		<< "\t\t << BuiltinInst >>" << "\n";
+			outfile		<< "\t\t << BuiltinInst >>" << "\n";
 			break;
 		}
 		
@@ -325,7 +304,7 @@ ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegrati
 		case ValueKind::OpenExistentialMetatypeInst:
 		case ValueKind::OpenExistentialRefInst:
 		case ValueKind::OpenExistentialValueInst: {
-// 			outfile		<< "\t\t << OpenExistential[Addr/Box/BoxValue/Metatype/Ref/Value]Inst >>" << "\n";
+			outfile		<< "\t\t << OpenExistential[Addr/Box/BoxValue/Metatype/Ref/Value]Inst >>" << "\n";
 			break;
 		}
 		
@@ -333,52 +312,52 @@ ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegrati
 		// DEFCOUNTING_INSTRUCTION(ID) <see ParseSIL.cpp:2255>
 		
 		case ValueKind::DebugValueInst: {
-// 			outfile		<< "\t\t << DebugValueInst >>" << "\n";
+			outfile		<< "\t\t << DebugValueInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::DebugValueAddrInst: {
-// 			outfile		<< "\t\t << DebugValueAddrInst >>" << "\n";
+			outfile		<< "\t\t << DebugValueAddrInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::UncheckedOwnershipConversionInst: {
-// 			outfile		<< "\t\t << UncheckedOwnershipConversionInst >>" << "\n";
+			outfile		<< "\t\t << UncheckedOwnershipConversionInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::LoadInst: {
-// 			outfile		<< "\t\t << LoadInst >>" << "\n";
+			outfile		<< "\t\t << LoadInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::LoadBorrowInst: {
-// 			outfile		<< "\t\t << LoadBorrowInst >>" << "\n";
+			outfile		<< "\t\t << LoadBorrowInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::BeginBorrowInst: {
-// 			outfile		<< "\t\t << BeginBorrowInst >>" << "\n";
+			outfile		<< "\t\t << BeginBorrowInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::LoadUnownedInst: {
-// 			outfile		<< "\t\t << LoadUnownedInst >>" << "\n";
+			outfile		<< "\t\t << LoadUnownedInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::LoadWeakInst: {
-// 			outfile		<< "\t\t << LoadWeakInst >>" << "\n";
+			outfile		<< "\t\t << LoadWeakInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::MarkDependenceInst: {
-// 			outfile		<< "\t\t << MarkDependenceInst >>" << "\n";
+			outfile		<< "\t\t << MarkDependenceInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::KeyPathInst: {
-// 			outfile		<< "\t\t << KeyPathInst >>" << "\n";
+			outfile		<< "\t\t << KeyPathInst >>" << "\n";
 			break;
 		}
 		
@@ -404,61 +383,61 @@ ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegrati
 		case ValueKind::ConvertFunctionInst:
 		case ValueKind::ObjCExistentialMetatypeToObjectInst:
 		case ValueKind::ObjCMetatypeToObjectInst: {
-// 			outfile		<< "\t\t << Conversion Instruction >>" << "\n";
+			outfile		<< "\t\t << Conversion Instruction >>" << "\n";
   			break;
   		}
   		
   		case ValueKind::PointerToAddressInst: {
-// 			outfile		<< "\t\t << PointerToAddressInst >>" << "\n";
+			outfile		<< "\t\t << PointerToAddressInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::RefToBridgeObjectInst: {
-// 			outfile		<< "\t\t << RefToBridgeObjectInst >>" << "\n";
+			outfile		<< "\t\t << RefToBridgeObjectInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::UnconditionalCheckedCastAddrInst:
 		case ValueKind::CheckedCastAddrBranchInst:
 		case ValueKind::UncheckedRefCastAddrInst: {
-// 			outfile		<< "\t\t << Indirect checked conversion instruction >>" << "\n";
+			outfile		<< "\t\t << Indirect checked conversion instruction >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::UnconditionalCheckedCastValueInst: {
-// 			outfile		<< "\t\t << UnconditionalCheckedCastValueInst >>" << "\n";
+			outfile		<< "\t\t << UnconditionalCheckedCastValueInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::UnconditionalCheckedCastInst:
 		case ValueKind::CheckedCastValueBranchInst:
 		case ValueKind::CheckedCastBranchInst: {
-// 			outfile		<< "\t\t << Checked conversion instruction >>" << "\n";
+			outfile		<< "\t\t << Checked conversion instruction >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::MarkUninitializedInst: {
-// 			outfile		<< "\t\t << MarkUninitializedInst >>" << "\n";
+			outfile		<< "\t\t << MarkUninitializedInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::MarkUninitializedBehaviorInst: {
-// 			outfile		<< "\t\t << MarkUninitializedBehaviorInst >>" << "\n";
+			outfile		<< "\t\t << MarkUninitializedBehaviorInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::MarkFunctionEscapeInst: {
-// 			outfile		<< "\t\t << MarkFunctionEscapeInst >>" << "\n";
+			outfile		<< "\t\t << MarkFunctionEscapeInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::StoreInst: {
-// 			outfile		<< "\t\t << StoreInst >>" << "\n";
+			outfile		<< "\t\t << StoreInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::EndBorrowInst: {
-// 			outfile		<< "\t\t << EndBorrowInst >>" << "\n";
+			outfile		<< "\t\t << EndBorrowInst >>" << "\n";
 			break;
 		}
 		
@@ -466,7 +445,7 @@ ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegrati
 		case ValueKind::BeginUnpairedAccessInst:
 		case ValueKind::EndAccessInst:
 		case ValueKind::EndUnpairedAccessInst: {
-// 			outfile		<< "\t\t << Access Instruction >>" << "\n";
+			outfile		<< "\t\t << Access Instruction >>" << "\n";
 			break;
 		}
 		
@@ -474,430 +453,396 @@ ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegrati
 		case ValueKind::AssignInst:
 		case ValueKind::StoreUnownedInst:
 		case ValueKind::StoreWeakInst: {
-// 			outfile		<< "\t\t << Access Instruction >>" << "\n";
+			outfile		<< "\t\t << Access Instruction >>" << "\n";
 			break;
 		}
 
 		case ValueKind::AllocStackInst: {
-// 			outfile		<< "\t\t << AllocStack Instruction >>" << "\n";
+			outfile		<< "\t\t << AllocStack Instruction >>" << "\n";
 			break;
 		}
 		case ValueKind::MetatypeInst: {		
-// 			outfile		<< "\t\t << MetatypeInst >>" << "\n";
+			outfile		<< "\t\t << MetatypeInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::AllocRefInst:
 		case ValueKind::AllocRefDynamicInst: {
-// 			outfile		<< "\t\t << Alloc[Ref/RefDynamic] Instruction >>" << "\n";
+			outfile		<< "\t\t << Alloc[Ref/RefDynamic] Instruction >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::DeallocStackInst: {		
-// 			outfile		<< "\t\t << DeallocStackInst >>" << "\n";
+			outfile		<< "\t\t << DeallocStackInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::DeallocRefInst: {		
-// 			outfile		<< "\t\t << DeallocRefInst >>" << "\n";
+			outfile		<< "\t\t << DeallocRefInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::DeallocPartialRefInst: {		
-// 			outfile		<< "\t\t << DeallocPartialRefInst >>" << "\n";
+			outfile		<< "\t\t << DeallocPartialRefInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::DeallocBoxInst: {		
-// 			outfile		<< "\t\t << DeallocBoxInst >>" << "\n";
+			outfile		<< "\t\t << DeallocBoxInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::ValueMetatypeInst: 
 		case ValueKind::ExistentialMetatypeInst: {		
-// 			outfile		<< "\t\t << [Value/Existential]MetatypeInst >>" << "\n";
+			outfile		<< "\t\t << [Value/Existential]MetatypeInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::DeallocExistentialBoxInst: {		
-// 			outfile		<< "\t\t << DeallocExistentialBoxInst >>" << "\n";
+			outfile		<< "\t\t << DeallocExistentialBoxInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::TupleInst: {		
-// 			outfile		<< "\t\t << TupleInst >>" << "\n";
+			outfile		<< "\t\t << TupleInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::EnumInst: {		
-// 			outfile		<< "\t\t << EnumInst >>" << "\n";
+			outfile		<< "\t\t << EnumInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::InitEnumDataAddrInst:
 		case ValueKind::UncheckedEnumDataInst:
 		case ValueKind::UncheckedTakeEnumDataAddrInst: {		
-// 			outfile		<< "\t\t << EnumData Instruction >>" << "\n";
+			outfile		<< "\t\t << EnumData Instruction >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::InjectEnumAddrInst: {		
-// 			outfile		<< "\t\t << InjectEnumAddrInst >>" << "\n";
+			outfile		<< "\t\t << InjectEnumAddrInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::TupleElementAddrInst:
 		case ValueKind::TupleExtractInst: {		
-// 			outfile		<< "\t\t << Tuple Instruction >>" << "\n";
+			outfile		<< "\t\t << Tuple Instruction >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::ReturnInst: {		
-// 			outfile		<< "\t\t << ReturnInst >>" << "\n";
+			outfile		<< "\t\t << ReturnInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::ThrowInst: {		
-// 			outfile		<< "\t\t << ThrowInst >>" << "\n";
+			outfile		<< "\t\t << ThrowInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::BranchInst: {		
-// 			outfile		<< "\t\t << BranchInst >>" << "\n";
+			outfile		<< "\t\t << BranchInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::CondBranchInst: {		
-// 			outfile		<< "\t\t << CondBranchInst >>" << "\n";
+			outfile		<< "\t\t << CondBranchInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::UnreachableInst: {		
-// 			outfile		<< "\t\t << UnreachableInst >>" << "\n";
+			outfile		<< "\t\t << UnreachableInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::ClassMethodInst:
 		case ValueKind::SuperMethodInst:
 		case ValueKind::DynamicMethodInst: {		
-// 			outfile		<< "\t\t << DeallocRefInst >>" << "\n";
+			outfile		<< "\t\t << DeallocRefInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::WitnessMethodInst: {		
-// 			outfile		<< "\t\t << WitnessMethodInst >>" << "\n";
+			outfile		<< "\t\t << WitnessMethodInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::CopyAddrInst: {		
-// 			outfile		<< "\t\t << CopyAddrInst >>" << "\n";
+			outfile		<< "\t\t << CopyAddrInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::BindMemoryInst: {		
-// 			outfile		<< "\t\t << BindMemoryInst >>" << "\n";
+			outfile		<< "\t\t << BindMemoryInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::StructInst: {		
-// 			outfile		<< "\t\t << StructInst >>" << "\n";
+			outfile		<< "\t\t << StructInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::StructElementAddrInst:
 		case ValueKind::StructExtractInst: {		
-// 			outfile		<< "\t\t << Struct Instruction >>" << "\n";
+			outfile		<< "\t\t << Struct Instruction >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::RefElementAddrInst: {		
-// 			outfile		<< "\t\t << RefElementAddrInst >>" << "\n";
+			outfile		<< "\t\t << RefElementAddrInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::RefTailAddrInst: {		
-// 			outfile		<< "\t\t << RefTailAddrInst >>" << "\n";
+			outfile		<< "\t\t << RefTailAddrInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::IsNonnullInst: {		
-// 			outfile		<< "\t\t << IsNonnullInst >>" << "\n";
+			outfile		<< "\t\t << IsNonnullInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::IndexAddrInst: {		
-// 			outfile		<< "\t\t << IndexAddrInst >>" << "\n";
+			outfile		<< "\t\t << IndexAddrInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::TailAddrInst: {		
-// 			outfile		<< "\t\t << TailAddrInst >>" << "\n";
+			outfile		<< "\t\t << TailAddrInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::IndexRawPointerInst: {		
-// 			outfile		<< "\t\t << IndexRawPointerInst >>" << "\n";
+			outfile		<< "\t\t << IndexRawPointerInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::ObjCProtocolInst: {		
-// 			outfile		<< "\t\t << ObjCProtocolInst >>" << "\n";
+			outfile		<< "\t\t << ObjCProtocolInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::AllocGlobalInst: {		
-// 			outfile		<< "\t\t << AllocGlobalInst >>" << "\n";
+			outfile		<< "\t\t << AllocGlobalInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::GlobalAddrInst: {		
-// 			outfile		<< "\t\t << GlobalAddrInst >>" << "\n";
+			outfile		<< "\t\t << GlobalAddrInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::SelectEnumInst: {		
-// 			outfile		<< "\t\t << SelectEnumInst >>" << "\n";
+			outfile		<< "\t\t << SelectEnumInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::SelectEnumAddrInst: {		
-// 			outfile		<< "\t\t << DeallocRefInst >>" << "\n";
+			outfile		<< "\t\t << DeallocRefInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::SwitchEnumInst: {		
-// 			outfile		<< "\t\t << SwitchEnumInst >>" << "\n";
+			outfile		<< "\t\t << SwitchEnumInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::SwitchEnumAddrInst: {		
-// 			outfile		<< "\t\t << SwitchEnumAddrInst >>" << "\n";
+			outfile		<< "\t\t << SwitchEnumAddrInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::SwitchValueInst: {		
-// 			outfile		<< "\t\t << SwitchValueInst >>" << "\n";
+			outfile		<< "\t\t << SwitchValueInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::SelectValueInst: {		
-// 			outfile		<< "\t\t << SelectValueInst >>" << "\n";
+			outfile		<< "\t\t << SelectValueInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::DeinitExistentialAddrInst: {		
-// 			outfile		<< "\t\t << DeinitExistentialAddrInst >>" << "\n";
+			outfile		<< "\t\t << DeinitExistentialAddrInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::DeinitExistentialValueInst: {		
-// 			outfile		<< "\t\t << DeinitExistentialValueInst >>" << "\n";
+			outfile		<< "\t\t << DeinitExistentialValueInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::InitExistentialAddrInst: {		
-// 			outfile		<< "\t\t << InitExistentialAddrInst >>" << "\n";
+			outfile		<< "\t\t << InitExistentialAddrInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::InitExistentialValueInst: {		
-// 			outfile		<< "\t\t << InitExistentialValueInst >>" << "\n";
+			outfile		<< "\t\t << InitExistentialValueInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::AllocExistentialBoxInst: {		
-// 			outfile		<< "\t\t << AllocExistentialBoxInst >>" << "\n";
+			outfile		<< "\t\t << AllocExistentialBoxInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::InitExistentialRefInst: {		
-// 			outfile		<< "\t\t << InitExistentialRefInst >>" << "\n";
+			outfile		<< "\t\t << InitExistentialRefInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::InitExistentialMetatypeInst: {		
-// 			outfile		<< "\t\t << InitExistentialMetatypeInst >>" << "\n";
+			outfile		<< "\t\t << InitExistentialMetatypeInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::DynamicMethodBranchInst: {		
-// 			outfile		<< "\t\t << DynamicMethodBranchInst >>" << "\n";
+			outfile		<< "\t\t << DynamicMethodBranchInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::ProjectBlockStorageInst: {		
-// 			outfile		<< "\t\t << ProjectBlockStorageInst >>" << "\n";
+			outfile		<< "\t\t << ProjectBlockStorageInst >>" << "\n";
 			break;
 		}
 		
 		case ValueKind::InitBlockStorageHeaderInst: {		
-// 			outfile		<< "\t\t << InitBlockStorageHeaderInst >>" << "\n";
+			outfile		<< "\t\t << InitBlockStorageHeaderInst >>" << "\n";
 			break;
 		}		
 		
 		default: {
-// 			outfile 	<< "\t\t\t xxxxx Not a handled inst type \n";
+			outfile 	<< "\t\t\t xxxxx Not a handled inst type \n";
 			break;
 		}
 	}
-	
-	return instrKind;
 }
 
-// Main WALAWalker implementation.  Iterates over SILModule -> SILFunctions -> 
-// SILBasicBlocks -> SILInstructions and extracts all the important information, gathers
-// it in InstrInfo, and passes it on to perInstruction().  The logic for handling each
-// instruction should be placed in perInstruction(), and analyzeSILModule() should be
-// used to create the data structures to perInstruction().
-void WALAWalker::analyzeSILModule(SILModule &SM) {
+// Handles all the SILInstruction printing and management.
+void printSILInstrInfo(llvm::raw_fd_ostream &outfile,
+	SILInstruction &instr, SourceManager &srcMgr) {
+		
+	printInstrDebugLocInfo(outfile, instr, srcMgr);
+	printInstrMemoryReleasingInfo(outfile, instr);
+	printInstrOpInfo(outfile, instr);
+}
 
-	// Module Information container
-	ModuleInfo modInfo;
+// Break down SILModule -> SILFunction -> SILBasicBlock -> SILInstruction -> SILValue
+void getModBreakdown(llvm::raw_fd_ostream &outfile,
+	SILModule &SM, SourceManager &srcMgr) {
 
-	// Entry point file:
-	modInfo.sourcefile = SM.getSwiftModule()->getModuleFilename();
-	if (modInfo.sourcefile.empty() ) { modInfo.sourcefile = "N/A"; }
-
-	// WALA-Swift Integration
-	char *walaHome = getenv("WALA_HOME");
-	char *swiftWalaHome = getenv("SWIFT_WALA_HOME");
-	char classpath[1024];
-	sprintf(classpath, "%s/com.ibm.wala.util/target/classes:%s/com.ibm.wala.shrike/target/classes:%s/com.ibm.wala.core/target/classes:%s/com.ibm.wala.cast/target/classes:%s/com.ibm.wala.cast.swift/bin", walaHome, walaHome, walaHome, walaHome, swiftWalaHome);
-	
-	const char *file_name = strdup(modInfo.sourcefile.str().c_str());
-	
-	JNIEnv *java_env = launch(classpath);
-	TRY(cpp_ex, java_env)		
-		WALAIntegration wala(java_env, cpp_ex, file_name);
-		jobject x = wala->makeConstant(3.7);
-		wala.print(x);
-	
 	// Iterate over SILFunctions
 	for (auto func = SM.begin(); func != SM.end(); ++func) {
 	
-		FunctionInfo funcInfo = getSILFunctionInfo(*func);
+		printSILFunctionInfo(outfile, *func);
 	
 		// Iterate over SILBasicBlocks
 		for (auto bb = func->begin(); bb != func->end(); ++bb) {
 		
+			printSILBasicBlockInfo(outfile, *bb);
 			unsigned i = 0; 	// for Instruction count
 			
-			// Iterate over SILInstructions
 			for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
-				
-				SILPrintContext Ctx(llvm::outs());
-	
-				InstrInfo instrInfo;
-				getInstrSrcInfo(*instr, &instrInfo);
-				
-				instrInfo.memBehavior = instr->getMemoryBehavior();
-				instrInfo.relBehavior = instr->getReleasingBehavior();
+			
+				outfile 	<< "\t ----> [INSTR] #" << i << ":";
+				printInstrValueKindInfo(outfile, *instr);
 
-				instrInfo.num = i;
-				instrInfo.modInfo = &modInfo;
-				instrInfo.funcInfo = &funcInfo;
-				instrInfo.instrKind = getInstrValueKindInfo(*instr, wala);
-
-				// Get each operand <SILValue> and save it in a vector; get instr ID
-				ArrayRef<Operand> ops = instr->getAllOperands();
-				std::vector<SILValue> vals;				
-				for (auto op = ops.begin(); op != ops.end(); ++op) {
-					instrInfo.id = Ctx.getID(op->get());
-					vals.push_back(op->get());
-				}
-				
-				// Store vector as ArrayRef<SILValue> in instrInfo
-				instrInfo.ops = llvm::ArrayRef<SILValue>(vals);
-				
-				// Pass instrInfo to perInstruction, where actions can be taken
-				perInstruction(&instrInfo, wala);
-				
+				printSILInstrInfo(outfile, *instr, srcMgr);
+				outfile 	<< "\n";
 				++i;
 			
-			}	// end SILInstruction
-		}	// end SILBasicBlock
-	}	// end SILFunction
-	
-	START_CATCH_BLOCK()
-		if (java_env->ExceptionCheck()) {
-			jthrowable real_ex = java_env->ExceptionOccurred();
-			print_object(java_env, real_ex);
+			}
+			
+			// End SILBasicBlock block
+			outfile 	<< "\n";
 		}
-	END_CATCH_BLOCK()
+		
+		// End SILFunction block
+		outfile 	<< "\n";
+	}
 }
 
-// Actions to take on a per-instruction basis.  instrInfo contains all the relevant info
-// for the current instruction in the iteration.
-void WALAWalker::perInstruction(InstrInfo *instrInfo, WALAIntegration &wala) {
+// Main WALAWalker implementation.
+void WALAWalker::analyzeSILModule(SILModule &SM) {
 
-	raw_ostream &outs = llvm::outs();
+	// Modes and settings 
+	bool outputSIL = true;		// Whether or not to create a full SIL dump to file
+
+	// Output configurations
+	raw_ostream &outstream = llvm::outs();
 	
-	wala.print(wala.makePosition(
-		instrInfo->startLine, instrInfo->startCol, 
-		instrInfo->endLine, instrInfo->endCol)
-	);
-
-	if (this->printStdout) {
-
-		outs << "\t [INSTR] #" << instrInfo->num;
-		outs << ", [OPNUM] " << instrInfo->id << "\n";
-		outs << "\t --> File: " << instrInfo->Filename << "\n";
-
-		// Has no location information
-		if (instrInfo->srcType == -1) {
-			outs << "\t **** No source information. \n";
-			
-		// Has only start information
-		} else {
-			outs << "\t ++++ Start - Line " << instrInfo->startLine << ":" 
-				<< instrInfo->startCol << "\n";
-		}
-
-		// Has end information
-		if (instrInfo->srcType == 0) {
-			outs << "\t ---- End - Line " << instrInfo->endLine;
-			outs << ":" << instrInfo->endCol << "\n";
-		}
-		
-		// Memory Behavior
-		switch (instrInfo->memBehavior) {
-			case SILInstruction::MemoryBehavior::None: {
-				break;
-			}
-			case SILInstruction::MemoryBehavior::MayRead: {
-				outs	<< "\t\t +++ [MEM-R]: May read from memory. \n";
-				break;
-			}
-			case SILInstruction::MemoryBehavior::MayWrite: {
-				outs 	<< "\t\t +++ [MEM-W]: May write to memory. \n";
-				break;
-			}
-			case SILInstruction::MemoryBehavior::MayReadWrite: {
-				outs 	<< "\t\t +++ [MEM-RW]: May read or write memory. \n";
-				break;
-			}
-			case SILInstruction::MemoryBehavior::MayHaveSideEffects: {
-				outs 	<< "\t\t +++ [MEM-F]: May have side effects. \n";
-			}
-		}
-		
-		// Releasing Behavior
-		switch (instrInfo->relBehavior) {
-			case SILInstruction::ReleasingBehavior::DoesNotRelease: {
-				outs 	<< "\t\t [REL]: Does not release memory. \n";
-				break;
-			}
-			case SILInstruction::ReleasingBehavior::MayRelease: {
-				outs 	<< "\t\t [REL]: May release memory. \n";
-				break;
-			}
-		}
+	// SILModule-derived information
+	SourceManager &srcMgr = SM.getSourceManager();
+	string filenamePath = SM.getSwiftModule()->getModuleFilename().str();
 	
-		// Show operands, if they exist
-		for (auto op = instrInfo->ops.begin(); op != instrInfo->ops.end(); ++op) {
-			outs << "\t\t [OPER]: " << *op;
-		}
+	// Get output filename
+	char outputFilename[1024];
+	getOutputFilename(outstream, filenamePath, outputFilename);
+	
+	// Open outfile as llvm::raw_fd_ostream for writing
+	std::error_code EC;
+	llvm::raw_fd_ostream outfile(outputFilename, EC, llvm::sys::fs::F_None);
+	
+	if (EC) {
+      llvm::errs() << "[FILE]: Error opening  '" << outputFilename << "': "
+                   << EC.message() << '\n';
+	}	
+	
+	// Print and file-output source path information
+	printSourceFilepath(outfile, filenamePath);
 
-		outs << "\n";	
-	}
+	// Dump SIL for SILModule to output file.
+	if (outputSIL) { printSIL(outputFilename, SM); }
+	outstream << "\n";
+	
+	// Iterate SILModule -> SILFunction -> SILBasicBlock -> SILInstruction
+	getModBreakdown(outfile, SM, srcMgr);
+	
+	// Close out the file
+	outfile.close();
+}
+
+void WALAWalker::foo() {
+  char *walaHome = getenv("WALA_HOME");
+  char *swiftWalaHome = getenv("SWIFT_WALA_HOME");
+  char classpath[1024];
+  sprintf(classpath, "%s/com.ibm.wala.util/target/classes:%s/com.ibm.wala.shrike/target/classes:%s/com.ibm.wala.core/target/classes:%s/com.ibm.wala.cast/target/classes:%s/com.ibm.wala.cast.swift/bin", walaHome, walaHome, walaHome, walaHome, swiftWalaHome);
+
+  JNIEnv *java_env = launch(classpath);
+  TRY(cpp_ex, java_env)
+
+      jclass xlatorCls = java_env->FindClass("com/ibm/wala/cast/swift/SwiftToCAstTranslator");
+      THROW_ANY_EXCEPTION(cpp_ex);
+
+      jmethodID xlatorInit = java_env->GetMethodID(xlatorCls, "<init>", "()V");
+      THROW_ANY_EXCEPTION(cpp_ex);
+
+      jobject xlator = java_env->NewObject(xlatorCls, xlatorInit);
+      THROW_ANY_EXCEPTION(cpp_ex);
+
+      CAstWrapper CAst(java_env, cpp_ex, xlator);
+      THROW_ANY_EXCEPTION(cpp_ex);
+
+      jobject x = CAst.makeConstant(3.7);
+
+      print_object(java_env, x);
+      THROW_ANY_EXCEPTION(cpp_ex);
+      
+  START_CATCH_BLOCK()
+
+      if (java_env->ExceptionCheck()) {
+	  jthrowable real_ex = java_env->ExceptionOccurred();
+	  
+	  print_object(java_env, real_ex);
+      }
+  
+  END_CATCH_BLOCK()
+}
+
+// Test function for breaking down SILModule SM and exploring integration
+void WALAWalker::print(SILModule &SM) {
+	analyzeSILModule(SM);
 }

@@ -789,10 +789,6 @@ static bool performCompile(CompilerInstance &Instance,
     }
   }
 
-  // WALAWalker Integration
-  WALAWalker ww;
-  ww.analyzeSILModule(*SM);
-  // End WALAWalker Integration
 
   if (observer) {
     observer->performedSILGeneration(*SM);
@@ -845,6 +841,8 @@ static bool performCompile(CompilerInstance &Instance,
       return true;
   }
 
+// WALA: Possible hook point
+
   // Now if we are asked to link all, link all.
   if (Invocation.getSILOptions().LinkMode == SILOptions::LinkAll)
     performSILLinking(SM.get(), true);
@@ -878,6 +876,11 @@ static bool performCompile(CompilerInstance &Instance,
       runSILPassesForOnone(*SM);
     }
   }
+  
+  // WALAWalker Integration
+  WALAWalker ww;
+  ww.analyzeSILModule(*SM);
+  // End WALAWalker Integration
 
   if (observer) {
     observer->performedSILOptimization(*SM);

@@ -1,4 +1,4 @@
-//===--- WALAWalker.h - frontend utility methods ----------------*- C++ -*-===//
+//===--- WALAWaler.h - frontend utility methods ------------------*- C++ -*-===//
 //
 // This source file is part of the Swift.org open source project
 //
@@ -15,15 +15,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <iostream>
-#include <stdio.h>
-#include <string>
-
 #include "swift/SIL/SILModule.h"
 #include "llvm/Support/FileSystem.h"
-
-#include "Exceptions.h"
-#include "CAstWrapper.h"
 
 #ifndef SWIFT_WALAWALKER_H
 #define SWIFT_WALAWALKER_H
@@ -31,83 +24,17 @@
 //TODO: do this after silgen
 //and possibly the "mandatory optimization pipeline"
 
-using std::string;
-
 namespace swift {
 
-class WALAIntegration {
-private:
-	JNIEnv *java_env;
-	Exceptions &cpp_ex;
-	jobject xlator;
-	CAstWrapper *CAst;
-
-public:
-	CAstWrapper *operator->();
-	
-	void print(jobject obj);
-	
-	jobject makePosition(int, int, int, int);
-	jobject makeConstant(string value);
-	
-	WALAIntegration(JNIEnv *, Exceptions &, const char *);
-};
-
-class WALAWalker {
-
-public:
-
-	struct ModuleInfo {
-		StringRef sourcefile;
-	};
-
-	struct FunctionInfo {
-		StringRef name;
-		StringRef demangled;
-	};
-	
-	struct InstrInfo {
-		unsigned num;
-		SILPrintContext::ID id;
-		ValueKind instrKind;
-		
-		SILInstruction::MemoryBehavior memBehavior;
-		SILInstruction::ReleasingBehavior relBehavior;
-
-		short srcType;
-		string Filename;
-		unsigned startLine;
-		unsigned startCol;
-		unsigned endLine;
-		unsigned endCol;
-	
-		ArrayRef<SILValue> ops;
-		WALAWalker::ModuleInfo *modInfo;
-		WALAWalker::FunctionInfo *funcInfo;
-	};
-
-private:
-	bool printStdout = false;
-// 	llvm::raw_fd_ostream &outfile;
-	
-	// Gets the mangled and demangled SILFunction and returns in a FunctionInfo.
-	WALAWalker::FunctionInfo getSILFunctionInfo(SILFunction &func);
-	
-	// Gets the sourcefile, start line/col, end line/col, and writes it to the 
-	// InstrInfo that is passed in.
-	void getInstrSrcInfo(SILInstruction &instr, WALAWalker::InstrInfo *instrInfo);
-	
-	// The big one - gets the ValueKind of the SILInstruction then goes 			
-	// through the mega-switch to cast and handle each appropriately.
-	ValueKind getInstrValueKindInfo(SILInstruction &instr, WALAIntegration &wala);
-
-	// Do something per instruction
-	void perInstruction(WALAWalker::InstrInfo *instrInfo, WALAIntegration &);
+    class WALAWalker {
+    private:
+    	
+    public:
+        void foo();        
+        void print(SILModule &SM);
+        void analyzeSILModule(SILModule &SM);
+    };
     
-public:
-	void analyzeSILModule(SILModule &SM);
-};
-    
-} // end namespace swift
+}
 
 #endif
