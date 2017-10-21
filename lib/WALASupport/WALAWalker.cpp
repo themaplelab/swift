@@ -181,14 +181,16 @@ void printInstrMemoryReleasingInfo(llvm::raw_fd_ostream &outfile, SILInstruction
 // Goes over all operands on the SILInstr and prints them out.
 void printInstrOpInfo(llvm::raw_fd_ostream &outfile, SILInstruction &instr) {
 
+
 	if (instr.getNumOperands() == 0) {
 		outfile		<< "\t\t *** [OPER]: No Operands." << "\n";
 	} else {
 
+    ArrayRef<Operand> ops = instr.getAllOperands();
+
 		// Output operand information
-		for (unsigned i = 0; i < instr.getNumOperands(); ++i) {
-			SILValue v = instr.getOperand(i);
-			outfile 	<< "\t\t *** [OPER] #" << i << ": " << v;
+		for (auto op = ops.begin(); op < ops.end(); ++op) {
+			outfile 	<< "\t\t *** [OPER] @ " << &(*(op->get())) << ": " << op->get();
 		}
 	}
 }
@@ -730,6 +732,12 @@ void printSILInstrInfo(llvm::raw_fd_ostream &outfile,
 	printInstrOpInfo(outfile, instr);
 }
 
+void printASTNodeInfo(llvm::raw_fd_ostream &outfile, SILInstruction &instr) {
+
+  outfile <<    "\t\t [ASTNode: " << instr.getLoc().isASTNode() << "]\n";
+
+}
+
 // Break down SILModule -> SILFunction -> SILBasicBlock -> SILInstruction -> SILValue
 void getModBreakdown(llvm::raw_fd_ostream &outfile,
 	SILModule &SM, SourceManager &srcMgr) {
@@ -745,10 +753,13 @@ void getModBreakdown(llvm::raw_fd_ostream &outfile,
 			printSILBasicBlockInfo(outfile, *bb);
 			unsigned i = 0; 	// for Instruction count
 			
+// 			outfile << "DEBUG: " << bb->begin() << " | " << bb->end() << "\n";
+			
 			for (auto instr = bb->begin(); instr != bb->end(); ++instr) {
 			
-				outfile 	<< "\t ----> [INSTR] #" << i << ":";
+				outfile 	<< "\t ----> [INSTR] #" << i << " @ " << &(*instr) << ":";
 				printInstrValueKindInfo(outfile, *instr);
+				printASTNodeInfo(outfile, *instr);
 
 				printSILInstrInfo(outfile, *instr, srcMgr);
 				outfile 	<< "\n";

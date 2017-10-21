@@ -789,6 +789,10 @@ static bool performCompile(CompilerInstance &Instance,
     }
   }
 
+  // WALAWalker Integration - Raw SIL
+  WALAWalker ww;
+  ww.analyzeSILModule(*SM);
+  // End WALAWalker Integration
 
   if (observer) {
     observer->performedSILGeneration(*SM);
@@ -877,9 +881,9 @@ static bool performCompile(CompilerInstance &Instance,
     }
   }
   
-  // WALAWalker Integration
-  WALAWalker ww;
-  ww.analyzeSILModule(*SM);
+  // WALAWalker Integration - Canonical
+//   WALAWalker ww;
+//   ww.analyzeSILModule(*SM);
   // End WALAWalker Integration
 
   if (observer) {
