@@ -59,6 +59,7 @@
 #include "swift/SILOptimizer/PassManager/Passes.h"
 #include "swift/Syntax/Serialization/SyntaxSerialization.h"
 #include "swift/Syntax/SyntaxNodes.h"
+#include "swift/WALASupport/WALAWalker.h"
 
 // FIXME: We're just using CompilerInstance::createOutputFile.
 // This API should be sunk down to LLVM.
@@ -805,6 +806,11 @@ static bool performCompile(CompilerInstance &Instance,
                                 true);
     }
   }
+
+  // WALAWalker Integration
+  WALAWalker ww;
+  ww.analyzeSILModule(*SM);
+  // End WALAWalker Integration
 
   if (observer) {
     observer->performedSILGeneration(*SM);

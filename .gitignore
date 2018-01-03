@@ -24,6 +24,9 @@
 #==============================================================================#
 cscope.files
 cscope.out
+add
+add.swift
+swiftc
 
 #==============================================================================#
 # Directories to ignore (do not add trailing '/'s, they skip symlinks).
@@ -53,3 +56,12 @@ compile_commands.json
 SortedCFDatabase.def
 htmlcov
 .coverage
+
+
+
+#
+#Symlink to the swiftc script
+swiftc
+
+testfiles/lucidDreamsTests/model/temp*.swift
+
