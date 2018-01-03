@@ -75,7 +75,7 @@ public:
 	struct InstrInfo {
 		unsigned num;
 		SILPrintContext::ID id;
-		ValueKind instrKind;
+		SILInstructionKind instrKind;
 		
 		SILInstruction::MemoryBehavior memBehavior;
 		SILInstruction::ReleasingBehavior relBehavior;
@@ -107,7 +107,7 @@ private:
 	
 	// The big one - gets the ValueKind of the SILInstruction then goes 			
 	// through the mega-switch to cast and handle each appropriately.
-	ValueKind getInstrValueKindInfo(SILInstruction &instr, WALAIntegration &wala, 
+	SILInstructionKind getInstrValueKindInfo(SILInstruction &instr, WALAIntegration &wala, 
 									unordered_map<void*, jobject>* nodeMap, list<jobject>* nodeList,
 									SymbolTable* symbolTable, BasicBlockLabeller* labeller);
 

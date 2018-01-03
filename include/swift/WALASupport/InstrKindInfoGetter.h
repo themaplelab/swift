@@ -18,7 +18,7 @@ public:
 						SymbolTable* symbolTable, BasicBlockLabeller* labeller,
 						raw_ostream* outs = NULL);
 	
-	ValueKind get();
+	SILInstructionKind get();
 private:
 	// member variables
 	SILInstruction* instr;

@@ -146,7 +146,7 @@ void WALAWalker::getInstrSrcInfo(SILInstruction &instr, InstrInfo *instrInfo) {
 // Gets the ValueKind of the SILInstruction then goes through the mega-switch to handle 
 // appropriately.  
 // TODO: currently only returns ValueKind, switch is not descended into functionally
-ValueKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegration &wala, 
+SILInstructionKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegration &wala, 
 											unordered_map<void*, jobject>* nodeMap, list<jobject>* nodeList,
 											SymbolTable* symbolTable, BasicBlockLabeller* labeller) {
 
