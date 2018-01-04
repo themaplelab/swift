@@ -485,704 +485,715 @@ jobject InstrKindInfoGetter::handleAssignInst(){
 
 SILInstructionKind InstrKindInfoGetter::get() {
 	SILInstructionKind instrKind = instr->getKind();
-// 	jobject node = nullptr;
-// 
-// 	switch (instrKind) {
-// 		
-// // 		case SILInstructionKind::SILPHIArgument:
-// // 		case SILInstructionKind::SILFunctionArgument:
-// // 		case SILInstructionKind::SILUndef: {		
-// // 			*outs << "<< Not an instruction >>" << "\n";
-// // 			break;
-// // 		}
-// 		
-// 		case SILInstructionKind::AllocBoxInst: {
-// 			*outs << "<< AllocBoxInst >>" << "\n";
-// 			AllocBoxInst *castInst = cast<AllocBoxInst>(instr);
-// 
-// 			SILDebugVariable info = castInst->getVarInfo();
-// 			unsigned argNo = info.ArgNo;
-// 
-// 			VarDecl *decl = castInst->getDecl();
-// 			StringRef varName = decl->getNameStr();
-// 			*outs << "[Arg]#" << argNo << ":" << varName << "\n";
-// 			symbolTable->insert(castInst, varName);
-// 			break;
-// 		}
-// 	
-// 		case SILInstructionKind::ApplyInst: {
-// 			node = handleApplyInst();
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::PartialApplyInst: {
-// 			*outs << "<< PartialApplyInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::IntegerLiteralInst: {
-// 			*outs << "<< IntegerLiteralInst >>" << "\n";
-// 			IntegerLiteralInst* castInst = cast<IntegerLiteralInst>(instr);
-// 			APInt value = castInst->getValue();
-// 			node = (*wala)->makeConstant((int)value.getSExtValue());
-// 			nodeMap->insert(std::make_pair(castInst, node));
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::FloatLiteralInst: {
-// 			*outs << "<< FloatLiteralInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::StringLiteralInst: {
-// 			node = handleStringLiteralInst();
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::ConstStringLiteralInst: {
-// 			node = handleConstStringLiteralInst();
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::AllocValueBufferInst: {
-// 			*outs << "<< AllocValueBufferInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::ProjectValueBufferInst: {
-// 			*outs << "<< ProjectValueBufferInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::DeallocValueBufferInst: {
-// 			*outs << "<< DeallocValueBufferInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::ProjectBoxInst: {
-// 			*outs << "<< ProjectBoxInst >>" << "\n";
-// 			ProjectBoxInst *castInst = cast<ProjectBoxInst>(instr);
-// 			//*outs << "\t\t [addr]:" << castInst->getOperand().getOpaqueValue() << "\n";
-// 
-// 			if (symbolTable->has(castInst->getOperand().getOpaqueValue())) {
-// 				// this is a variable
-// 				symbolTable->duplicate(castInst, symbolTable->get(castInst->getOperand().getOpaqueValue()).c_str());
-// 			}			
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::ProjectExistentialBoxInst: {
-// 			*outs << "<< ProjectExistentialBoxInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::FunctionRefInst: {
-// 			node = handleFunctionRefInst();
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::BuiltinInst: {
-// 			*outs << "<< BuiltinInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::OpenExistentialAddrInst:
-// 		case SILInstructionKind::OpenExistentialBoxInst:
-// 		case SILInstructionKind::OpenExistentialBoxValueInst:
-// 		case SILInstructionKind::OpenExistentialMetatypeInst:
-// 		case SILInstructionKind::OpenExistentialRefInst:
-// 		case SILInstructionKind::OpenExistentialValueInst: {
-// 			*outs << "<< OpenExistential[Addr/Box/BoxValue/Metatype/Ref/Value]Inst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		// UNARY_INSTRUCTION(ID) <see ParseSIL.cpp:2248>
-// 		// DEFCOUNTING_INSTRUCTION(ID) <see ParseSIL.cpp:2255>
-// 		
-// 		case SILInstructionKind::DebugValueInst: {
-// 			DebugValueInst *castInst = cast<DebugValueInst>(instr);
-// 
-// 			SILDebugVariable info = castInst->getVarInfo();
-// 			unsigned argNo = info.ArgNo;
-// 
-// 			if (outs != NULL) {
-// 				*outs << "<< DebugValueInst >>" << "\n";
-// 				*outs << argNo << "\n";
-// 			}
-// 
-// 			VarDecl *decl = castInst->getDecl();
-// 			if (decl != NULL) {
-// 				string varName = decl->getNameStr();
-// 				SILBasicBlock *parentBB = castInst->getParent();
-// 				
-// 				SILArgument *argument = NULL;
-// 
-// 				if (argNo >= 1) {
-// 					argument = parentBB->getArgument(argNo - 1);
-// 					// variable declaration
-// 					symbolTable->insert(argument, varName);
-// 				}
-// 
-// 				if (outs != NULL) {
-// 					*outs << "\t\t[addr of arg]:" << argument << "\n";
-// 				}
-// 			}
-// 			*outs << "\t\t[addr of arg]:" << castInst->getOperand().getOpaqueValue() << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::DebugValueAddrInst: {
-// 			*outs << "<< DebugValueAddrInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::UncheckedOwnershipConversionInst: {
-// 			*outs << "<< UncheckedOwnershipConversionInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::LoadInst: {
-// 			*outs << "<< LoadInst >>" << "\n";
-// 			LoadInst *castInst = cast<LoadInst>(instr);
-// 			*outs << "\t\t [name]:" << (castInst->getOperand()).getOpaqueValue() << "\n";
-// 			node = findAndRemoveCAstNode((castInst->getOperand()).getOpaqueValue());
-// 
-// 			nodeMap->insert(std::make_pair(castInst, node));
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::LoadBorrowInst: {
-// 			*outs << "<< LoadBorrowInst >>" << "\n";
-// 			LoadBorrowInst *castInst = cast<LoadBorrowInst>(instr);
-// 			*outs << "\t\t [name]:" << castInst->getOperand() << "\n";
-// 			*outs << "\t\t [addr]:" << castInst->getOperand().getOpaqueValue() << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::BeginBorrowInst: {
-// 			*outs << "<< BeginBorrowInst >>" << "\n";
-// 			BeginBorrowInst *castInst = cast<BeginBorrowInst>(instr);
-// 			//*outs << "\t\t [addr]:" << castInst->getOperand().getOpaqueValue() << "\n";
-// 
-// 			node = findAndRemoveCAstNode(castInst->getOperand().getOpaqueValue());
-// 
-// 			nodeMap->insert(std::make_pair(castInst, node));
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::LoadUnownedInst: {
-// 			*outs << "<< LoadUnownedInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::LoadWeakInst: {
-// 			*outs << "<< LoadWeakInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::MarkDependenceInst: {
-// 			*outs << "<< MarkDependenceInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::KeyPathInst: {
-// 			*outs << "<< KeyPathInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::UncheckedRefCastInst:
-// 		case SILInstructionKind::UncheckedAddrCastInst:
-// 		case SILInstructionKind::UncheckedTrivialBitCastInst:
-// 		case SILInstructionKind::UncheckedBitwiseCastInst:
-// 		case SILInstructionKind::UpcastInst:
-// 		case SILInstructionKind::AddressToPointerInst:
-// 		case SILInstructionKind::BridgeObjectToRefInst:
-// 		case SILInstructionKind::BridgeObjectToWordInst:
-// 		case SILInstructionKind::RefToRawPointerInst:
-// 		case SILInstructionKind::RawPointerToRefInst:
-// 		case SILInstructionKind::RefToUnownedInst:
-// 		case SILInstructionKind::UnownedToRefInst:
-// 		case SILInstructionKind::RefToUnmanagedInst:
-// 		case SILInstructionKind::UnmanagedToRefInst:
-// 		case SILInstructionKind::ThinFunctionToPointerInst:
-// 		case SILInstructionKind::PointerToThinFunctionInst:
-// 		case SILInstructionKind::ThickToObjCMetatypeInst:
-// 		case SILInstructionKind::ObjCToThickMetatypeInst:
-// 		case SILInstructionKind::ConvertFunctionInst:
-// 		case SILInstructionKind::ObjCExistentialMetatypeToObjectInst:
-// 		case SILInstructionKind::ObjCMetatypeToObjectInst: {
-// 			*outs << "<< Conversion Instruction >>" << "\n";
-//   			break;
-//   		}
-//   		
-// 		case SILInstructionKind::ThinToThickFunctionInst: {
-// 
-// 			// SILInstructionKind identifier
-// 			if (outs != NULL) {
-// 				*outs << "<< ThinToThickFunctionInst >>" << "\n";
-// 			}
-// 
-// 			// Cast the instr to access methods
-// 			ThinToThickFunctionInst *castInst = cast<ThinToThickFunctionInst>(instr);
-// 
-// 			if (outs != NULL) {
-// 				*outs << "Callee: ";
-// 				*outs << castInst->getCallee().getOpaqueValue() << "\n";
-// 			}
-// 			jobject funcRefNode = findAndRemoveCAstNode(castInst->getCallee().getOpaqueValue());
-// 			// cast in CASt
-// 			nodeMap->insert(std::make_pair(castInst, funcRefNode));
-// 			break;
-// 		}
-// 
-//   		case SILInstructionKind::PointerToAddressInst: {
-// 			*outs << "<< PointerToAddressInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::RefToBridgeObjectInst: {
-// 			*outs << "<< RefToBridgeObjectInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::UnconditionalCheckedCastAddrInst:
-// 		case SILInstructionKind::CheckedCastAddrBranchInst:
-// 		case SILInstructionKind::UncheckedRefCastAddrInst: {
-// 			*outs << "<< Indirect checked conversion instruction >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::UnconditionalCheckedCastValueInst: {
-// 			*outs << "<< UnconditionalCheckedCastValueInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::UnconditionalCheckedCastInst:
-// 		case SILInstructionKind::CheckedCastValueBranchInst:
-// 		case SILInstructionKind::CheckedCastBranchInst: {
-// 			*outs << "<< Checked conversion instruction >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::MarkUninitializedInst: {
-// 			*outs << "<< MarkUninitializedInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::MarkUninitializedBehaviorInst: {
-// 			*outs << "<< MarkUninitializedBehaviorInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::MarkFunctionEscapeInst: {
-// 			*outs << "<< MarkFunctionEscapeInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::StoreInst: {
-// 			node = handleStoreInst();
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::EndBorrowInst: {
-// 			*outs << "<< EndBorrowInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::BeginAccessInst:{
-// 			*outs << "<< Begin Access >>" << "\n";
-// 			BeginAccessInst *castInst = cast<BeginAccessInst>(instr);
-// 			*outs << "\t\t [oper_addr]:" << (castInst->getSource()).getOpaqueValue() << "\n";
-// 			jobject read_var = findAndRemoveCAstNode(castInst->getSource().getOpaqueValue());
-// 			nodeMap->insert(std::make_pair(castInst, read_var));
-// 			break;
-// 		}
-// 		case SILInstructionKind::BeginUnpairedAccessInst:{
-// 			*outs << "<<Begin Unpaired Access>>" << "\n";
-// 			break;
-// 		}
-// 		case SILInstructionKind::EndAccessInst:{
-// 			*outs << "<< End Access >>" << "\n";
-// 			break;
-// 		}
-// 		case SILInstructionKind::EndUnpairedAccessInst: {
-// 			*outs << "<< End Unpaired Access >>" << "\n";			
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::StoreBorrowInst:{
-// 			*outs << "<< Store Borrow Instruction >>" << "\n";
-// 			break;			
-// 		}
-// 		case SILInstructionKind::AssignInst:{
-// 			node = handleAssignInst();
-// 			break;
-// 		}
-// 		case SILInstructionKind::StoreUnownedInst:
-// 		case SILInstructionKind::StoreWeakInst: {
-// 			*outs << "<< Access Instruction >>" << "\n";
-// 			break;
-// 		}
-// 
-// 		case SILInstructionKind::AllocStackInst: {
-// 			*outs << "<< AllocStack Instruction >>" << "\n";
-// 			AllocStackInst *castInst = cast<AllocStackInst>(instr);
-// 			for (auto& operand : castInst->getAllOperands()) {
-// 				*outs << "\t [OPERAND]: " << operand.get() << "\n";
-// 				*outs << "\t [ADDR]: " << operand.get().getOpaqueValue() << "\n";
-// 			}
-// 			break;
-// 		}
-// 		case SILInstructionKind::MetatypeInst: {		
-// 			*outs << "<< MetatypeInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::AllocRefInst:
-// 		case SILInstructionKind::AllocRefDynamicInst: {
-// 			*outs << "<< Alloc[Ref/RefDynamic] Instruction >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::DeallocStackInst: {		
-// 			*outs << "<< DeallocStackInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::DeallocRefInst: {		
-// 			*outs << "<< DeallocRefInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::DeallocPartialRefInst: {		
-// 			*outs << "<< DeallocPartialRefInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::DeallocBoxInst: {		
-// 			*outs << "<< DeallocBoxInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::ValueMetatypeInst: 
-// 		case SILInstructionKind::ExistentialMetatypeInst: {		
-// 			*outs << "<< [Value/Existential]MetatypeInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::DeallocExistentialBoxInst: {		
-// 			*outs << "<< DeallocExistentialBoxInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::TupleInst: {		
-// 			*outs << "<< TupleInst >>" << "\n";
-// 			TupleInst *castInst = cast<TupleInst>(instr);
-// 			//OperandValueArrayRef getElements()
-// 
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::EnumInst: {		
-// 			*outs << "<< EnumInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::InitEnumDataAddrInst:
-// 		case SILInstructionKind::UncheckedEnumDataInst:
-// 		case SILInstructionKind::UncheckedTakeEnumDataAddrInst: {		
-// 			*outs << "<< EnumData Instruction >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::InjectEnumAddrInst: {		
-// 			*outs << "<< InjectEnumAddrInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::TupleElementAddrInst:
-// 		case SILInstructionKind::TupleExtractInst: {		
-// 			*outs << "<< Tuple Instruction >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::ReturnInst: {		
-// 			*outs << "<< ReturnInst >>" << "\n";
-// 			ReturnInst *castInst = cast<ReturnInst>(instr);
-// 			SILValue return_val = castInst->getOperand();
-// 
-// 			*outs << "operand:" << return_val << "\n";
-// 			*outs << "addr:" << return_val.getOpaqueValue() << "\n";
-// 			if (return_val != NULL) {
-// 				jobject val = nullptr;
-// 				val = findAndRemoveCAstNode(return_val.getOpaqueValue());
-// 				if (val == nullptr) {
-// 					node = (*wala)->makeNode(CAstWrapper::RETURN);
-// 				} else {
-// 					node = (*wala)->makeNode(CAstWrapper::RETURN, val);
-// 				}
-// 				nodeMap->insert(std::make_pair(castInst, node));
-// 			}
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::ThrowInst: {		
-// 			*outs << "<< ThrowInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::BranchInst: {		
-// 			node = handleBranchInst();
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::CondBranchInst: {		
-// 			node = handleCondBranchInst();
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::UnreachableInst: {		
-// 			*outs << "<< UnreachableInst >>" << "\n";
-// 			UnreachableInst* castInst =  cast<UnreachableInst>(instr);
-// 			if(castInst->isBranch()){
-// 				*outs << "This is a terminator of branch!" << "\n";
-// 			}
-// 			if(castInst->isFunctionExiting()){
-// 				*outs << "This is a terminator of function!" << "\n";
-// 			}
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::ClassMethodInst:
-// 		case SILInstructionKind::SuperMethodInst: {
-// // 		case SILInstructionKind::DynamicMethodInst: {		
-// 			*outs << "<< DeallocRefInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::WitnessMethodInst: {		
-// 			*outs << "<< WitnessMethodInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::CopyAddrInst: {		
-// 			*outs << "<< CopyAddrInst >>" << "\n";
-// 			break;
-// 		}
-// 
-// 		case SILInstructionKind::CopyValueInst:{
-// 			*outs << "<< CopyValueInst >>" << "\n";
-// 			CopyValueInst *castInst = cast<CopyValueInst>(instr);
-// 			*outs << "\t\t [name]:" << castInst->getOperand() << "\n";
-// 
-// 			node = findAndRemoveCAstNode(castInst->getOperand().getOpaqueValue());
-// 
-// 			nodeMap->insert(std::make_pair(castInst,node));
-// 			break;
-// 		}
-// 
-// 		case SILInstructionKind::DestroyValueInst:{
-// 			*outs << "<< DestroyValueInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::BindMemoryInst: {		
-// 			*outs << "<< BindMemoryInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::StructInst: {		
-// 			*outs << "<< StructInst >>" << "\n";
-// 			StructInst *castInst = cast<StructInst>(instr);
-// 
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::StructElementAddrInst:
-// 		case SILInstructionKind::StructExtractInst: {		
-// 			*outs << "<< Struct Instruction >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::RefElementAddrInst: {		
-// 			*outs << "<< RefElementAddrInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::RefTailAddrInst: {		
-// 			*outs << "<< RefTailAddrInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// // 		case SILInstructionKind::IsNonnullInst: {		
-// // 			*outs << "<< IsNonnullInst >>" << "\n";
-// // 			break;
-// // 		}
-// 		
-// 		case SILInstructionKind::IndexAddrInst: {		
-// 			*outs << "<< IndexAddrInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::TailAddrInst: {		
-// 			*outs << "<< TailAddrInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::IndexRawPointerInst: {		
-// 			*outs << "<< IndexRawPointerInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::ObjCProtocolInst: {		
-// 			*outs << "<< ObjCProtocolInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::AllocGlobalInst: {		
-// 			*outs << "<< AllocGlobalInst >>" << "\n";
-// 			AllocGlobalInst *castInst = cast<AllocGlobalInst>(instr);
-// 			SILGlobalVariable* variable = castInst->getReferencedGlobal();
-// 			StringRef var_name = variable->getName();
-// 			SILType var_type = variable->getLoweredType();
-// 			*outs << "\t\t[Var name]:" << var_name << "\n";
-// 			*outs << "\t\t[Var type]:" << var_type << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::GlobalAddrInst: {		
-// 			*outs << "<< GlobalAddrInst >>" << "\n";
-// 			GlobalAddrInst *castInst = cast<GlobalAddrInst>(instr);
-// 			SILGlobalVariable* variable = castInst->getReferencedGlobal();
-// 			StringRef var_name = variable->getName();
-// 			*outs << "\t\t[Var name]:" << var_name << "\n";
-// 			//*outs << ((string)var_name).c_str() << "\n";
-// 			//*outs << "\t\t[Addr]:" << init_inst << "\n";
-// 			//jobject symbol = (*wala)->makeConstant(var_name.data());
-// 			symbolTable->insert(castInst, var_name);
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::SelectEnumInst: {		
-// 			*outs << "<< SelectEnumInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::SelectEnumAddrInst: {		
-// 			*outs << "<< DeallocRefInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::SwitchEnumInst: {		
-// 			*outs << "<< SwitchEnumInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::SwitchEnumAddrInst: {		
-// 			*outs << "<< SwitchEnumAddrInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::SwitchValueInst: {		
-// 			*outs << "<< SwitchValueInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::SelectValueInst: {		
-// 			*outs << "<< SelectValueInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::DeinitExistentialAddrInst: {		
-// 			*outs << "<< DeinitExistentialAddrInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::DeinitExistentialValueInst: {		
-// 			*outs << "<< DeinitExistentialValueInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::InitExistentialAddrInst: {		
-// 			*outs << "<< InitExistentialAddrInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::InitExistentialValueInst: {		
-// 			*outs << "<< InitExistentialValueInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::AllocExistentialBoxInst: {		
-// 			*outs << "<< AllocExistentialBoxInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::InitExistentialRefInst: {		
-// 			*outs << "<< InitExistentialRefInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::InitExistentialMetatypeInst: {		
-// 			*outs << "<< InitExistentialMetatypeInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::DynamicMethodBranchInst: {		
-// 			*outs << "<< DynamicMethodBranchInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::ProjectBlockStorageInst: {		
-// 			*outs << "<< ProjectBlockStorageInst >>" << "\n";
-// 			break;
-// 		}
-// 		
-// 		case SILInstructionKind::InitBlockStorageHeaderInst: {		
-// 			*outs << "<< InitBlockStorageHeaderInst >>" << "\n";
-// 			break;
-// 		}		
-// 		
-// 		case SILInstructionKind::TryApplyInst: {
-// 			*outs << "<< TryApplyInst >>" << "\n";
-// 			TryApplyInst *castInst = cast<TryApplyInst>(instr);
-// 			jobject funcExprNode = findAndRemoveCAstNode(castInst->getReferencedFunction());
-// 			list<jobject> params;
-// 			for (unsigned i = 0; i < castInst->getNumArguments(); ++i) {
-// 
-// 				SILValue v = castInst->getArgument(i);
-// 				jobject child = findAndRemoveCAstNode(v.getOpaqueValue());
-// 				if (child != nullptr) {
-// 					params.push_back(child);
-// 				}
-// 
-// 				if (outs != NULL) {
-// 					*outs << "\t [ARG] #" << i << ": " << v;
-// 					*outs << "\t [ADDR] #" << i << ": " << v.getOpaqueValue() << "\n";
-// 				}
-// 			}
-// 			jobject call = (*wala)->makeNode(CAstWrapper::CALL, funcExprNode, (*wala)->makeArray(&params));
-// 			jobject tryfunc = (*wala)->makeNode(CAstWrapper::TRY,call);
-// 			jobject var_name = (*wala)->makeConstant("resulf_of_try");
-// 			jobject var = (*wala)->makeNode(CAstWrapper::VAR,var_name);
-// 			node = (*wala)->makeNode(CAstWrapper::ASSIGN,var,tryfunc);
-// 			nodeMap->insert(std::make_pair(castInst,node));
-// 			SILBasicBlock *normalbb = castInst->getNormalBB();
-// 			symbolTable->insert(normalbb->getArgument(0), "resulf_of_try"); // insert the node into the hash map
-// 
-// 			break;
-// 		}
-// 
-// 		default: {
-//  			*outs << "\t\t xxxxx Not a handled inst type \n";
-//  			
-// 			break;
-// 		}
-// 	}
-// 	if (node != nullptr) {
-// 		nodeList->push_back(node);
-// 		//wala->print(node);
-// 	}
+	jobject node = nullptr;
+
+	switch (instrKind) {
+
+// // // Deprecated		
+// 		case SILInstructionKind::SILPHIArgument:
+// 		case SILInstructionKind::SILFunctionArgument:
+// 		case SILInstructionKind::SILUndef: {		
+// 			*outs << "<< Not an instruction >>" << "\n";
+// 			break;
+// 		}
+		
+		case SILInstructionKind::AllocBoxInst: {
+			*outs << "<< AllocBoxInst >>" << "\n";
+			AllocBoxInst *castInst = cast<AllocBoxInst>(instr);
+
+			SILDebugVariable info = castInst->getVarInfo();
+			unsigned argNo = info.ArgNo;
+
+			VarDecl *decl = castInst->getDecl();
+			StringRef varName = decl->getNameStr();
+			*outs << "[Arg]#" << argNo << ":" << varName << "\n";
+			symbolTable->insert(castInst, varName);
+			break;
+		}
+	
+		case SILInstructionKind::ApplyInst: {
+			node = handleApplyInst();
+			break;
+		}
+		
+    case SILInstructionKind::BeginApplyInst: {
+    	*outs << "<< BeginApplyInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::PartialApplyInst: {
+			*outs << "<< PartialApplyInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::AbortApplyInst: {
+			*outs << "<< AbortApplyInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::IntegerLiteralInst: {
+			*outs << "<< IntegerLiteralInst >>" << "\n";
+			IntegerLiteralInst* castInst = cast<IntegerLiteralInst>(instr);
+			APInt value = castInst->getValue();
+			node = (*wala)->makeConstant((int)value.getSExtValue());
+			nodeMap->insert(std::make_pair(castInst, node));
+			break;
+		}
+		
+		case SILInstructionKind::FloatLiteralInst: {
+			*outs << "<< FloatLiteralInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::StringLiteralInst: {
+			node = handleStringLiteralInst();
+			break;
+		}
+		
+		case SILInstructionKind::ConstStringLiteralInst: {
+			node = handleConstStringLiteralInst();
+			break;
+		}
+		
+		case SILInstructionKind::AllocValueBufferInst: {
+			*outs << "<< AllocValueBufferInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::ProjectValueBufferInst: {
+			*outs << "<< ProjectValueBufferInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::DeallocValueBufferInst: {
+			*outs << "<< DeallocValueBufferInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::ProjectBoxInst: {
+			*outs << "<< ProjectBoxInst >>" << "\n";
+			ProjectBoxInst *castInst = cast<ProjectBoxInst>(instr);
+			//*outs << "\t\t [addr]:" << castInst->getOperand().getOpaqueValue() << "\n";
+
+			if (symbolTable->has(castInst->getOperand().getOpaqueValue())) {
+				// this is a variable
+				symbolTable->duplicate(castInst, symbolTable->get(castInst->getOperand().getOpaqueValue()).c_str());
+			}			
+			break;
+		}
+		
+		case SILInstructionKind::ProjectExistentialBoxInst: {
+			*outs << "<< ProjectExistentialBoxInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::FunctionRefInst: {
+			node = handleFunctionRefInst();
+			break;
+		}
+		
+		case SILInstructionKind::BuiltinInst: {
+			*outs << "<< BuiltinInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::OpenExistentialAddrInst:
+		case SILInstructionKind::OpenExistentialBoxInst:
+		case SILInstructionKind::OpenExistentialBoxValueInst:
+		case SILInstructionKind::OpenExistentialMetatypeInst:
+		case SILInstructionKind::OpenExistentialRefInst:
+		case SILInstructionKind::OpenExistentialValueInst: {
+			*outs << "<< OpenExistential[Addr/Box/BoxValue/Metatype/Ref/Value]Inst >>" << "\n";
+			break;
+		}
+		
+		// UNARY_INSTRUCTION(ID) <see ParseSIL.cpp:2248>
+		// DEFCOUNTING_INSTRUCTION(ID) <see ParseSIL.cpp:2255>
+		
+		case SILInstructionKind::DebugValueInst: {
+			DebugValueInst *castInst = cast<DebugValueInst>(instr);
+
+			SILDebugVariable info = castInst->getVarInfo();
+			unsigned argNo = info.ArgNo;
+
+			if (outs != NULL) {
+				*outs << "<< DebugValueInst >>" << "\n";
+				*outs << argNo << "\n";
+			}
+
+			VarDecl *decl = castInst->getDecl();
+			if (decl != NULL) {
+				string varName = decl->getNameStr();
+				SILBasicBlock *parentBB = castInst->getParent();
+				
+				SILArgument *argument = NULL;
+
+				if (argNo >= 1) {
+					argument = parentBB->getArgument(argNo - 1);
+					// variable declaration
+					symbolTable->insert(argument, varName);
+				}
+
+				if (outs != NULL) {
+					*outs << "\t\t[addr of arg]:" << argument << "\n";
+				}
+			}
+			*outs << "\t\t[addr of arg]:" << castInst->getOperand().getOpaqueValue() << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::DebugValueAddrInst: {
+			*outs << "<< DebugValueAddrInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::UncheckedOwnershipConversionInst: {
+			*outs << "<< UncheckedOwnershipConversionInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::LoadInst: {
+			*outs << "<< LoadInst >>" << "\n";
+			LoadInst *castInst = cast<LoadInst>(instr);
+			*outs << "\t\t [name]:" << (castInst->getOperand()).getOpaqueValue() << "\n";
+			node = findAndRemoveCAstNode((castInst->getOperand()).getOpaqueValue());
+
+			nodeMap->insert(std::make_pair(castInst, node));
+			break;
+		}
+		
+		case SILInstructionKind::LoadBorrowInst: {
+			*outs << "<< LoadBorrowInst >>" << "\n";
+			LoadBorrowInst *castInst = cast<LoadBorrowInst>(instr);
+			*outs << "\t\t [name]:" << castInst->getOperand() << "\n";
+			*outs << "\t\t [addr]:" << castInst->getOperand().getOpaqueValue() << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::BeginBorrowInst: {
+			*outs << "<< BeginBorrowInst >>" << "\n";
+			BeginBorrowInst *castInst = cast<BeginBorrowInst>(instr);
+			//*outs << "\t\t [addr]:" << castInst->getOperand().getOpaqueValue() << "\n";
+
+			node = findAndRemoveCAstNode(castInst->getOperand().getOpaqueValue());
+
+			nodeMap->insert(std::make_pair(castInst, node));
+			break;
+		}
+		
+		case SILInstructionKind::LoadUnownedInst: {
+			*outs << "<< LoadUnownedInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::LoadWeakInst: {
+			*outs << "<< LoadWeakInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::MarkDependenceInst: {
+			*outs << "<< MarkDependenceInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::KeyPathInst: {
+			*outs << "<< KeyPathInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::UncheckedRefCastInst:
+		case SILInstructionKind::UncheckedAddrCastInst:
+		case SILInstructionKind::UncheckedTrivialBitCastInst:
+		case SILInstructionKind::UncheckedBitwiseCastInst:
+		case SILInstructionKind::UpcastInst:
+		case SILInstructionKind::AddressToPointerInst:
+		case SILInstructionKind::BridgeObjectToRefInst:
+		case SILInstructionKind::BridgeObjectToWordInst:
+		case SILInstructionKind::RefToRawPointerInst:
+		case SILInstructionKind::RawPointerToRefInst:
+		case SILInstructionKind::RefToUnownedInst:
+		case SILInstructionKind::UnownedToRefInst:
+		case SILInstructionKind::RefToUnmanagedInst:
+		case SILInstructionKind::UnmanagedToRefInst:
+		case SILInstructionKind::ThinFunctionToPointerInst:
+		case SILInstructionKind::PointerToThinFunctionInst:
+		case SILInstructionKind::ThickToObjCMetatypeInst:
+		case SILInstructionKind::ObjCToThickMetatypeInst:
+		case SILInstructionKind::ConvertFunctionInst:
+		case SILInstructionKind::ObjCExistentialMetatypeToObjectInst:
+		case SILInstructionKind::ObjCMetatypeToObjectInst: {
+			*outs << "<< Conversion Instruction >>" << "\n";
+  			break;
+  		}
+  		
+		case SILInstructionKind::ThinToThickFunctionInst: {
+
+			// SILInstructionKind identifier
+			if (outs != NULL) {
+				*outs << "<< ThinToThickFunctionInst >>" << "\n";
+			}
+
+			// Cast the instr to access methods
+			ThinToThickFunctionInst *castInst = cast<ThinToThickFunctionInst>(instr);
+
+			if (outs != NULL) {
+				*outs << "Callee: ";
+				*outs << castInst->getCallee().getOpaqueValue() << "\n";
+			}
+			jobject funcRefNode = findAndRemoveCAstNode(castInst->getCallee().getOpaqueValue());
+			// cast in CASt
+			nodeMap->insert(std::make_pair(castInst, funcRefNode));
+			break;
+		}
+
+  	case SILInstructionKind::PointerToAddressInst: {
+			*outs << "<< PointerToAddressInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::RefToBridgeObjectInst: {
+			*outs << "<< RefToBridgeObjectInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::UnconditionalCheckedCastAddrInst:
+		case SILInstructionKind::CheckedCastAddrBranchInst:
+		case SILInstructionKind::UncheckedRefCastAddrInst: {
+			*outs << "<< Indirect checked conversion instruction >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::UnconditionalCheckedCastValueInst: {
+			*outs << "<< UnconditionalCheckedCastValueInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::UnconditionalCheckedCastInst:
+		case SILInstructionKind::CheckedCastValueBranchInst:
+		case SILInstructionKind::CheckedCastBranchInst: {
+			*outs << "<< Checked conversion instruction >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::MarkUninitializedInst: {
+			*outs << "<< MarkUninitializedInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::MarkUninitializedBehaviorInst: {
+			*outs << "<< MarkUninitializedBehaviorInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::MarkFunctionEscapeInst: {
+			*outs << "<< MarkFunctionEscapeInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::StoreInst: {
+			node = handleStoreInst();
+			break;
+		}
+		
+		case SILInstructionKind::EndBorrowInst: {
+			*outs << "<< EndBorrowInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::BeginAccessInst:{
+			*outs << "<< Begin Access >>" << "\n";
+			BeginAccessInst *castInst = cast<BeginAccessInst>(instr);
+			*outs << "\t\t [oper_addr]:" << (castInst->getSource()).getOpaqueValue() << "\n";
+			jobject read_var = findAndRemoveCAstNode(castInst->getSource().getOpaqueValue());
+			nodeMap->insert(std::make_pair(castInst, read_var));
+			break;
+		}
+		case SILInstructionKind::BeginUnpairedAccessInst:{
+			*outs << "<<Begin Unpaired Access>>" << "\n";
+			break;
+		}
+		case SILInstructionKind::EndAccessInst:{
+			*outs << "<< End Access >>" << "\n";
+			break;
+		}
+		case SILInstructionKind::EndUnpairedAccessInst: {
+			*outs << "<< End Unpaired Access >>" << "\n";			
+			break;
+		}
+		
+		case SILInstructionKind::StoreBorrowInst:{
+			*outs << "<< Store Borrow Instruction >>" << "\n";
+			break;			
+		}
+		case SILInstructionKind::AssignInst:{
+			node = handleAssignInst();
+			break;
+		}
+		case SILInstructionKind::StoreUnownedInst:
+		case SILInstructionKind::StoreWeakInst: {
+			*outs << "<< Access Instruction >>" << "\n";
+			break;
+		}
+
+		case SILInstructionKind::AllocStackInst: {
+			*outs << "<< AllocStack Instruction >>" << "\n";
+			AllocStackInst *castInst = cast<AllocStackInst>(instr);
+			for (auto& operand : castInst->getAllOperands()) {
+				*outs << "\t [OPERAND]: " << operand.get() << "\n";
+				*outs << "\t [ADDR]: " << operand.get().getOpaqueValue() << "\n";
+			}
+			break;
+		}
+		case SILInstructionKind::MetatypeInst: {		
+			*outs << "<< MetatypeInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::AllocRefInst:
+		case SILInstructionKind::AllocRefDynamicInst: {
+			*outs << "<< Alloc[Ref/RefDynamic] Instruction >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::DeallocStackInst: {		
+			*outs << "<< DeallocStackInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::DeallocRefInst: {		
+			*outs << "<< DeallocRefInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::DeallocPartialRefInst: {		
+			*outs << "<< DeallocPartialRefInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::DeallocBoxInst: {		
+			*outs << "<< DeallocBoxInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::ValueMetatypeInst: 
+		case SILInstructionKind::ExistentialMetatypeInst: {		
+			*outs << "<< [Value/Existential]MetatypeInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::DeallocExistentialBoxInst: {		
+			*outs << "<< DeallocExistentialBoxInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::TupleInst: {		
+			*outs << "<< TupleInst >>" << "\n";
+			TupleInst *castInst = cast<TupleInst>(instr);
+			//OperandValueArrayRef getElements()
+
+			break;
+		}
+		
+		case SILInstructionKind::EnumInst: {		
+			*outs << "<< EnumInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::InitEnumDataAddrInst:
+		case SILInstructionKind::UncheckedEnumDataInst:
+		case SILInstructionKind::UncheckedTakeEnumDataAddrInst: {		
+			*outs << "<< EnumData Instruction >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::InjectEnumAddrInst: {		
+			*outs << "<< InjectEnumAddrInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::TupleElementAddrInst:
+		case SILInstructionKind::TupleExtractInst: {		
+			*outs << "<< Tuple Instruction >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::ReturnInst: {		
+			*outs << "<< ReturnInst >>" << "\n";
+			ReturnInst *castInst = cast<ReturnInst>(instr);
+			SILValue return_val = castInst->getOperand();
+
+			*outs << "operand:" << return_val << "\n";
+			*outs << "addr:" << return_val.getOpaqueValue() << "\n";
+			if (return_val != NULL) {
+				jobject val = nullptr;
+				val = findAndRemoveCAstNode(return_val.getOpaqueValue());
+				if (val == nullptr) {
+					node = (*wala)->makeNode(CAstWrapper::RETURN);
+				} else {
+					node = (*wala)->makeNode(CAstWrapper::RETURN, val);
+				}
+				nodeMap->insert(std::make_pair(castInst, node));
+			}
+			break;
+		}
+		
+		case SILInstructionKind::ThrowInst: {		
+			*outs << "<< ThrowInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::BranchInst: {		
+			node = handleBranchInst();
+			break;
+		}
+		
+		case SILInstructionKind::CondBranchInst: {		
+			node = handleCondBranchInst();
+			break;
+		}
+		
+		case SILInstructionKind::UnreachableInst: {		
+			*outs << "<< UnreachableInst >>" << "\n";
+			UnreachableInst* castInst =  cast<UnreachableInst>(instr);
+			if(castInst->isBranch()){
+				*outs << "This is a terminator of branch!" << "\n";
+			}
+			if(castInst->isFunctionExiting()){
+				*outs << "This is a terminator of function!" << "\n";
+			}
+			break;
+		}
+		
+		case SILInstructionKind::ClassMethodInst:
+		case SILInstructionKind::SuperMethodInst: {
+// 		case SILInstructionKind::DynamicMethodInst: {		
+			*outs << "<< DeallocRefInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::WitnessMethodInst: {		
+			*outs << "<< WitnessMethodInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::CopyAddrInst: {		
+			*outs << "<< CopyAddrInst >>" << "\n";
+			break;
+		}
+
+		case SILInstructionKind::CopyValueInst:{
+			*outs << "<< CopyValueInst >>" << "\n";
+			CopyValueInst *castInst = cast<CopyValueInst>(instr);
+			*outs << "\t\t [name]:" << castInst->getOperand() << "\n";
+
+			node = findAndRemoveCAstNode(castInst->getOperand().getOpaqueValue());
+
+			nodeMap->insert(std::make_pair(castInst,node));
+			break;
+		}
+
+		case SILInstructionKind::DestroyValueInst:{
+			*outs << "<< DestroyValueInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::BindMemoryInst: {		
+			*outs << "<< BindMemoryInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::StructInst: {		
+			*outs << "<< StructInst >>" << "\n";
+			StructInst *castInst = cast<StructInst>(instr);
+
+			break;
+		}
+		
+		case SILInstructionKind::StructElementAddrInst:
+		case SILInstructionKind::StructExtractInst: {		
+			*outs << "<< Struct Instruction >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::RefElementAddrInst: {		
+			*outs << "<< RefElementAddrInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::RefTailAddrInst: {		
+			*outs << "<< RefTailAddrInst >>" << "\n";
+			break;
+		}
+		
+// 		case SILInstructionKind::IsNonnullInst: {		
+// 			*outs << "<< IsNonnullInst >>" << "\n";
+// 			break;
+// 		}
+		
+		case SILInstructionKind::IndexAddrInst: {		
+			*outs << "<< IndexAddrInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::TailAddrInst: {		
+			*outs << "<< TailAddrInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::IndexRawPointerInst: {		
+			*outs << "<< IndexRawPointerInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::ObjCProtocolInst: {		
+			*outs << "<< ObjCProtocolInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::AllocGlobalInst: {		
+			*outs << "<< AllocGlobalInst >>" << "\n";
+			AllocGlobalInst *castInst = cast<AllocGlobalInst>(instr);
+			SILGlobalVariable* variable = castInst->getReferencedGlobal();
+			StringRef var_name = variable->getName();
+			SILType var_type = variable->getLoweredType();
+			*outs << "\t\t[Var name]:" << var_name << "\n";
+			*outs << "\t\t[Var type]:" << var_type << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::GlobalAddrInst: {		
+			*outs << "<< GlobalAddrInst >>" << "\n";
+			GlobalAddrInst *castInst = cast<GlobalAddrInst>(instr);
+			SILGlobalVariable* variable = castInst->getReferencedGlobal();
+			StringRef var_name = variable->getName();
+			*outs << "\t\t[Var name]:" << var_name << "\n";
+			//*outs << ((string)var_name).c_str() << "\n";
+			//*outs << "\t\t[Addr]:" << init_inst << "\n";
+			//jobject symbol = (*wala)->makeConstant(var_name.data());
+			symbolTable->insert(castInst, var_name);
+			break;
+		}
+		
+		case SILInstructionKind::SelectEnumInst: {		
+			*outs << "<< SelectEnumInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::SelectEnumAddrInst: {		
+			*outs << "<< DeallocRefInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::SwitchEnumInst: {		
+			*outs << "<< SwitchEnumInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::SwitchEnumAddrInst: {		
+			*outs << "<< SwitchEnumAddrInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::SwitchValueInst: {		
+			*outs << "<< SwitchValueInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::SelectValueInst: {		
+			*outs << "<< SelectValueInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::DeinitExistentialAddrInst: {		
+			*outs << "<< DeinitExistentialAddrInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::DeinitExistentialValueInst: {		
+			*outs << "<< DeinitExistentialValueInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::InitExistentialAddrInst: {		
+			*outs << "<< InitExistentialAddrInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::InitExistentialValueInst: {		
+			*outs << "<< InitExistentialValueInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::AllocExistentialBoxInst: {		
+			*outs << "<< AllocExistentialBoxInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::InitExistentialRefInst: {		
+			*outs << "<< InitExistentialRefInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::InitExistentialMetatypeInst: {		
+			*outs << "<< InitExistentialMetatypeInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::DynamicMethodBranchInst: {		
+			*outs << "<< DynamicMethodBranchInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::ProjectBlockStorageInst: {		
+			*outs << "<< ProjectBlockStorageInst >>" << "\n";
+			break;
+		}
+		
+		case SILInstructionKind::InitBlockStorageHeaderInst: {		
+			*outs << "<< InitBlockStorageHeaderInst >>" << "\n";
+			break;
+		}		
+		
+		case SILInstructionKind::TryApplyInst: {
+			*outs << "<< TryApplyInst >>" << "\n";
+			TryApplyInst *castInst = cast<TryApplyInst>(instr);
+			jobject funcExprNode = findAndRemoveCAstNode(castInst->getReferencedFunction());
+			list<jobject> params;
+			for (unsigned i = 0; i < castInst->getNumArguments(); ++i) {
+
+				SILValue v = castInst->getArgument(i);
+				jobject child = findAndRemoveCAstNode(v.getOpaqueValue());
+				if (child != nullptr) {
+					params.push_back(child);
+				}
+
+				if (outs != NULL) {
+					*outs << "\t [ARG] #" << i << ": " << v;
+					*outs << "\t [ADDR] #" << i << ": " << v.getOpaqueValue() << "\n";
+				}
+			}
+			jobject call = (*wala)->makeNode(CAstWrapper::CALL, funcExprNode, (*wala)->makeArray(&params));
+			jobject tryfunc = (*wala)->makeNode(CAstWrapper::TRY,call);
+			jobject var_name = (*wala)->makeConstant("resulf_of_try");
+			jobject var = (*wala)->makeNode(CAstWrapper::VAR,var_name);
+			node = (*wala)->makeNode(CAstWrapper::ASSIGN,var,tryfunc);
+			nodeMap->insert(std::make_pair(castInst,node));
+			SILBasicBlock *normalbb = castInst->getNormalBB();
+			symbolTable->insert(normalbb->getArgument(0), "resulf_of_try"); // insert the node into the hash map
+
+			break;
+		}
+
+		default: {
+ 			*outs << "\t\t xxxxx Not a handled inst type \n";
+ 			
+			break;
+		}
+	}
+	if (node != nullptr) {
+		nodeList->push_back(node);
+		//wala->print(node);
+	}
 
 	*outs << *instr << "\n";
 	return instrKind;

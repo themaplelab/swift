@@ -182,7 +182,7 @@ void WALAWalker::analyzeSILModule(SILModule &SM) {
 	const char *file_name = strdup(modInfo.sourcefile.str().c_str());
 	
 // 	JNIEnv *java_env = launch_jvm(classpath);
-  JNIEnv *java_env = launch(classpath);
+  JNIEnv *java_env = launch_jvm(classpath);
 	TRY(cpp_ex, java_env)		
 		WALAIntegration wala(java_env, cpp_ex, file_name);
 		jobject x = wala->makeConstant(3.7);
