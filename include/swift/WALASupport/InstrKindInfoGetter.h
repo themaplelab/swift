@@ -42,16 +42,30 @@ private:
   Identifier getBuiltInOperatorName(SILFunction* function);
   jobject getOperatorCAstType(Identifier name);
 
+  jobject handleAllocBoxInst();
   jobject handleApplyInst();
+  jobject handleIntegerLiteralInst();
   jobject handleStringLiteralInst();
   jobject handleConstStringLiteralInst();
+  jobject handleProjectBoxInst();
+  jobject handleDebugValueInst();
   jobject handleFunctionRefInst();
-
+  jobject handleLoadInst();
+  jobject handleLoadBorrowInst();
+  jobject handleBeginBorrowInst();
+  jobject handleThinToThickFunctionInst();
   jobject handleStoreInst();
+  jobject handleBeginAccessInst();
+  jobject handleAssignInst();
+  jobject handleAllocStackInst();
+  jobject handleReturnInst();
   jobject handleBranchInst();
   jobject handleCondBranchInst();
-  jobject handleAssignInst();
-  jobject handleIntegerLiteralInst();
+  jobject handleUnreachableInst();
+  jobject handleCopyValueInst();
+  jobject handleAllocGlobalInst();
+  jobject handleGlobalAddrInst();
+  jobject handleTryApplyInst();
 };
 
 } // end namespace swift

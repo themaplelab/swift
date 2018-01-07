@@ -777,12 +777,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
       node = handleApplyInst();
       break;
     }
-    
-    case ValueKind::ApplyInst: {
-      node = handleApplyInst();
-      break;
-    }
-    
+        
     case SILInstructionKind::PartialApplyInst: {
       *outs << "<< PartialApplyInst >>" << "\n";
       break;
@@ -795,6 +790,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
     
     case SILInstructionKind::IntegerLiteralInst: {
       node = handleIntegerLiteralInst();
+      break;
     }
     
     case SILInstructionKind::FloatLiteralInst: {
@@ -827,7 +823,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case ValueKind::ProjectBoxInst: {
+    case SILInstructionKind::ProjectBoxInst: {
       node = handleProjectBoxInst();
       break;
     }
@@ -860,7 +856,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
     // UNARY_INSTRUCTION(ID) <see ParseSIL.cpp:2248>
     // DEFCOUNTING_INSTRUCTION(ID) <see ParseSIL.cpp:2255>
     
-    case ValueKind::DebugValueInst: {
+    case SILInstructionKind::DebugValueInst: {
       node = handleDebugValueInst();
       break;
     }
@@ -875,17 +871,17 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case ValueKind::LoadInst: {
+    case SILInstructionKind::LoadInst: {
       node = handleLoadInst();
       break;
     }
     
-    case ValueKind::LoadBorrowInst: {
+    case SILInstructionKind::LoadBorrowInst: {
       node = handleLoadBorrowInst();
       break;
     }
     
-    case ValueKind::BeginBorrowInst: {
+    case SILInstructionKind::BeginBorrowInst: {
       node = handleBeginBorrowInst();
       break;
     }
@@ -935,7 +931,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
         break;
       }
       
-    case ValueKind::ThinToThickFunctionInst: {
+    case SILInstructionKind::ThinToThickFunctionInst: {
       node = handleThinToThickFunctionInst();
       break;
     }
@@ -994,7 +990,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case ValueKind::BeginAccessInst:{
+    case SILInstructionKind::BeginAccessInst:{
       node = handleBeginAccessInst();
       break;
     }
@@ -1025,7 +1021,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
 
-    case ValueKind::AllocStackInst: {
+    case SILInstructionKind::AllocStackInst: {
       node = handleAllocStackInst();
       break;
     }
@@ -1073,8 +1069,8 @@ SILInstructionKind InstrKindInfoGetter::get() {
     
     case SILInstructionKind::TupleInst: {    
       *outs << "<< TupleInst >>" << "\n";
-      TupleInst *castInst = cast<TupleInst>(instr);
-      //OperandValueArrayRef getElements()
+//       TupleInst *castInst = cast<TupleInst>(instr);
+//       OperandValueArrayRef getElements()
 
       break;
     }
@@ -1102,7 +1098,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case ValueKind::ReturnInst: { 
+    case SILInstructionKind::ReturnInst: { 
       node = handleReturnInst();
       break;
     }
@@ -1122,7 +1118,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case ValueKind::UnreachableInst: { 
+    case SILInstructionKind::UnreachableInst: { 
       node = handleUnreachableInst();
       break;
     }
@@ -1144,7 +1140,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
 
-    case ValueKind::CopyValueInst: {
+    case SILInstructionKind::CopyValueInst: {
       node = handleCopyValueInst();
       break;
     }
@@ -1161,7 +1157,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
     
     case SILInstructionKind::StructInst: {    
       *outs << "<< StructInst >>" << "\n";
-      StructInst *castInst = cast<StructInst>(instr);
+//       StructInst *castInst = cast<StructInst>(instr);
 
       break;
     }
@@ -1207,12 +1203,12 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case ValueKind::AllocGlobalInst: { 
+    case SILInstructionKind::AllocGlobalInst: { 
       node = handleAllocGlobalInst(); 
       break;
     }
     
-    case ValueKind::GlobalAddrInst: { 
+    case SILInstructionKind::GlobalAddrInst: { 
       node = handleGlobalAddrInst();
       break;
     }
@@ -1297,7 +1293,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }    
     
-    case ValueKind::TryApplyInst: {
+    case SILInstructionKind::TryApplyInst: {
       node = handleTryApplyInst();
       break;
     }
