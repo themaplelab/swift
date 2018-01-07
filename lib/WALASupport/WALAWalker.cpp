@@ -195,6 +195,10 @@ void WALAWalker::analyzeSILModule(SILModule &SM) {
 		FunctionInfo funcInfo = getSILFunctionInfo(*func);
 		list<jobject>* blockStmtList = new list<jobject>();
 		BasicBlockLabeller* labeller = new BasicBlockLabeller();
+		
+		llvm::outs() << "SILFunction: " ;
+    llvm::outs() << &*func << "\n";
+    func->print(llvm::outs(), true);
 
 		// Iterate over SILBasicBlocks
 		for (auto bb = func->begin(); bb != func->end(); ++bb) {

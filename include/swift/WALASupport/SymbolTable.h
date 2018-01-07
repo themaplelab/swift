@@ -11,12 +11,12 @@ namespace swift {
 
 class SymbolTable {
 public:
-	bool has(void* key);
-	string get(void* key);
-	void insert(void* key, const string& name);
-	void duplicate(void* key, const string& name);
+  bool has(void* key);
+  string get(void* key);
+  void insert(void* key, const string& name);
+  void duplicate(void* key, const string& name);
 private:
-	unordered_map<void*, string> table;
+  unordered_map<void*, string> table;
 };
 
 } // end namespace swift
