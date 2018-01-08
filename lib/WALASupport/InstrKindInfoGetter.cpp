@@ -756,558 +756,558 @@ jobject InstrKindInfoGetter::handleTryApplyInst() {
 
 SILInstructionKind InstrKindInfoGetter::get() {
   SILInstructionKind instrKind = instr->getKind();
-//   jobject node = nullptr;
-// 
-//   switch (instrKind) {
-// 
-// // // // Deprecated    
-// //     case SILInstructionKind::SILPHIArgument:
-// //     case SILInstructionKind::SILFunctionArgument:
-// //     case SILInstructionKind::SILUndef: {    
-// //       *outs << "<< Not an instruction >>" << "\n";
-// //       break;
-// //     }
-//     
-//     case SILInstructionKind::AllocBoxInst: {
-//       node = handleAllocBoxInst();
-//       break;
-//     }
-//   
-//     case SILInstructionKind::ApplyInst: {
-//       node = handleApplyInst();
-//       break;
-//     }
-//         
-//     case SILInstructionKind::PartialApplyInst: {
-//       *outs << "<< PartialApplyInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::AbortApplyInst: {
-//       *outs << "<< AbortApplyInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::IntegerLiteralInst: {
-//       node = handleIntegerLiteralInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::FloatLiteralInst: {
-//       *outs << "<< FloatLiteralInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::StringLiteralInst: {
-//       node = handleStringLiteralInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::ConstStringLiteralInst: {
-//       node = handleConstStringLiteralInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::AllocValueBufferInst: {
-//       *outs << "<< AllocValueBufferInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::ProjectValueBufferInst: {
-//       *outs << "<< ProjectValueBufferInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::DeallocValueBufferInst: {
-//       *outs << "<< DeallocValueBufferInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::ProjectBoxInst: {
-//       node = handleProjectBoxInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::ProjectExistentialBoxInst: {
-//       *outs << "<< ProjectExistentialBoxInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::FunctionRefInst: {
-//       node = handleFunctionRefInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::BuiltinInst: {
-//       *outs << "<< BuiltinInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::OpenExistentialAddrInst:
-//     case SILInstructionKind::OpenExistentialBoxInst:
-//     case SILInstructionKind::OpenExistentialBoxValueInst:
-//     case SILInstructionKind::OpenExistentialMetatypeInst:
-//     case SILInstructionKind::OpenExistentialRefInst:
-//     case SILInstructionKind::OpenExistentialValueInst: {
-//       *outs << "<< OpenExistential[Addr/Box/BoxValue/Metatype/Ref/Value]Inst >>" << "\n";
-//       break;
-//     }
-//     
-//     // UNARY_INSTRUCTION(ID) <see ParseSIL.cpp:2248>
-//     // DEFCOUNTING_INSTRUCTION(ID) <see ParseSIL.cpp:2255>
-//     
-//     case SILInstructionKind::DebugValueInst: {
-//       node = handleDebugValueInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::DebugValueAddrInst: {
-//       *outs << "<< DebugValueAddrInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::UncheckedOwnershipConversionInst: {
-//       *outs << "<< UncheckedOwnershipConversionInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::LoadInst: {
-//       node = handleLoadInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::LoadBorrowInst: {
-//       node = handleLoadBorrowInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::BeginBorrowInst: {
-//       node = handleBeginBorrowInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::LoadUnownedInst: {
-//       *outs << "<< LoadUnownedInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::LoadWeakInst: {
-//       *outs << "<< LoadWeakInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::MarkDependenceInst: {
-//       *outs << "<< MarkDependenceInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::KeyPathInst: {
-//       *outs << "<< KeyPathInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::UncheckedRefCastInst:
-//     case SILInstructionKind::UncheckedAddrCastInst:
-//     case SILInstructionKind::UncheckedTrivialBitCastInst:
-//     case SILInstructionKind::UncheckedBitwiseCastInst:
-//     case SILInstructionKind::UpcastInst:
-//     case SILInstructionKind::AddressToPointerInst:
-//     case SILInstructionKind::BridgeObjectToRefInst:
-//     case SILInstructionKind::BridgeObjectToWordInst:
-//     case SILInstructionKind::RefToRawPointerInst:
-//     case SILInstructionKind::RawPointerToRefInst:
-//     case SILInstructionKind::RefToUnownedInst:
-//     case SILInstructionKind::UnownedToRefInst:
-//     case SILInstructionKind::RefToUnmanagedInst:
-//     case SILInstructionKind::UnmanagedToRefInst:
-//     case SILInstructionKind::ThinFunctionToPointerInst:
-//     case SILInstructionKind::PointerToThinFunctionInst:
-//     case SILInstructionKind::ThickToObjCMetatypeInst:
-//     case SILInstructionKind::ObjCToThickMetatypeInst:
-//     case SILInstructionKind::ConvertFunctionInst:
-//     case SILInstructionKind::ObjCExistentialMetatypeToObjectInst:
-//     case SILInstructionKind::ObjCMetatypeToObjectInst: {
-//       *outs << "<< Conversion Instruction >>" << "\n";
-//         break;
-//       }
-//       
-//     case SILInstructionKind::ThinToThickFunctionInst: {
-//       node = handleThinToThickFunctionInst();
-//       break;
-//     }
-// 
-//     case SILInstructionKind::PointerToAddressInst: {
-//       *outs << "<< PointerToAddressInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::RefToBridgeObjectInst: {
-//       *outs << "<< RefToBridgeObjectInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::UnconditionalCheckedCastAddrInst:
-//     case SILInstructionKind::CheckedCastAddrBranchInst:
-//     case SILInstructionKind::UncheckedRefCastAddrInst: {
-//       *outs << "<< Indirect checked conversion instruction >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::UnconditionalCheckedCastValueInst: {
-//       *outs << "<< UnconditionalCheckedCastValueInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::UnconditionalCheckedCastInst:
-//     case SILInstructionKind::CheckedCastValueBranchInst:
-//     case SILInstructionKind::CheckedCastBranchInst: {
-//       *outs << "<< Checked conversion instruction >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::MarkUninitializedInst: {
-//       *outs << "<< MarkUninitializedInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::MarkUninitializedBehaviorInst: {
-//       *outs << "<< MarkUninitializedBehaviorInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::MarkFunctionEscapeInst: {
-//       *outs << "<< MarkFunctionEscapeInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::StoreInst: {
-//       node = handleStoreInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::EndBorrowInst: {
-//       *outs << "<< EndBorrowInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::BeginAccessInst:{
-//       node = handleBeginAccessInst();
-//       break;
-//     }
-//     case SILInstructionKind::BeginUnpairedAccessInst:{
-//       *outs << "<<Begin Unpaired Access>>" << "\n";
-//       break;
-//     }
-//     case SILInstructionKind::EndAccessInst:{
-//       *outs << "<< End Access >>" << "\n";
-//       break;
-//     }
-//     case SILInstructionKind::EndUnpairedAccessInst: {
-//       *outs << "<< End Unpaired Access >>" << "\n";      
-//       break;
-//     }
-//     
-//     case SILInstructionKind::StoreBorrowInst:{
-//       *outs << "<< Store Borrow Instruction >>" << "\n";
-//       break;      
-//     }
-//     case SILInstructionKind::AssignInst:{
-//       node = handleAssignInst();
-//       break;
-//     }
-//     case SILInstructionKind::StoreUnownedInst:
-//     case SILInstructionKind::StoreWeakInst: {
-//       *outs << "<< Access Instruction >>" << "\n";
-//       break;
-//     }
-// 
-//     case SILInstructionKind::AllocStackInst: {
-//       node = handleAllocStackInst();
-//       break;
-//     }
-//     case SILInstructionKind::MetatypeInst: {    
-//       *outs << "<< MetatypeInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::AllocRefInst:
-//     case SILInstructionKind::AllocRefDynamicInst: {
-//       *outs << "<< Alloc[Ref/RefDynamic] Instruction >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::DeallocStackInst: {    
-//       *outs << "<< DeallocStackInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::DeallocRefInst: {    
-//       *outs << "<< DeallocRefInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::DeallocPartialRefInst: {    
-//       *outs << "<< DeallocPartialRefInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::DeallocBoxInst: {    
-//       *outs << "<< DeallocBoxInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::ValueMetatypeInst: 
-//     case SILInstructionKind::ExistentialMetatypeInst: {    
-//       *outs << "<< [Value/Existential]MetatypeInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::DeallocExistentialBoxInst: {    
-//       *outs << "<< DeallocExistentialBoxInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::TupleInst: {    
-//       *outs << "<< TupleInst >>" << "\n";
-// //       TupleInst *castInst = cast<TupleInst>(instr);
-// //       OperandValueArrayRef getElements()
-// 
-//       break;
-//     }
-//     
-//     case SILInstructionKind::EnumInst: {    
-//       *outs << "<< EnumInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::InitEnumDataAddrInst:
-//     case SILInstructionKind::UncheckedEnumDataInst:
-//     case SILInstructionKind::UncheckedTakeEnumDataAddrInst: {    
-//       *outs << "<< EnumData Instruction >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::InjectEnumAddrInst: {    
-//       *outs << "<< InjectEnumAddrInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::TupleElementAddrInst:
-//     case SILInstructionKind::TupleExtractInst: {    
-//       *outs << "<< Tuple Instruction >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::ReturnInst: { 
-//       node = handleReturnInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::ThrowInst: {    
-//       *outs << "<< ThrowInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::BranchInst: {    
-//       node = handleBranchInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::CondBranchInst: {    
-//       node = handleCondBranchInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::UnreachableInst: { 
-//       node = handleUnreachableInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::ClassMethodInst:
-//     case SILInstructionKind::SuperMethodInst: {
-// //     case SILInstructionKind::DynamicMethodInst: {    
-//       *outs << "<< DeallocRefInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::WitnessMethodInst: {    
-//       *outs << "<< WitnessMethodInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::CopyAddrInst: {    
-//       *outs << "<< CopyAddrInst >>" << "\n";
-//       break;
-//     }
-// 
-//     case SILInstructionKind::CopyValueInst: {
-//       node = handleCopyValueInst();
-//       break;
-//     }
-// 
-//     case SILInstructionKind::DestroyValueInst:{
-//       *outs << "<< DestroyValueInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::BindMemoryInst: {    
-//       *outs << "<< BindMemoryInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::StructInst: {    
-//       *outs << "<< StructInst >>" << "\n";
-// //       StructInst *castInst = cast<StructInst>(instr);
-// 
-//       break;
-//     }
-//     
-//     case SILInstructionKind::StructElementAddrInst:
-//     case SILInstructionKind::StructExtractInst: {    
-//       *outs << "<< Struct Instruction >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::RefElementAddrInst: {    
-//       *outs << "<< RefElementAddrInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::RefTailAddrInst: {    
-//       *outs << "<< RefTailAddrInst >>" << "\n";
-//       break;
-//     }
-//     
-// //     case SILInstructionKind::IsNonnullInst: {    
-// //       *outs << "<< IsNonnullInst >>" << "\n";
-// //       break;
-// //     }
-//     
-//     case SILInstructionKind::IndexAddrInst: {    
-//       *outs << "<< IndexAddrInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::TailAddrInst: {    
-//       *outs << "<< TailAddrInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::IndexRawPointerInst: {    
-//       *outs << "<< IndexRawPointerInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::ObjCProtocolInst: {    
-//       *outs << "<< ObjCProtocolInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::AllocGlobalInst: { 
-//       node = handleAllocGlobalInst(); 
-//       break;
-//     }
-//     
-//     case SILInstructionKind::GlobalAddrInst: { 
-//       node = handleGlobalAddrInst();
-//       break;
-//     }
-//     
-//     case SILInstructionKind::SelectEnumInst: {    
-//       *outs << "<< SelectEnumInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::SelectEnumAddrInst: {    
-//       *outs << "<< DeallocRefInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::SwitchEnumInst: {    
-//       *outs << "<< SwitchEnumInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::SwitchEnumAddrInst: {    
-//       *outs << "<< SwitchEnumAddrInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::SwitchValueInst: {    
-//       *outs << "<< SwitchValueInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::SelectValueInst: {    
-//       *outs << "<< SelectValueInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::DeinitExistentialAddrInst: {    
-//       *outs << "<< DeinitExistentialAddrInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::DeinitExistentialValueInst: {    
-//       *outs << "<< DeinitExistentialValueInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::InitExistentialAddrInst: {    
-//       *outs << "<< InitExistentialAddrInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::InitExistentialValueInst: {    
-//       *outs << "<< InitExistentialValueInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::AllocExistentialBoxInst: {    
-//       *outs << "<< AllocExistentialBoxInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::InitExistentialRefInst: {    
-//       *outs << "<< InitExistentialRefInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::InitExistentialMetatypeInst: {    
-//       *outs << "<< InitExistentialMetatypeInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::DynamicMethodBranchInst: {    
-//       *outs << "<< DynamicMethodBranchInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::ProjectBlockStorageInst: {    
-//       *outs << "<< ProjectBlockStorageInst >>" << "\n";
-//       break;
-//     }
-//     
-//     case SILInstructionKind::InitBlockStorageHeaderInst: {    
-//       *outs << "<< InitBlockStorageHeaderInst >>" << "\n";
-//       break;
-//     }    
-//     
-//     case SILInstructionKind::TryApplyInst: {
-//       node = handleTryApplyInst();
-//       break;
-//     }
-// 
-//     default: {
-//        *outs << "\t\t xxxxx Not a handled inst type \n";
-//        
-//       break;
-//     }
-//   }
-//   if (node != nullptr) {
-//     nodeList->push_back(node);
-//     //wala->print(node);
-//   }
+  jobject node = nullptr;
+
+  switch (instrKind) {
+
+// // // Deprecated    
+//     case SILInstructionKind::SILPHIArgument:
+//     case SILInstructionKind::SILFunctionArgument:
+//     case SILInstructionKind::SILUndef: {    
+//       *outs << "<< Not an instruction >>" << "\n";
+//       break;
+//     }
+    
+    case SILInstructionKind::AllocBoxInst: {
+      node = handleAllocBoxInst();
+      break;
+    }
+  
+    case SILInstructionKind::ApplyInst: {
+      node = handleApplyInst();
+      break;
+    }
+        
+    case SILInstructionKind::PartialApplyInst: {
+      *outs << "<< PartialApplyInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::AbortApplyInst: {
+      *outs << "<< AbortApplyInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::IntegerLiteralInst: {
+      node = handleIntegerLiteralInst();
+      break;
+    }
+    
+    case SILInstructionKind::FloatLiteralInst: {
+      *outs << "<< FloatLiteralInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::StringLiteralInst: {
+      node = handleStringLiteralInst();
+      break;
+    }
+    
+    case SILInstructionKind::ConstStringLiteralInst: {
+      node = handleConstStringLiteralInst();
+      break;
+    }
+    
+    case SILInstructionKind::AllocValueBufferInst: {
+      *outs << "<< AllocValueBufferInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::ProjectValueBufferInst: {
+      *outs << "<< ProjectValueBufferInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::DeallocValueBufferInst: {
+      *outs << "<< DeallocValueBufferInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::ProjectBoxInst: {
+      node = handleProjectBoxInst();
+      break;
+    }
+    
+    case SILInstructionKind::ProjectExistentialBoxInst: {
+      *outs << "<< ProjectExistentialBoxInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::FunctionRefInst: {
+      node = handleFunctionRefInst();
+      break;
+    }
+    
+    case SILInstructionKind::BuiltinInst: {
+      *outs << "<< BuiltinInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::OpenExistentialAddrInst:
+    case SILInstructionKind::OpenExistentialBoxInst:
+    case SILInstructionKind::OpenExistentialBoxValueInst:
+    case SILInstructionKind::OpenExistentialMetatypeInst:
+    case SILInstructionKind::OpenExistentialRefInst:
+    case SILInstructionKind::OpenExistentialValueInst: {
+      *outs << "<< OpenExistential[Addr/Box/BoxValue/Metatype/Ref/Value]Inst >>" << "\n";
+      break;
+    }
+    
+    // UNARY_INSTRUCTION(ID) <see ParseSIL.cpp:2248>
+    // DEFCOUNTING_INSTRUCTION(ID) <see ParseSIL.cpp:2255>
+    
+    case SILInstructionKind::DebugValueInst: {
+      node = handleDebugValueInst();
+      break;
+    }
+    
+    case SILInstructionKind::DebugValueAddrInst: {
+      *outs << "<< DebugValueAddrInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::UncheckedOwnershipConversionInst: {
+      *outs << "<< UncheckedOwnershipConversionInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::LoadInst: {
+      node = handleLoadInst();
+      break;
+    }
+    
+    case SILInstructionKind::LoadBorrowInst: {
+      node = handleLoadBorrowInst();
+      break;
+    }
+    
+    case SILInstructionKind::BeginBorrowInst: {
+      node = handleBeginBorrowInst();
+      break;
+    }
+    
+    case SILInstructionKind::LoadUnownedInst: {
+      *outs << "<< LoadUnownedInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::LoadWeakInst: {
+      *outs << "<< LoadWeakInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::MarkDependenceInst: {
+      *outs << "<< MarkDependenceInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::KeyPathInst: {
+      *outs << "<< KeyPathInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::UncheckedRefCastInst:
+    case SILInstructionKind::UncheckedAddrCastInst:
+    case SILInstructionKind::UncheckedTrivialBitCastInst:
+    case SILInstructionKind::UncheckedBitwiseCastInst:
+    case SILInstructionKind::UpcastInst:
+    case SILInstructionKind::AddressToPointerInst:
+    case SILInstructionKind::BridgeObjectToRefInst:
+    case SILInstructionKind::BridgeObjectToWordInst:
+    case SILInstructionKind::RefToRawPointerInst:
+    case SILInstructionKind::RawPointerToRefInst:
+    case SILInstructionKind::RefToUnownedInst:
+    case SILInstructionKind::UnownedToRefInst:
+    case SILInstructionKind::RefToUnmanagedInst:
+    case SILInstructionKind::UnmanagedToRefInst:
+    case SILInstructionKind::ThinFunctionToPointerInst:
+    case SILInstructionKind::PointerToThinFunctionInst:
+    case SILInstructionKind::ThickToObjCMetatypeInst:
+    case SILInstructionKind::ObjCToThickMetatypeInst:
+    case SILInstructionKind::ConvertFunctionInst:
+    case SILInstructionKind::ObjCExistentialMetatypeToObjectInst:
+    case SILInstructionKind::ObjCMetatypeToObjectInst: {
+      *outs << "<< Conversion Instruction >>" << "\n";
+        break;
+      }
+      
+    case SILInstructionKind::ThinToThickFunctionInst: {
+      node = handleThinToThickFunctionInst();
+      break;
+    }
+
+    case SILInstructionKind::PointerToAddressInst: {
+      *outs << "<< PointerToAddressInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::RefToBridgeObjectInst: {
+      *outs << "<< RefToBridgeObjectInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::UnconditionalCheckedCastAddrInst:
+    case SILInstructionKind::CheckedCastAddrBranchInst:
+    case SILInstructionKind::UncheckedRefCastAddrInst: {
+      *outs << "<< Indirect checked conversion instruction >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::UnconditionalCheckedCastValueInst: {
+      *outs << "<< UnconditionalCheckedCastValueInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::UnconditionalCheckedCastInst:
+    case SILInstructionKind::CheckedCastValueBranchInst:
+    case SILInstructionKind::CheckedCastBranchInst: {
+      *outs << "<< Checked conversion instruction >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::MarkUninitializedInst: {
+      *outs << "<< MarkUninitializedInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::MarkUninitializedBehaviorInst: {
+      *outs << "<< MarkUninitializedBehaviorInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::MarkFunctionEscapeInst: {
+      *outs << "<< MarkFunctionEscapeInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::StoreInst: {
+      node = handleStoreInst();
+      break;
+    }
+    
+    case SILInstructionKind::EndBorrowInst: {
+      *outs << "<< EndBorrowInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::BeginAccessInst:{
+      node = handleBeginAccessInst();
+      break;
+    }
+    case SILInstructionKind::BeginUnpairedAccessInst:{
+      *outs << "<<Begin Unpaired Access>>" << "\n";
+      break;
+    }
+    case SILInstructionKind::EndAccessInst:{
+      *outs << "<< End Access >>" << "\n";
+      break;
+    }
+    case SILInstructionKind::EndUnpairedAccessInst: {
+      *outs << "<< End Unpaired Access >>" << "\n";      
+      break;
+    }
+    
+    case SILInstructionKind::StoreBorrowInst:{
+      *outs << "<< Store Borrow Instruction >>" << "\n";
+      break;      
+    }
+    case SILInstructionKind::AssignInst:{
+      node = handleAssignInst();
+      break;
+    }
+    case SILInstructionKind::StoreUnownedInst:
+    case SILInstructionKind::StoreWeakInst: {
+      *outs << "<< Access Instruction >>" << "\n";
+      break;
+    }
+
+    case SILInstructionKind::AllocStackInst: {
+      node = handleAllocStackInst();
+      break;
+    }
+    case SILInstructionKind::MetatypeInst: {    
+      *outs << "<< MetatypeInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::AllocRefInst:
+    case SILInstructionKind::AllocRefDynamicInst: {
+      *outs << "<< Alloc[Ref/RefDynamic] Instruction >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::DeallocStackInst: {    
+      *outs << "<< DeallocStackInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::DeallocRefInst: {    
+      *outs << "<< DeallocRefInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::DeallocPartialRefInst: {    
+      *outs << "<< DeallocPartialRefInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::DeallocBoxInst: {    
+      *outs << "<< DeallocBoxInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::ValueMetatypeInst: 
+    case SILInstructionKind::ExistentialMetatypeInst: {    
+      *outs << "<< [Value/Existential]MetatypeInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::DeallocExistentialBoxInst: {    
+      *outs << "<< DeallocExistentialBoxInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::TupleInst: {    
+      *outs << "<< TupleInst >>" << "\n";
+//       TupleInst *castInst = cast<TupleInst>(instr);
+//       OperandValueArrayRef getElements()
+
+      break;
+    }
+    
+    case SILInstructionKind::EnumInst: {    
+      *outs << "<< EnumInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::InitEnumDataAddrInst:
+    case SILInstructionKind::UncheckedEnumDataInst:
+    case SILInstructionKind::UncheckedTakeEnumDataAddrInst: {    
+      *outs << "<< EnumData Instruction >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::InjectEnumAddrInst: {    
+      *outs << "<< InjectEnumAddrInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::TupleElementAddrInst:
+    case SILInstructionKind::TupleExtractInst: {    
+      *outs << "<< Tuple Instruction >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::ReturnInst: { 
+      node = handleReturnInst();
+      break;
+    }
+    
+    case SILInstructionKind::ThrowInst: {    
+      *outs << "<< ThrowInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::BranchInst: {    
+      node = handleBranchInst();
+      break;
+    }
+    
+    case SILInstructionKind::CondBranchInst: {    
+      node = handleCondBranchInst();
+      break;
+    }
+    
+    case SILInstructionKind::UnreachableInst: { 
+      node = handleUnreachableInst();
+      break;
+    }
+    
+    case SILInstructionKind::ClassMethodInst:
+    case SILInstructionKind::SuperMethodInst: {
+//     case SILInstructionKind::DynamicMethodInst: {    
+      *outs << "<< DeallocRefInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::WitnessMethodInst: {    
+      *outs << "<< WitnessMethodInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::CopyAddrInst: {    
+      *outs << "<< CopyAddrInst >>" << "\n";
+      break;
+    }
+
+    case SILInstructionKind::CopyValueInst: {
+      node = handleCopyValueInst();
+      break;
+    }
+
+    case SILInstructionKind::DestroyValueInst:{
+      *outs << "<< DestroyValueInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::BindMemoryInst: {    
+      *outs << "<< BindMemoryInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::StructInst: {    
+      *outs << "<< StructInst >>" << "\n";
+//       StructInst *castInst = cast<StructInst>(instr);
+
+      break;
+    }
+    
+    case SILInstructionKind::StructElementAddrInst:
+    case SILInstructionKind::StructExtractInst: {    
+      *outs << "<< Struct Instruction >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::RefElementAddrInst: {    
+      *outs << "<< RefElementAddrInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::RefTailAddrInst: {    
+      *outs << "<< RefTailAddrInst >>" << "\n";
+      break;
+    }
+    
+//     case SILInstructionKind::IsNonnullInst: {    
+//       *outs << "<< IsNonnullInst >>" << "\n";
+//       break;
+//     }
+    
+    case SILInstructionKind::IndexAddrInst: {    
+      *outs << "<< IndexAddrInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::TailAddrInst: {    
+      *outs << "<< TailAddrInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::IndexRawPointerInst: {    
+      *outs << "<< IndexRawPointerInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::ObjCProtocolInst: {    
+      *outs << "<< ObjCProtocolInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::AllocGlobalInst: { 
+      node = handleAllocGlobalInst(); 
+      break;
+    }
+    
+    case SILInstructionKind::GlobalAddrInst: { 
+      node = handleGlobalAddrInst();
+      break;
+    }
+    
+    case SILInstructionKind::SelectEnumInst: {    
+      *outs << "<< SelectEnumInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::SelectEnumAddrInst: {    
+      *outs << "<< DeallocRefInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::SwitchEnumInst: {    
+      *outs << "<< SwitchEnumInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::SwitchEnumAddrInst: {    
+      *outs << "<< SwitchEnumAddrInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::SwitchValueInst: {    
+      *outs << "<< SwitchValueInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::SelectValueInst: {    
+      *outs << "<< SelectValueInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::DeinitExistentialAddrInst: {    
+      *outs << "<< DeinitExistentialAddrInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::DeinitExistentialValueInst: {    
+      *outs << "<< DeinitExistentialValueInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::InitExistentialAddrInst: {    
+      *outs << "<< InitExistentialAddrInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::InitExistentialValueInst: {    
+      *outs << "<< InitExistentialValueInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::AllocExistentialBoxInst: {    
+      *outs << "<< AllocExistentialBoxInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::InitExistentialRefInst: {    
+      *outs << "<< InitExistentialRefInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::InitExistentialMetatypeInst: {    
+      *outs << "<< InitExistentialMetatypeInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::DynamicMethodBranchInst: {    
+      *outs << "<< DynamicMethodBranchInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::ProjectBlockStorageInst: {    
+      *outs << "<< ProjectBlockStorageInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::InitBlockStorageHeaderInst: {    
+      *outs << "<< InitBlockStorageHeaderInst >>" << "\n";
+      break;
+    }    
+    
+    case SILInstructionKind::TryApplyInst: {
+      node = handleTryApplyInst();
+      break;
+    }
+
+    default: {
+       *outs << "\t\t xxxxx Not a handled inst type \n";
+       
+      break;
+    }
+  }
+  if (node != nullptr) {
+    nodeList->push_back(node);
+    //wala->print(node);
+  }
 
   *outs << *instr << "\n";
   return instrKind;
