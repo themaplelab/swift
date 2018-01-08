@@ -772,19 +772,34 @@ SILInstructionKind InstrKindInfoGetter::get() {
       node = handleAllocBoxInst();
       break;
     }
-  
+
     case SILInstructionKind::ApplyInst: {
       node = handleApplyInst();
       break;
     }
-        
+            
+    case SILInstructionKind::BeginApplyInst: {
+      *outs << "<< BeginApplyInst >>" << "\n";
+      break;
+    }
+  
     case SILInstructionKind::PartialApplyInst: {
       *outs << "<< PartialApplyInst >>" << "\n";
       break;
     }
     
+    case SILInstructionKind::TryApplyInst: {
+      node = handleTryApplyInst();
+      break;
+    }
+    
     case SILInstructionKind::AbortApplyInst: {
       *outs << "<< AbortApplyInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::EndApplyInst: {
+      *outs << "<< EndApplyInst >>" << "\n";
       break;
     }
     
@@ -1108,6 +1123,16 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
+    case SILInstructionKind::UnwindInst: {    
+      *outs << "<< UnwindInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::YieldInst: {    
+      *outs << "<< YieldInst >>" << "\n";
+      break;
+    }
+    
     case SILInstructionKind::BranchInst: {    
       node = handleBranchInst();
       break;
@@ -1130,6 +1155,16 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
+    case SILInstructionKind::ObjCMethodInst: {    
+      *outs << "<< ObjCMethodInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::ObjCSuperMethodInst: {    
+      *outs << "<< ObjCSuperMethodInst >>" << "\n";
+      break;
+    }
+    
     case SILInstructionKind::WitnessMethodInst: {    
       *outs << "<< WitnessMethodInst >>" << "\n";
       break;
@@ -1140,18 +1175,24 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
 
-    case SILInstructionKind::CopyValueInst: {
-      node = handleCopyValueInst();
-      break;
-    }
-
-    case SILInstructionKind::DestroyValueInst:{
-      *outs << "<< DestroyValueInst >>" << "\n";
-      break;
-    }
+// // // // Deprecated
+//     case SILInstructionKind::CopyValueInst: {
+//       node = handleCopyValueInst();
+//       break;
+//     }
+// 
+//     case SILInstructionKind::DestroyValueInst:{
+//       *outs << "<< DestroyValueInst >>" << "\n";
+//       break;
+//     }
     
     case SILInstructionKind::BindMemoryInst: {    
       *outs << "<< BindMemoryInst >>" << "\n";
+      break;
+    }
+    
+    case SILInstructionKind::ObjectInst: {    
+      *outs << "<< ObjectInst >>" << "\n";
       break;
     }
     
@@ -1210,6 +1251,11 @@ SILInstructionKind InstrKindInfoGetter::get() {
     
     case SILInstructionKind::GlobalAddrInst: { 
       node = handleGlobalAddrInst();
+      break;
+    }
+    
+    case SILInstructionKind::GlobalValueInst: {    
+      *outs << "<< GlobalValueInst >>" << "\n";
       break;
     }
     
@@ -1292,11 +1338,6 @@ SILInstructionKind InstrKindInfoGetter::get() {
       *outs << "<< InitBlockStorageHeaderInst >>" << "\n";
       break;
     }    
-    
-    case SILInstructionKind::TryApplyInst: {
-      node = handleTryApplyInst();
-      break;
-    }
 
     default: {
        *outs << "\t\t xxxxx Not a handled inst type \n";
