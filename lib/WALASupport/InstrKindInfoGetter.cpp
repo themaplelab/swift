@@ -218,29 +218,29 @@ jobject InstrKindInfoGetter::handleIntegerLiteralInst() {
   if (outs != NULL) {
     *outs << "<< IntegerLiteralInst >>" << "\n";
   }
-  IntegerLiteralInst* castInst = cast<IntegerLiteralInst>(instr);
-  APInt value = castInst->getValue();
-  jobject node = nullptr;
-  if (value.isNegative()) {
-    if (value.getMinSignedBits() <= 32) {
-      node = (*wala)->makeConstant(static_cast<int>(value.getSExtValue()));
+  IntegerLiteralInst* Inst = cast<IntegerLiteralInst>(instr);
+  APInt Value = Inst->getValue();
+  jobject Node = nullptr;
+  if (Value.isNegative()) {
+    if (Value.getMinSignedBits() <= 32) {
+      Node = (*wala)->makeConstant(static_cast<int>(Value.getSExtValue()));
     }
-    else if (value.getMinSignedBits() <= 64) {
-      node = (*wala)->makeConstant(value.getSExtValue());
+    else if (Value.getMinSignedBits() <= 64) {
+      Node = (*wala)->makeConstant(Value.getSExtValue());
     }
   }
   else {
-    if (value.getActiveBits() <= 32) {
-      node = (*wala)->makeConstant(static_cast<int>(value.getZExtValue()));
+    if (Value.getActiveBits() <= 32) {
+      Node = (*wala)->makeConstant(static_cast<int>(Value.getZExtValue()));
     }
-    else if (value.getActiveBits() <= 64) {
-      node = (*wala)->makeConstant(static_cast<long>(value.getZExtValue()));
+    else if (Value.getActiveBits() <= 64) {
+      Node = (*wala)->makeConstant(static_cast<long>(Value.getZExtValue()));
     }
   }
-  if (node != nullptr) {
-    nodeMap->insert(std::make_pair(castInst, node));
+  if (Node != nullptr) {
+    nodeMap->insert(std::make_pair(Inst, Node));
   }
-  return node;
+  return Node;
 }
 
 jobject InstrKindInfoGetter::handleStringLiteralInst() {
@@ -826,7 +826,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
     
     case SILInstructionKind::IntegerLiteralInst: {
        node = handleIntegerLiteralInst();
-      *outs << "<< IntegerLiteralInst Broken >>" << "\n";
+      *outs << "<< IntegerLiteralInst >>" << "\n";
       break;
     }
     
