@@ -1044,10 +1044,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
 
-//     case SILInstructionKind::AllocStackInst: {
-//       node = handleAllocStackInst();
-//       break;
-//     }
+    case SILInstructionKind::AllocStackInst: {
+      node = handleAllocStackInst();
+      break;
+    }
 
     case SILInstructionKind::MetatypeInst: {    
       *outs << "<< MetatypeInst >>" << "\n";
@@ -1142,20 +1142,20 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-//     case SILInstructionKind::BranchInst: {    
-//       node = handleBranchInst();
-//       break;
-//     }
+    case SILInstructionKind::BranchInst: {    
+      node = handleBranchInst();
+      break;
+    }
     
-//     case SILInstructionKind::CondBranchInst: {    
-//       node = handleCondBranchInst();
-//       break;
-//     }
+    case SILInstructionKind::CondBranchInst: {    
+      node = handleCondBranchInst();
+      break;
+    }
     
-//     case SILInstructionKind::UnreachableInst: { 
-//       node = handleUnreachableInst();
-//       break;
-//     }
+    case SILInstructionKind::UnreachableInst: { 
+      node = handleUnreachableInst();
+      break;
+    }
     
     case SILInstructionKind::ClassMethodInst:
     case SILInstructionKind::SuperMethodInst: {
@@ -1229,10 +1229,12 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
+// // // // Deprecated
 //     case SILInstructionKind::IsNonnullInst: {    
 //       *outs << "<< IsNonnullInst >>" << "\n";
 //       break;
 //     }
+// // // // Deprecated
     
     case SILInstructionKind::IndexAddrInst: {    
       *outs << "<< IndexAddrInst >>" << "\n";
@@ -1254,15 +1256,15 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-//     case SILInstructionKind::AllocGlobalInst: { 
-//       node = handleAllocGlobalInst(); 
-//       break;
-//     }
+    case SILInstructionKind::AllocGlobalInst: { 
+      node = handleAllocGlobalInst(); 
+      break;
+    }
     
-//     case SILInstructionKind::GlobalAddrInst: { 
-//       node = handleGlobalAddrInst();
-//       break;
-//     }
+    case SILInstructionKind::GlobalAddrInst: { 
+      node = handleGlobalAddrInst();
+      break;
+    }
     
     case SILInstructionKind::GlobalValueInst: {    
       *outs << "<< GlobalValueInst >>" << "\n";
