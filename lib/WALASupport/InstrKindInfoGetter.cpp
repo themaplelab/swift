@@ -841,10 +841,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-//     case SILInstructionKind::ProjectBoxInst: {
-//       node = handleProjectBoxInst();
-//       break;
-//     }
+    case SILInstructionKind::ProjectBoxInst: {
+      node = handleProjectBoxInst();
+      break;
+    }
     
     case SILInstructionKind::ProjectExistentialBoxInst: {
       *outs << "<< ProjectExistentialBoxInst >>" << "\n";
