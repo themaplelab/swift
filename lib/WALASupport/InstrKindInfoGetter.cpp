@@ -896,15 +896,15 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-//     case SILInstructionKind::LoadBorrowInst: {
-//       node = handleLoadBorrowInst();
-//       break;
-//     }
+    case SILInstructionKind::LoadBorrowInst: {
+      node = handleLoadBorrowInst();
+      break;
+    }
     
-//     case SILInstructionKind::BeginBorrowInst: {
-//       node = handleBeginBorrowInst();
-//       break;
-//     }
+    case SILInstructionKind::BeginBorrowInst: {
+      node = handleBeginBorrowInst();
+      break;
+    }
     
     case SILInstructionKind::LoadUnownedInst: {
       *outs << "<< LoadUnownedInst >>" << "\n";
