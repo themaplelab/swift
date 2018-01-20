@@ -891,10 +891,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-//     case SILInstructionKind::LoadInst: {
-//       node = handleLoadInst();
-//       break;
-//     }
+    case SILInstructionKind::LoadInst: {
+      node = handleLoadInst();
+      break;
+    }
     
 //     case SILInstructionKind::LoadBorrowInst: {
 //       node = handleLoadBorrowInst();
