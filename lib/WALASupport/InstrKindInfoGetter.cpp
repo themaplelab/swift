@@ -760,21 +760,24 @@ SILInstructionKind InstrKindInfoGetter::get() {
 
   switch (instrKind) {
 
-// // // Deprecated    
+// // // // Deprecated    
 //     case SILInstructionKind::SILPHIArgument:
 //     case SILInstructionKind::SILFunctionArgument:
 //     case SILInstructionKind::SILUndef: {    
 //       *outs << "<< Not an instruction >>" << "\n";
 //       break;
 //     }
+// // // // Deprecated
     
     case SILInstructionKind::AllocBoxInst: {
-      node = handleAllocBoxInst();
+//       node = handleAllocBoxInst();
+      *outs << "<< AllocBoxInst Fails >>" << "\n";
       break;
     }
 
     case SILInstructionKind::ApplyInst: {
-      node = handleApplyInst();
+//       node = handleApplyInst();
+      *outs << "<< ApplyInst Fails >>" << "\n";
       break;
     }
             
@@ -803,10 +806,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case SILInstructionKind::IntegerLiteralInst: {
-      node = handleIntegerLiteralInst();
-      break;
-    }
+//     case SILInstructionKind::IntegerLiteralInst: {
+//       node = handleIntegerLiteralInst();
+//       break;
+//     }
     
     case SILInstructionKind::FloatLiteralInst: {
       *outs << "<< FloatLiteralInst >>" << "\n";
@@ -818,10 +821,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case SILInstructionKind::ConstStringLiteralInst: {
-      node = handleConstStringLiteralInst();
-      break;
-    }
+//     case SILInstructionKind::ConstStringLiteralInst: {
+//       node = handleConstStringLiteralInst();
+//       break;
+//     }
     
     case SILInstructionKind::AllocValueBufferInst: {
       *outs << "<< AllocValueBufferInst >>" << "\n";
@@ -838,20 +841,20 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case SILInstructionKind::ProjectBoxInst: {
-      node = handleProjectBoxInst();
-      break;
-    }
+//     case SILInstructionKind::ProjectBoxInst: {
+//       node = handleProjectBoxInst();
+//       break;
+//     }
     
     case SILInstructionKind::ProjectExistentialBoxInst: {
       *outs << "<< ProjectExistentialBoxInst >>" << "\n";
       break;
     }
     
-    case SILInstructionKind::FunctionRefInst: {
-      node = handleFunctionRefInst();
-      break;
-    }
+//     case SILInstructionKind::FunctionRefInst: {
+//       node = handleFunctionRefInst();
+//       break;
+//     }
     
     case SILInstructionKind::BuiltinInst: {
       *outs << "<< BuiltinInst >>" << "\n";
@@ -871,10 +874,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
     // UNARY_INSTRUCTION(ID) <see ParseSIL.cpp:2248>
     // DEFCOUNTING_INSTRUCTION(ID) <see ParseSIL.cpp:2255>
     
-    case SILInstructionKind::DebugValueInst: {
-      node = handleDebugValueInst();
-      break;
-    }
+//     case SILInstructionKind::DebugValueInst: {
+//       node = handleDebugValueInst();
+//       break;
+//     }
     
     case SILInstructionKind::DebugValueAddrInst: {
       *outs << "<< DebugValueAddrInst >>" << "\n";
@@ -886,20 +889,20 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case SILInstructionKind::LoadInst: {
-      node = handleLoadInst();
-      break;
-    }
+//     case SILInstructionKind::LoadInst: {
+//       node = handleLoadInst();
+//       break;
+//     }
     
-    case SILInstructionKind::LoadBorrowInst: {
-      node = handleLoadBorrowInst();
-      break;
-    }
+//     case SILInstructionKind::LoadBorrowInst: {
+//       node = handleLoadBorrowInst();
+//       break;
+//     }
     
-    case SILInstructionKind::BeginBorrowInst: {
-      node = handleBeginBorrowInst();
-      break;
-    }
+//     case SILInstructionKind::BeginBorrowInst: {
+//       node = handleBeginBorrowInst();
+//       break;
+//     }
     
     case SILInstructionKind::LoadUnownedInst: {
       *outs << "<< LoadUnownedInst >>" << "\n";
@@ -946,10 +949,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
         break;
       }
       
-    case SILInstructionKind::ThinToThickFunctionInst: {
-      node = handleThinToThickFunctionInst();
-      break;
-    }
+//     case SILInstructionKind::ThinToThickFunctionInst: {
+//       node = handleThinToThickFunctionInst();
+//       break;
+//     }
 
     case SILInstructionKind::PointerToAddressInst: {
       *outs << "<< PointerToAddressInst >>" << "\n";
@@ -995,20 +998,21 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case SILInstructionKind::StoreInst: {
-      node = handleStoreInst();
-      break;
-    }
+//     case SILInstructionKind::StoreInst: {
+//       node = handleStoreInst();
+//       break;
+//     }
     
     case SILInstructionKind::EndBorrowInst: {
       *outs << "<< EndBorrowInst >>" << "\n";
       break;
     }
     
-    case SILInstructionKind::BeginAccessInst:{
-      node = handleBeginAccessInst();
-      break;
-    }
+//     case SILInstructionKind::BeginAccessInst:{
+//       node = handleBeginAccessInst();
+//       break;
+//     }
+
     case SILInstructionKind::BeginUnpairedAccessInst:{
       *outs << "<<Begin Unpaired Access>>" << "\n";
       break;
@@ -1026,20 +1030,23 @@ SILInstructionKind InstrKindInfoGetter::get() {
       *outs << "<< Store Borrow Instruction >>" << "\n";
       break;      
     }
-    case SILInstructionKind::AssignInst:{
-      node = handleAssignInst();
-      break;
-    }
+    
+//     case SILInstructionKind::AssignInst:{
+//       node = handleAssignInst();
+//       break;
+//     }
+
     case SILInstructionKind::StoreUnownedInst:
     case SILInstructionKind::StoreWeakInst: {
       *outs << "<< Access Instruction >>" << "\n";
       break;
     }
 
-    case SILInstructionKind::AllocStackInst: {
-      node = handleAllocStackInst();
-      break;
-    }
+//     case SILInstructionKind::AllocStackInst: {
+//       node = handleAllocStackInst();
+//       break;
+//     }
+
     case SILInstructionKind::MetatypeInst: {    
       *outs << "<< MetatypeInst >>" << "\n";
       break;
@@ -1113,10 +1120,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case SILInstructionKind::ReturnInst: { 
-      node = handleReturnInst();
-      break;
-    }
+//     case SILInstructionKind::ReturnInst: { 
+//       node = handleReturnInst();
+//       break;
+//     }
     
     case SILInstructionKind::ThrowInst: {    
       *outs << "<< ThrowInst >>" << "\n";
@@ -1133,20 +1140,20 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case SILInstructionKind::BranchInst: {    
-      node = handleBranchInst();
-      break;
-    }
+//     case SILInstructionKind::BranchInst: {    
+//       node = handleBranchInst();
+//       break;
+//     }
     
-    case SILInstructionKind::CondBranchInst: {    
-      node = handleCondBranchInst();
-      break;
-    }
+//     case SILInstructionKind::CondBranchInst: {    
+//       node = handleCondBranchInst();
+//       break;
+//     }
     
-    case SILInstructionKind::UnreachableInst: { 
-      node = handleUnreachableInst();
-      break;
-    }
+//     case SILInstructionKind::UnreachableInst: { 
+//       node = handleUnreachableInst();
+//       break;
+//     }
     
     case SILInstructionKind::ClassMethodInst:
     case SILInstructionKind::SuperMethodInst: {
@@ -1185,6 +1192,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
 //       *outs << "<< DestroyValueInst >>" << "\n";
 //       break;
 //     }
+// // // // Deprecated
     
     case SILInstructionKind::BindMemoryInst: {    
       *outs << "<< BindMemoryInst >>" << "\n";
@@ -1244,15 +1252,15 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-    case SILInstructionKind::AllocGlobalInst: { 
-      node = handleAllocGlobalInst(); 
-      break;
-    }
+//     case SILInstructionKind::AllocGlobalInst: { 
+//       node = handleAllocGlobalInst(); 
+//       break;
+//     }
     
-    case SILInstructionKind::GlobalAddrInst: { 
-      node = handleGlobalAddrInst();
-      break;
-    }
+//     case SILInstructionKind::GlobalAddrInst: { 
+//       node = handleGlobalAddrInst();
+//       break;
+//     }
     
     case SILInstructionKind::GlobalValueInst: {    
       *outs << "<< GlobalValueInst >>" << "\n";
