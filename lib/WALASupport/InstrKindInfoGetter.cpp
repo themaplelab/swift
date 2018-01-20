@@ -821,10 +821,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-//     case SILInstructionKind::ConstStringLiteralInst: {
-//       node = handleConstStringLiteralInst();
-//       break;
-//     }
+    case SILInstructionKind::ConstStringLiteralInst: {
+      node = handleConstStringLiteralInst();
+      break;
+    }
     
     case SILInstructionKind::AllocValueBufferInst: {
       *outs << "<< AllocValueBufferInst >>" << "\n";
