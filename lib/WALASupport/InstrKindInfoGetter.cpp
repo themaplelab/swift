@@ -1000,10 +1000,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-//     case SILInstructionKind::StoreInst: {
-//       node = handleStoreInst();
-//       break;
-//     }
+    case SILInstructionKind::StoreInst: {
+      node = handleStoreInst();
+      break;
+    }
     
     case SILInstructionKind::EndBorrowInst: {
       *outs << "<< EndBorrowInst >>" << "\n";
