@@ -1033,10 +1033,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;      
     }
     
-//     case SILInstructionKind::AssignInst:{
-//       node = handleAssignInst();
-//       break;
-//     }
+    case SILInstructionKind::AssignInst:{
+      node = handleAssignInst();
+      break;
+    }
 
     case SILInstructionKind::StoreUnownedInst:
     case SILInstructionKind::StoreWeakInst: {
