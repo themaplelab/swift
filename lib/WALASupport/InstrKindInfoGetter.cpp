@@ -122,17 +122,26 @@ jobject InstrKindInfoGetter::handleAllocBoxInst() {
   if (outs != NULL) {
     *outs << "<< AllocBoxInst >>" << "\n";
   }
+  
   AllocBoxInst *castInst = cast<AllocBoxInst>(instr);
 
   SILDebugVariable info = castInst->getVarInfo();
   unsigned argNo = info.ArgNo;
 
   VarDecl *decl = castInst->getDecl();
-  StringRef varName = decl->getNameStr();
-  if (outs != NULL) {
-    *outs << "[Arg]#" << argNo << ":" << varName << "\n";
+
+  // getDecl() is sometimes returning nullptr, which is causing segfaults
+  // when decl is not checked before referencing.
+  
+  // TODO: handle for null condition!
+  if (decl) {
+    StringRef varName = decl->getNameStr();
+    if (outs != NULL) {
+      *outs << "[Arg]#" << argNo << ":" << varName << "\n";
+    }
+    symbolTable->insert(castInst, varName);
   }
-  symbolTable->insert(castInst, varName);
+
   return nullptr;
 }
 
@@ -215,13 +224,17 @@ jobject InstrKindInfoGetter::handleApplyInst() {
 }
 
 jobject InstrKindInfoGetter::handleIntegerLiteralInst() {
+  
   if (outs != NULL) {
     *outs << "<< IntegerLiteralInst >>" << "\n";
   }
+  
   IntegerLiteralInst* castInst = cast<IntegerLiteralInst>(instr);
   APInt value = castInst->getValue();
-  jobject node = (*wala)->makeConstant((int)value.getSExtValue());
+  
+  jobject node = (*wala)->makeConstant((int) value.getSExtValue());
   nodeMap->insert(std::make_pair(castInst, node));
+  
   return node;
 }
 
@@ -770,7 +783,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
 // // // // Deprecated
     
     case SILInstructionKind::AllocBoxInst: {
-//       node = handleAllocBoxInst();
+      node = handleAllocBoxInst();
       *outs << "<< AllocBoxInst Fails >>" << "\n";
       break;
     }
