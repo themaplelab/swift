@@ -228,14 +228,29 @@ jobject InstrKindInfoGetter::handleIntegerLiteralInst() {
   if (outs != NULL) {
     *outs << "<< IntegerLiteralInst >>" << "\n";
   }
-  
-  IntegerLiteralInst* castInst = cast<IntegerLiteralInst>(instr);
-  APInt value = castInst->getValue();
-  
-  jobject node = (*wala)->makeConstant((int) value.getSExtValue());
-  nodeMap->insert(std::make_pair(castInst, node));
-  
-  return node;
+  IntegerLiteralInst* Inst = cast<IntegerLiteralInst>(instr);
+  APInt Value = Inst->getValue();
+  jobject Node = nullptr;
+  if (Value.isNegative()) {
+    if (Value.getMinSignedBits() <= 32) {
+      Node = (*wala)->makeConstant(static_cast<int>(Value.getSExtValue()));
+    }
+    else if (Value.getMinSignedBits() <= 64) {
+      Node = (*wala)->makeConstant(Value.getSExtValue());
+    }
+  }
+  else {
+    if (Value.getActiveBits() <= 32) {
+      Node = (*wala)->makeConstant(static_cast<int>(Value.getZExtValue()));
+    }
+    else if (Value.getActiveBits() <= 64) {
+      Node = (*wala)->makeConstant(static_cast<long>(Value.getZExtValue()));
+    }
+  }
+  if (Node != nullptr) {
+    nodeMap->insert(std::make_pair(Inst, Node));
+  }
+  return Node;
 }
 
 jobject InstrKindInfoGetter::handleStringLiteralInst() {
@@ -837,8 +852,8 @@ SILInstructionKind InstrKindInfoGetter::get() {
     }
     
     case SILInstructionKind::IntegerLiteralInst: {
-//       node = handleIntegerLiteralInst();
-      *outs << "<< IntegerLiteralInst Broken >>" << "\n";
+       node = handleIntegerLiteralInst();
+      *outs << "<< IntegerLiteralInst >>" << "\n";
       break;
     }
     
