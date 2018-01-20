@@ -350,34 +350,51 @@ jobject InstrKindInfoGetter::handleProjectBoxInst() {
 }
 
 jobject InstrKindInfoGetter::handleDebugValueInst() {
+
   DebugValueInst *castInst = cast<DebugValueInst>(instr);
 
   SILDebugVariable info = castInst->getVarInfo();
   unsigned argNo = info.ArgNo;
 
-  if (outs != NULL) {
+  if (outs) {
     *outs << "<< DebugValueInst >>" << "\n";
-    *outs << argNo << "\n";
+    *outs << "argNo: " << argNo << "\n";
   }
 
   VarDecl *decl = castInst->getDecl();
-  if (decl != NULL) {
+  
+  if (decl) {
     string varName = decl->getNameStr();
-    SILBasicBlock *parentBB = castInst->getParent();
-    SILArgument *argument = NULL;
-
-    if (argNo >= 1) {
-      argument = parentBB->getArgument(argNo - 1);
-      // variable declaration
-      symbolTable->insert(argument, varName);
+    if (varName.length() == 0) {
+      *outs << "\t DebugValue empty name \n";
+      return nullptr;
     }
+    
+    SILBasicBlock *parentBB = nullptr;
+    parentBB = castInst->getParent();
+    
+    SILArgument *argument = nullptr;
 
-    if (outs != NULL) {
+    if (argNo >= 1 && parentBB) {
+
+        // TODO: why does this line cause the segfault?
+        // argument should be safe, parentBB should be safe, argNo > 0.
+//         argument = parentBB->getArgument(argNo - 1);
+
+        // variable declaration
+        symbolTable->insert(argument, varName);
+      }
+
+    if (outs && argument) {
       *outs << "\t\t[addr of arg]:" << argument << "\n";
     }
   }
-  if (outs != NULL) {
-    *outs << "\t\t[addr of arg]:" << castInst->getOperand().getOpaqueValue() << "\n";
+  
+  if (outs) {
+      SILValue val = castInst->getOperand();
+      if (val) {
+        *outs << "\t\t[addr of arg]:" << val.getOpaqueValue() << "\n";
+      }
   }
 
   return nullptr;
@@ -784,7 +801,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
     
     case SILInstructionKind::AllocBoxInst: {
       node = handleAllocBoxInst();
-      *outs << "<< AllocBoxInst Fails >>" << "\n";
+      *outs << "<< AllocBoxInst >>" << "\n";
       break;
     }
 
@@ -889,7 +906,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
     // DEFCOUNTING_INSTRUCTION(ID) <see ParseSIL.cpp:2255>
     
     case SILInstructionKind::DebugValueInst: {
-//       node = handleDebugValueInst();
+      node = handleDebugValueInst();
       *outs << "<< DebugValueInstInst Broken >>" << "\n";
       break;
     }
