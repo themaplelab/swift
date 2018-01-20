@@ -951,10 +951,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
         break;
       }
       
-//     case SILInstructionKind::ThinToThickFunctionInst: {
-//       node = handleThinToThickFunctionInst();
-//       break;
-//     }
+    case SILInstructionKind::ThinToThickFunctionInst: {
+      node = handleThinToThickFunctionInst();
+      break;
+    }
 
     case SILInstructionKind::PointerToAddressInst: {
       *outs << "<< PointerToAddressInst >>" << "\n";
@@ -1010,10 +1010,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-//     case SILInstructionKind::BeginAccessInst:{
-//       node = handleBeginAccessInst();
-//       break;
-//     }
+    case SILInstructionKind::BeginAccessInst:{
+      node = handleBeginAccessInst();
+      break;
+    }
 
     case SILInstructionKind::BeginUnpairedAccessInst:{
       *outs << "<<Begin Unpaired Access>>" << "\n";
