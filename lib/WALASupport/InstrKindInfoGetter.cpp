@@ -851,10 +851,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-//     case SILInstructionKind::FunctionRefInst: {
-//       node = handleFunctionRefInst();
-//       break;
-//     }
+    case SILInstructionKind::FunctionRefInst: {
+      node = handleFunctionRefInst();
+      break;
+    }
     
     case SILInstructionKind::BuiltinInst: {
       *outs << "<< BuiltinInst >>" << "\n";
