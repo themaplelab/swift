@@ -1122,10 +1122,10 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-//     case SILInstructionKind::ReturnInst: { 
-//       node = handleReturnInst();
-//       break;
-//     }
+    case SILInstructionKind::ReturnInst: { 
+      node = handleReturnInst();
+      break;
+    }
     
     case SILInstructionKind::ThrowInst: {    
       *outs << "<< ThrowInst >>" << "\n";
