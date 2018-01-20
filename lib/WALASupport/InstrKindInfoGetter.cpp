@@ -806,10 +806,11 @@ SILInstructionKind InstrKindInfoGetter::get() {
       break;
     }
     
-//     case SILInstructionKind::IntegerLiteralInst: {
+    case SILInstructionKind::IntegerLiteralInst: {
 //       node = handleIntegerLiteralInst();
-//       break;
-//     }
+      *outs << "<< IntegerLiteralInst Broken >>" << "\n";
+      break;
+    }
     
     case SILInstructionKind::FloatLiteralInst: {
       *outs << "<< FloatLiteralInst >>" << "\n";
@@ -874,10 +875,11 @@ SILInstructionKind InstrKindInfoGetter::get() {
     // UNARY_INSTRUCTION(ID) <see ParseSIL.cpp:2248>
     // DEFCOUNTING_INSTRUCTION(ID) <see ParseSIL.cpp:2255>
     
-//     case SILInstructionKind::DebugValueInst: {
+    case SILInstructionKind::DebugValueInst: {
 //       node = handleDebugValueInst();
-//       break;
-//     }
+      *outs << "<< DebugValueInstInst Broken >>" << "\n";
+      break;
+    }
     
     case SILInstructionKind::DebugValueAddrInst: {
       *outs << "<< DebugValueAddrInst >>" << "\n";
