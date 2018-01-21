@@ -47,6 +47,7 @@ private:
   jobject handleIntegerLiteralInst();
   jobject handleStringLiteralInst();
   jobject handleConstStringLiteralInst();
+  jobject handleFloatLiteralInst();
   jobject handleProjectBoxInst();
   jobject handleDebugValueInst();
   jobject handleFunctionRefInst();

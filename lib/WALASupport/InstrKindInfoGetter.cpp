@@ -225,6 +225,19 @@ jobject InstrKindInfoGetter::handleIntegerLiteralInst() {
   return node;
 }
 
+jobject InstrKindInfoGetter::handleFloatLiteralInst() {
+  if (outs != NULL) {
+    *outs << "<< FloatLiteralInst >>" << "\n";
+  }
+  FloatLiteralInst* castInst = cast<FloatLiteralInst>(instr);
+  APFloat value = castInst->getValue();
+  bool APFLosesInfo;
+  value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
+  jobject node = (*wala)->makeConstant(value.convertToDouble());
+  nodeMap->insert(std::make_pair(castInst, node));
+  return node;
+}
+
 jobject InstrKindInfoGetter::handleStringLiteralInst() {
   // ValueKind indentifier
   if (outs != NULL) {
@@ -813,7 +826,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
     }
     
     case SILInstructionKind::FloatLiteralInst: {
-      *outs << "<< FloatLiteralInst >>" << "\n";
+      node = handleFloatLiteralInst();
       break;
     }
     
