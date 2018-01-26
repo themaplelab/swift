@@ -47,31 +47,6 @@ jobject InstrKindInfoGetter::findAndRemoveCAstNode(void* key) {
   return node;
 }
 
-bool InstrKindInfoGetter::isBuiltInFunction(SILFunction* function) {
-  return isUnaryOperator(function) || isBinaryOperator(function);
-}
-
-bool InstrKindInfoGetter::isUnaryOperator(SILFunction* function) {
-  SILLocation location = function->getLocation();
-  Decl* ASTnode = location.getAsASTNode<Decl>();
-  FuncDecl* funcDecl = llvm::dyn_cast<FuncDecl>(ASTnode);
-  return funcDecl->isUnaryOperator();
-}
-
-bool InstrKindInfoGetter::isBinaryOperator(SILFunction* function) {
-  SILLocation location = function->getLocation();
-  Decl* ASTnode = location.getAsASTNode<Decl>();
-  FuncDecl* funcDecl = llvm::dyn_cast<FuncDecl>(ASTnode);
-  return funcDecl->isBinaryOperator();
-}
-
-Identifier InstrKindInfoGetter::getBuiltInOperatorName(SILFunction* function) {
-  SILLocation location = function->getLocation();
-  Decl* ASTnode = location.getAsASTNode<Decl>();
-  FuncDecl* funcDecl = llvm::dyn_cast<FuncDecl>(ASTnode);
-  return funcDecl->getName();
-}
-
 jobject InstrKindInfoGetter::getOperatorCAstType(Identifier name) {
   if (name.is("==")) {
     return CAstWrapper::OP_EQ;
@@ -149,6 +124,7 @@ jobject InstrKindInfoGetter::handleApplyInst() {
   // ValueKind indentifier
   if (outs != NULL) {
     *outs << "<< ApplyInst >>" << "\n";
+    *outs << *instr << "\n";
   }
 
   jobject node = nullptr; // the CAst node to be created
@@ -160,8 +136,10 @@ jobject InstrKindInfoGetter::handleApplyInst() {
     return node;
   }
 
-  if (isBuiltInFunction(Callee)) {
-    Identifier name = getBuiltInOperatorName(Callee);
+  auto *FD = Callee->getLocation().getAsASTNode<FuncDecl>();
+
+  if (FD && (FD->isUnaryOperator() || FD->isBinaryOperator())) {
+    Identifier name = FD->getName();
     jobject operatorNode = getOperatorCAstType(name);
     if (operatorNode != nullptr) {
       if (outs != nullptr) {
@@ -173,7 +151,7 @@ jobject InstrKindInfoGetter::handleApplyInst() {
         }
       }
 
-      if (isUnaryOperator(Callee)) {
+      if (FD->isUnaryOperator()) {
         // unary operator
         jobject operand = nullptr;
         if (Apply.getNumArguments() >= 2) {
