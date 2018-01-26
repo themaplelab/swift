@@ -124,7 +124,6 @@ jobject InstrKindInfoGetter::handleApplyInst() {
   // ValueKind indentifier
   if (outs != NULL) {
     *outs << "<< ApplyInst >>" << "\n";
-    *outs << *instr << "\n";
   }
 
   jobject node = nullptr; // the CAst node to be created
