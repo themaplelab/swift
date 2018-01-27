@@ -19,6 +19,8 @@ public:
             raw_ostream* outs = NULL);
   
   SILInstructionKind get();
+  static jobject getOperatorCAstType(Identifier name);
+
 private:
   // member variables
   SILInstruction* instr;
@@ -35,9 +37,6 @@ private:
   // If the key corresponds to a variable, a new VAR CAst node will be created and returned
   // nullptr will be returned if such node does not exist
   jobject findAndRemoveCAstNode(void* key);
-
-  jobject getOperatorCAstType(Identifier name);
-
   jobject handleAllocBoxInst();
   jobject handleApplyInst();
   jobject handleIntegerLiteralInst();

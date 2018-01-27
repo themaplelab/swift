@@ -17,6 +17,7 @@ add_swift_library(swiftWALASupport STATIC
   InstrKindInfoGetter.cpp
   BasicBlockLabeller.cpp
   SymbolTable.cpp
+  SILWalaInstructionVisitor.cpp
   LINK_LIBRARIES
     swiftParse
     swiftSema

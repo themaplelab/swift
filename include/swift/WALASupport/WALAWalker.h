@@ -64,10 +64,12 @@ class WALAWalker {
 public:
 
   struct ModuleInfo {
+    explicit ModuleInfo(StringRef sourcefile) : sourcefile(sourcefile) {};
     StringRef sourcefile;
   };
 
   struct FunctionInfo {
+    FunctionInfo(StringRef name, StringRef demangled) : name(name), demangled(demangled) {};
     StringRef name;
     StringRef demangled;
   };
@@ -93,9 +95,6 @@ public:
   };
 
 private:
-  bool printStdout = false;
-//   llvm::raw_fd_ostream &outfile;
-  
   // Gets the mangled and demangled SILFunction and returns in a FunctionInfo.
   WALAWalker::FunctionInfo getSILFunctionInfo(SILFunction &func);
   
