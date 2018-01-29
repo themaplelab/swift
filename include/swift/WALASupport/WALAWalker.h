@@ -55,6 +55,8 @@ public:
   void print(jobject obj);
   
   jobject makePosition(int, int, int, int);
+
+  jobject makeBigDecimal(const char *, int);
   
   WALAIntegration(JNIEnv *, Exceptions &, const char *);
 };
