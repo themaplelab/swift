@@ -229,12 +229,26 @@ jobject InstrKindInfoGetter::handleFloatLiteralInst() {
   if (outs != NULL) {
     *outs << "<< FloatLiteralInst >>" << "\n";
   }
+  jobject node = nullptr;
   FloatLiteralInst* castInst = cast<FloatLiteralInst>(instr);
   APFloat value = castInst->getValue();
-  bool APFLosesInfo;
-  value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
-  jobject node = (*wala)->makeConstant(value.convertToDouble());
-  nodeMap->insert(std::make_pair(castInst, node));
+
+  if (value.isFinite()) {
+    // To BigDecimal
+    SmallVector<char, 128> buf;
+    value.toString(buf);
+    jobject bigDecimal = (*wala).makeBigDecimal(buf.data(), buf.size());
+    node = (*wala)->makeConstant(bigDecimal);
+    nodeMap->insert(std::make_pair(castInst, node));
+  } 
+  else {
+    // Infinity of NaN, convert to double 
+    // as BigDecimal constructor cannot accept strings of these
+    bool APFLosesInfo;
+    value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
+    node = (*wala)->makeConstant(value.convertToDouble());
+    nodeMap->insert(std::make_pair(castInst, node));
+  }
   return node;
 }
 
