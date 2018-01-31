@@ -6,7 +6,6 @@
 #include "swift/SIL/SILLocation.h"
 #include "swift/WALASupport/WALAWalker.h"
 #include "swift/WALASupport/SILWalaInstructionVisitor.h"
-#include "swift/WALASupport/InstrKindInfoGetter.h"
 #include "swift/Demangling/Demangle.h"
 
 #include "launch.h"
@@ -88,23 +87,7 @@ WALAIntegration::WALAIntegration(JNIEnv *ijava_env , Exceptions &icpp_ex,
 //	WALAWalker methods
 //
 
-// Gets the ValueKind of the SILInstruction then goes through the mega-switch to handle
-// appropriately.  
-// TODO: currently only returns ValueKind, switch is not descended into functionally
-SILInstructionKind WALAWalker::getInstrValueKindInfo(SILInstruction &instr, WALAIntegration &wala, 
-											unordered_map<void*, jobject>* nodeMap, list<jobject>* nodeList,
-											SymbolTable* symbolTable, BasicBlockLabeller* labeller) {
-
-	raw_ostream& outs = llvm::outs();
-
-	outs << "address of instr below me: " << &instr << "\n";
-
-	InstrKindInfoGetter instrKindInfoGetter(&instr, &wala, nodeMap, nodeList, symbolTable, labeller, &outs);
-
-	return instrKindInfoGetter.get();
-}
-
-// Main WALAWalker implementation.  Iterates over SILModule -> SILFunctions -> 
+// Main WALAWalker implementation.  Iterates over SILModule -> SILFunctions ->
 // SILBasicBlocks -> SILInstructions and extracts all the important information, gathers
 // it in InstrInfo, and passes it on to perInstruction().  The logic for handling each
 // instruction should be placed in perInstruction(), and analyzeSILModule() should be

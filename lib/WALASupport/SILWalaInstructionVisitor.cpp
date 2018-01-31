@@ -1,5 +1,4 @@
 #include "swift/WALASupport/SILWalaInstructionVisitor.h"
-#include "swift/WALASupport/InstrKindInfoGetter.h"
 
 #include <swift/Demangling/Demangle.h>
 
@@ -25,7 +24,7 @@ void SILWalaInstructionVisitor::updateInstrSourceInfo(SILInstruction *I) {
     SourceLoc srcStart = srcRange.Start;
     SourceLoc srcEnd = srcRange.End;
 
-    if (srcStart.isValid() ) {
+    if (srcStart.isValid()) {
 
       InstrInfo->srcType = 0;
 
@@ -38,7 +37,7 @@ void SILWalaInstructionVisitor::updateInstrSourceInfo(SILInstruction *I) {
       InstrInfo->startCol = debugInfo.Column;
     }
 
-    if (srcEnd.isValid() ) {
+    if (srcEnd.isValid()) {
 
       auto endLineCol = srcMgr.getLineAndColumn(srcEnd);
       InstrInfo->endLine = endLineCol.first;
@@ -68,10 +67,15 @@ void SILWalaInstructionVisitor::beforeVisit(SILInstruction *I) {
     vals.push_back(op.get());
   }
   InstrInfo->ops = llvm::ArrayRef<SILValue>(vals);
+  perInstruction();
+
+  if (Print) {
+    llvm::outs() << "<< " << getSILInstructionName(I->getKind()) << " >>\n";
+  }
 }
 
 void SILWalaInstructionVisitor::visitSILBasicBlock(SILBasicBlock *BB) {
-  llvm::outs() << "Basic Block: " ;
+  llvm::outs() << "Basic Block: ";
   llvm::outs() << BB << "\n";
   llvm::outs() << "SILFunctions: " << BB->getParent() << "\n";
   InstructionCount = 0;
@@ -86,19 +90,20 @@ void SILWalaInstructionVisitor::visitSILBasicBlock(SILBasicBlock *BB) {
   }
 
   if (NodeList.size() > 0) {
-    jobject labelNode = Wala->makeConstant(BasicBlockLabeller::label(BB).c_str());
-    jobject labelStmt = Wala->makeNode(CAstWrapper::LABEL_STMT, labelNode, NodeList.front());
+    jobject Node = Wala->makeConstant(BasicBlockLabeller::label(BB).c_str());
+    jobject Stmt = Wala->makeNode(CAstWrapper::LABEL_STMT, Node, NodeList.front());
     NodeList.pop_front();
-    NodeList.push_front(labelStmt);
-    jobject blockStmt = Wala->makeNode(CAstWrapper::BLOCK_STMT, Wala->makeArray(&NodeList));
-    BlockStmtList.push_back(blockStmt);
+    NodeList.push_front(Stmt);
+    jobject BlockStmt = Wala->makeNode(CAstWrapper::BLOCK_STMT, Wala->makeArray(&NodeList));
+    BlockStmtList.push_back(BlockStmt);
   }
 }
 
 void SILWalaInstructionVisitor::visitSILFunction(SILFunction *F) {
-  FunctionInfo = std::make_shared<WALAWalker::FunctionInfo>(F->getName(), Demangle::demangleSymbolAsString(F->getName()));
+  FunctionInfo =
+      std::make_shared<WALAWalker::FunctionInfo>(F->getName(), Demangle::demangleSymbolAsString(F->getName()));
   BlockStmtList.clear();
-  llvm::outs() << "SILFunction: " ;
+  llvm::outs() << "SILFunction: ";
   llvm::outs() << F << "\n";
   F->print(llvm::outs(), true);
 
@@ -124,33 +129,30 @@ void SILWalaInstructionVisitor::visitModule(SILModule *M) {
 // Actions to take on a per-instruction basis.  InstrInfo contains all the relevant info
 // for the current instruction in the iteration.
 void SILWalaInstructionVisitor::perInstruction() {
-
-  raw_ostream &outs = llvm::outs();
-
   Wala.print(Wala.makePosition(
       InstrInfo->startLine, InstrInfo->startCol,
       InstrInfo->endLine, InstrInfo->endCol)
   );
 
   if (Print) {
-    outs << "\t [INSTR] #" << InstrInfo->num;
-    outs << ", [OPNUM] " << InstrInfo->id << "\n";
-    outs << "\t --> File: " << InstrInfo->Filename << "\n";
+    llvm::outs() << "\t [INSTR] #" << InstrInfo->num;
+    llvm::outs() << ", [OPNUM] " << InstrInfo->id << "\n";
+    llvm::outs() << "\t --> File: " << InstrInfo->Filename << "\n";
 
     // Has no location information
     if (InstrInfo->srcType == -1) {
-      outs << "\t **** No source information. \n";
+      llvm::outs() << "\t **** No source information. \n";
 
       // Has only start information
     } else {
-      outs << "\t ++++ Start - Line " << InstrInfo->startLine << ":"
-           << InstrInfo->startCol << "\n";
+      llvm::outs() << "\t ++++ Start - Line " << InstrInfo->startLine << ":"
+                   << InstrInfo->startCol << "\n";
     }
 
     // Has end information
     if (InstrInfo->srcType == 0) {
-      outs << "\t ---- End - Line " << InstrInfo->endLine;
-      outs << ":" << InstrInfo->endCol << "\n";
+      llvm::outs() << "\t ---- End - Line " << InstrInfo->endLine;
+      llvm::outs() << ":" << InstrInfo->endCol << "\n";
     }
 
     // Memory Behavior
@@ -159,40 +161,40 @@ void SILWalaInstructionVisitor::perInstruction() {
       break;
     }
     case SILInstruction::MemoryBehavior::MayRead: {
-      outs << "\t\t +++ [MEM-R]: May read from memory. \n";
+      llvm::outs() << "\t\t +++ [MEM-R]: May read from memory. \n";
       break;
     }
     case SILInstruction::MemoryBehavior::MayWrite: {
-      outs << "\t\t +++ [MEM-W]: May write to memory. \n";
+      llvm::outs() << "\t\t +++ [MEM-W]: May write to memory. \n";
       break;
     }
     case SILInstruction::MemoryBehavior::MayReadWrite: {
-      outs << "\t\t +++ [MEM-RW]: May read or write memory. \n";
+      llvm::outs() << "\t\t +++ [MEM-RW]: May read or write memory. \n";
       break;
     }
     case SILInstruction::MemoryBehavior::MayHaveSideEffects: {
-      outs << "\t\t +++ [MEM-F]: May have side effects. \n";
+      llvm::outs() << "\t\t +++ [MEM-F]: May have side effects. \n";
     }
     }
 
     // Releasing Behavior
     switch (InstrInfo->relBehavior) {
     case SILInstruction::ReleasingBehavior::DoesNotRelease: {
-      outs << "\t\t [REL]: Does not release memory. \n";
+      llvm::outs() << "\t\t [REL]: Does not release memory. \n";
       break;
     }
     case SILInstruction::ReleasingBehavior::MayRelease: {
-      outs << "\t\t [REL]: May release memory. \n";
+      llvm::outs() << "\t\t [REL]: May release memory. \n";
       break;
     }
     }
 
     // Show operands, if they exist
     for (auto op = InstrInfo->ops.begin(); op != InstrInfo->ops.end(); ++op) {
-      outs << "\t\t [OPER]: " << *op;
+      llvm::outs() << "\t\t [OPER]: " << *op;
     }
 
-    outs << "\n";
+    llvm::outs() << "\n";
   }
 }
 
@@ -214,12 +216,53 @@ jobject SILWalaInstructionVisitor::findAndRemoveCAstNode(void *Key) {
   return node;
 }
 
+jobject SILWalaInstructionVisitor::getOperatorCAstType(Identifier Name) {
+  if (Name.is("==")) {
+    return CAstWrapper::OP_EQ;
+  } else if (Name.is("!=")) {
+    return CAstWrapper::OP_NE;
+  } else if (Name.is("+")) {
+    return CAstWrapper::OP_ADD;
+  } else if (Name.is("/")) {
+    return CAstWrapper::OP_DIV;
+  } else if (Name.is("<<")) {
+    return CAstWrapper::OP_LSH;
+  } else if (Name.is("*")) {
+    return CAstWrapper::OP_MUL;
+  } else if (Name.is(">>")) {
+    return CAstWrapper::OP_RSH;
+  } else if (Name.is("-")) {
+    return CAstWrapper::OP_SUB;
+  } else if (Name.is(">=")) {
+    return CAstWrapper::OP_GE;
+  } else if (Name.is(">")) {
+    return CAstWrapper::OP_GT;
+  } else if (Name.is("<=")) {
+    return CAstWrapper::OP_LE;
+  } else if (Name.is("<")) {
+    return CAstWrapper::OP_LT;
+  } else if (Name.is("!")) {
+    return CAstWrapper::OP_NOT;
+  } else if (Name.is("~")) {
+    return CAstWrapper::OP_BITNOT;
+  } else if (Name.is("&")) {
+    return CAstWrapper::OP_BIT_AND;
+  } else if (Name.is("&&")) {
+    // return CAstWrapper::OP_REL_AND;
+    return nullptr; // && and || are handled separatedly because they involve short circuits
+  } else if (Name.is("|")) {
+    return CAstWrapper::OP_BIT_OR;
+  } else if (Name.is("||")) {
+    // return CAstWrapper::OP_REL_OR;
+    return nullptr; // && and || are handled separatedly because they involve short circuits
+  } else if (Name.is("^")) {
+    return CAstWrapper::OP_BIT_XOR;
+  } else {
+    return nullptr;
+  }
+}
 
 jobject SILWalaInstructionVisitor::visitApplyInst(ApplyInst *AI) {
-  if (Print) {
-    llvm::outs() << "<< ApplyInst >>" << "\n";
-  }
-
   jobject node = nullptr; // the CAst node to be created
 
   auto *Callee = AI->getReferencedFunction();
@@ -232,7 +275,7 @@ jobject SILWalaInstructionVisitor::visitApplyInst(ApplyInst *AI) {
 
   if (FD && (FD->isUnaryOperator() || FD->isBinaryOperator())) {
     Identifier name = FD->getName();
-    jobject operatorNode = InstrKindInfoGetter::getOperatorCAstType(name);
+    jobject operatorNode = getOperatorCAstType(name);
     if (operatorNode != nullptr) {
       if (Print) {
         llvm::outs() << "\t Built in operator\n";
@@ -296,6 +339,470 @@ jobject SILWalaInstructionVisitor::visitApplyInst(ApplyInst *AI) {
   node = Wala->makeNode(CAstWrapper::CALL, funcExprNode, Wala->makeArray(&params));
   NodeMap.insert(std::make_pair(AI, node)); // insert the node into the hash map
   return node;
+}
+
+jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
+  SILDebugVariable Info = ABI->getVarInfo();
+  unsigned ArgNo = Info.ArgNo;
+
+  VarDecl *Decl = ABI->getDecl();
+
+  // getDecl() is sometimes returning nullptr, which is causing segfaults
+  // when decl is not checked before referencing.
+
+  // TODO: handle for null condition!
+  if (Decl) {
+    StringRef varName = Decl->getNameStr();
+    if (Print) {
+      llvm::outs() << "[Arg]#" << ArgNo << ":" << varName << "\n";
+    }
+    SymbolTable.insert(ABI, varName);
+  }
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitIntegerLiteralInst(IntegerLiteralInst *ILI) {
+  APInt Value = ILI->getValue();
+  jobject Node = nullptr;
+  if (Value.isNegative()) {
+    if (Value.getMinSignedBits() <= 32) {
+      Node = Wala->makeConstant(static_cast<int>(Value.getSExtValue()));
+    } else if (Value.getMinSignedBits() <= 64) {
+      Node = Wala->makeConstant(Value.getSExtValue());
+    }
+  } else {
+    if (Value.getActiveBits() <= 32) {
+      Node = Wala->makeConstant(static_cast<int>(Value.getZExtValue()));
+    } else if (Value.getActiveBits() <= 64) {
+      Node = Wala->makeConstant(static_cast<long>(Value.getZExtValue()));
+    }
+  }
+  if (Node != nullptr) {
+    NodeMap.insert(std::make_pair(ILI, Node));
+  }
+  return Node;
+}
+
+jobject SILWalaInstructionVisitor::visitStringLiteralInst(StringLiteralInst *SLI) {
+  // Value: the string data for the literal, in UTF-8.
+  StringRef Value = SLI->getValue();
+
+  if (Print) {
+    llvm::outs() << "\t [value] " << Value << "\n";
+  }
+
+  // Encoding: the desired encoding of the text.
+  string encoding;
+  switch (SLI->getEncoding()) {
+  case StringLiteralInst::Encoding::UTF8: {
+    encoding = "UTF8";
+    break;
+  }
+  case StringLiteralInst::Encoding::UTF16: {
+    encoding = "UTF16";
+    break;
+  }
+  case StringLiteralInst::Encoding::ObjCSelector: {
+    encoding = "ObjCSelector";
+    break;
+  }
+  }
+
+  if (Print) {
+    llvm::outs() << "\t [encoding] " << encoding << "\n";
+  }
+
+  // Count: encoding-based length of the string literal in code units.
+  uint64_t codeUnitCount = SLI->getCodeUnitCount();
+
+  if (Print) {
+    llvm::outs() << "\t [codeUnitCount] " << codeUnitCount << "\n";
+  }
+
+  // Call WALA in Java
+  jobject walaConstant = Wala->makeConstant((Value.str()).c_str());
+  NodeMap.insert(std::make_pair(SLI, walaConstant));
+  return walaConstant;
+}
+
+jobject SILWalaInstructionVisitor::visitConstStringLiteralInst(ConstStringLiteralInst *CSLI) {
+  // Value: the string data for the literal, in UTF-8.
+  StringRef Value = CSLI->getValue();
+  if (Print) {
+    llvm::outs() << "\t [value] " << Value << "\n";
+  }
+
+  // Encoding: the desired encoding of the text.
+  string E;
+  switch (CSLI->getEncoding()) {
+  case ConstStringLiteralInst::Encoding::UTF8: {
+    E = "UTF8";
+    break;
+  }
+  case ConstStringLiteralInst::Encoding::UTF16: {
+    E = "UTF16";
+    break;
+  }
+  }
+  if (Print) {
+    llvm::outs() << "\t [ENCODING]: " << E << "\n";
+  }
+
+  // Count: encoding-based length of the string literal in code units.
+  uint64_t Count = CSLI->getCodeUnitCount();
+  if (Print) {
+    llvm::outs() << "\t [COUNT]: " << Count << "\n";
+  }
+
+  // Call WALA in Java
+  jobject C = Wala->makeConstant((Value.str()).c_str());
+
+  NodeMap.insert(std::make_pair(CSLI, C));
+
+  return C;
+
+}
+
+jobject SILWalaInstructionVisitor::visitProjectBoxInst(ProjectBoxInst *PBI) {
+  if (SymbolTable.has(PBI->getOperand().getOpaqueValue())) {
+    // this is a variable
+    SymbolTable.duplicate(PBI, SymbolTable.get(PBI->getOperand().getOpaqueValue()).c_str());
+  }
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitDebugValueInst(DebugValueInst *DBI) {
+  SILDebugVariable Info = DBI->getVarInfo();
+  unsigned ArgNo = Info.ArgNo;
+
+  if (Print) {
+    llvm::outs() << "<< DebugValueInst >>" << "\n";
+    llvm::outs() << "argNo: " << ArgNo << "\n";
+  }
+
+  VarDecl *Decl = DBI->getDecl();
+
+  if (Decl) {
+    string varName = Decl->getNameStr();
+    if (varName.length() == 0) {
+      llvm::outs() << "\t DebugValue empty name \n";
+      return nullptr;
+    }
+
+    SILBasicBlock *parentBB = nullptr;
+    parentBB = DBI->getParent();
+
+    SILArgument *Argument = nullptr;
+
+    if (ArgNo >= 1 && parentBB) {
+
+      // TODO: why does this line cause the segfault?
+      // argument should be safe, parentBB should be safe, argNo > 0.
+//         argument = parentBB->getArgument(argNo - 1);
+
+      // variable declaration
+      SymbolTable.insert(Argument, varName);
+    }
+
+    if (Print && Argument) {
+      llvm::outs() << "\t\t[addr of arg]:" << Argument << "\n";
+    }
+  }
+
+  if (Print) {
+    SILValue Val = DBI->getOperand();
+    if (Val) {
+      llvm::outs() << "\t\t[addr of arg]:" << Val.getOpaqueValue() << "\n";
+    }
+  }
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitFunctionRefInst(FunctionRefInst *FRI) {
+  // Cast the instr to access methods
+  string FuncName = Demangle::demangleSymbolAsString(FRI->getReferencedFunction()->getName());
+  jobject NameNode = Wala->makeConstant(FuncName.c_str());
+  jobject FuncExprNode = Wala->makeNode(CAstWrapper::FUNCTION_EXPR, NameNode);
+
+  if (Print) {
+    llvm::outs() << "=== [FUNC] Ref'd: ";
+    llvm::outs() << FuncName << "\n";
+  }
+
+  NodeMap.insert(std::make_pair(FRI->getReferencedFunction(), FuncExprNode));
+  NodeMap.insert(std::make_pair(FRI, FuncExprNode));
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitLoadInst(LoadInst *LI) {
+  if (Print) {
+    llvm::outs() << "\t\t [name]:" << (LI->getOperand()).getOpaqueValue() << "\n";
+  }
+  jobject Node = findAndRemoveCAstNode((LI->getOperand()).getOpaqueValue());
+
+  NodeMap.insert(std::make_pair(LI, Node));
+  return Node;
+}
+
+jobject SILWalaInstructionVisitor::visitLoadBorrowInst(LoadBorrowInst *LBI) {
+  if (Print) {
+    llvm::outs() << "\t\t [name]:" << LBI->getOperand() << "\n";
+    llvm::outs() << "\t\t [addr]:" << LBI->getOperand().getOpaqueValue() << "\n";
+  }
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitBeginBorrowInst(BeginBorrowInst *BBI) {
+  jobject Node = findAndRemoveCAstNode(BBI->getOperand().getOpaqueValue());
+  NodeMap.insert(std::make_pair(BBI, Node));
+  return Node;
+}
+
+jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
+  // Cast the instr to access methods
+  if (Print) {
+    llvm::outs() << "Callee: ";
+    llvm::outs() << TTFI->getCallee().getOpaqueValue() << "\n";
+  }
+  jobject FuncRefNode = findAndRemoveCAstNode(TTFI->getCallee().getOpaqueValue());
+  // cast in CASt
+  NodeMap.insert(std::make_pair(TTFI, FuncRefNode));
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitStoreInst(StoreInst *SI) {
+  // Cast the instr to access methods
+  SILValue Src = SI->getSrc();
+  SILValue Dest = SI->getDest();
+  if (Print) {
+    char Str[80];
+    llvm::outs() << "\t [SRC]: " << Src.getOpaqueValue() << "\n";
+    sprintf(Str, "instrKind: %d\n", Src->getKind());
+    llvm::outs() << Str;
+    llvm::outs() << "\t [DEST]: " << Dest.getOpaqueValue() << "\n";
+    llvm::outs() << Str;
+  }
+
+  jobject Node = nullptr;
+  if (SymbolTable.has(Dest.getOpaqueValue())) {
+    jobject Var = findAndRemoveCAstNode(Dest.getOpaqueValue());
+    Node = Wala->makeNode(CAstWrapper::ASSIGN, Var, findAndRemoveCAstNode(Src.getOpaqueValue()));
+  }
+
+  // sometimes SIL creates temporary memory on the stack
+  // the following code represents the correspondence between the origial value and the new temporary location
+  if (NodeMap.find(Src.getOpaqueValue()) != NodeMap.end()) {
+    NodeMap.insert(std::make_pair(Dest.getOpaqueValue(), NodeMap.at(Src.getOpaqueValue())));
+  }
+  return Node;
+}
+
+jobject SILWalaInstructionVisitor::visitBeginAccessInst(BeginAccessInst *BAI) {
+  if (Print) {
+    llvm::outs() << "\t\t [oper_addr]:" << (BAI->getSource()).getOpaqueValue() << "\n";
+  }
+  jobject Var = findAndRemoveCAstNode(BAI->getSource().getOpaqueValue());
+  NodeMap.insert(std::make_pair(BAI, Var));
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitAssignInst(AssignInst *AI) {
+  if (Print) {
+    llvm::outs() << "[source]:" << AI->getSrc().getOpaqueValue() << "\n";
+    llvm::outs() << "[Dest]:" << AI->getDest().getOpaqueValue() << "\n";
+  }
+  jobject Dest = findAndRemoveCAstNode(AI->getDest().getOpaqueValue());
+  jobject Expr = findAndRemoveCAstNode(AI->getSrc().getOpaqueValue());
+
+  jobject Node = Wala->makeNode(CAstWrapper::ASSIGN, Dest, Expr);
+  NodeMap.insert(std::make_pair(AI, Node));
+  return Node;
+}
+
+jobject SILWalaInstructionVisitor::visitAllocStackInst(AllocStackInst *ASI) {
+  if (Print) {
+    for (auto &OP : ASI->getAllOperands()) {
+      llvm::outs() << "\t [OPERAND]: " << OP.get() << "\n";
+      llvm::outs() << "\t [ADDR]: " << OP.get().getOpaqueValue() << "\n";
+    }
+  }
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitReturnInst(ReturnInst *RI) {
+  SILValue RV = RI->getOperand();
+
+  if (Print) {
+    llvm::outs() << "operand:" << RV << "\n";
+    llvm::outs() << "addr:" << RV.getOpaqueValue() << "\n";
+  }
+  jobject Node = nullptr;
+  if (RV != nullptr) {
+    jobject V = nullptr;
+    V = findAndRemoveCAstNode(RV.getOpaqueValue());
+    if (V == nullptr) {
+      Node = Wala->makeNode(CAstWrapper::RETURN);
+    } else {
+      Node = Wala->makeNode(CAstWrapper::RETURN, V);
+    }
+    NodeMap.insert(std::make_pair(RI, Node));
+  }
+  return Node;
+}
+
+jobject SILWalaInstructionVisitor::visitBranchInst(BranchInst *BI) {
+  // This is an unconditional branch
+  jobject GotoNode = nullptr;
+
+  // Destination block
+  int I = 0;
+  SILBasicBlock *Dest = BI->getDestBB();
+  if (Print) {
+    llvm::outs() << "\t [DESTBB]: " << Dest << "\n";
+    if (Dest != nullptr) {
+      for (auto &Instr : *Dest) {
+        llvm::outs() << "\t\t [INST" << I++ << "]: " << &Instr << "\n";
+      }
+    }
+  }
+  if (Dest != nullptr) {
+    jobject LabelNode = Wala->makeConstant(BasicBlockLabeller::label(Dest).c_str());
+    GotoNode = Wala->makeNode(CAstWrapper::GOTO, LabelNode);
+  }
+
+  for (unsigned Idx = 0; Idx < BI->getNumArgs(); Idx++) {
+    llvm::outs() << "addr:" << Dest->getArgument(Idx) << "\n";
+    jobject Node = findAndRemoveCAstNode(BI->getArg(Idx).getOpaqueValue());
+    SymbolTable.insert(Dest->getArgument(Idx), ("argument" + std::to_string(Idx)));
+
+    jobject varName = Wala->makeConstant(SymbolTable.get(Dest->getArgument(Idx)).c_str());
+    jobject var = Wala->makeNode(CAstWrapper::VAR, varName);
+    jobject assign = Wala->makeNode(CAstWrapper::ASSIGN, var, Node);
+    NodeList.push_back(assign);
+  }
+  return GotoNode;
+}
+
+jobject SILWalaInstructionVisitor::visitCondBranchInst(CondBranchInst *CBI) {
+  // 1. Condition
+  SILValue Cond = CBI->getCondition();
+  jobject CondNode = findAndRemoveCAstNode(Cond.getOpaqueValue());
+  if (Print) {
+    llvm::outs() << "\t [COND]: " << Cond.getOpaqueValue() << "\n";
+  }
+
+  // 2. True block
+  int I = 0;
+  SILBasicBlock *TrueBasicBlock = CBI->getTrueBB();
+  jobject TrueGotoNode = nullptr;
+  if (Print) {
+    llvm::outs() << "\t [TBB]: " << TrueBasicBlock << "\n";
+    if (TrueBasicBlock != nullptr) {
+      for (auto &Instr : *TrueBasicBlock) {
+        llvm::outs() << "\t\t [INST" << I++ << "]: " << &Instr << "\n";
+      }
+    }
+  }
+  if (TrueBasicBlock != nullptr) {
+    jobject LabelNode = Wala->makeConstant(BasicBlockLabeller::label(TrueBasicBlock).c_str());
+    TrueGotoNode = Wala->makeNode(CAstWrapper::GOTO, LabelNode);
+  }
+
+  // 3. False block
+  I = 0;
+  SILBasicBlock *FalseBasicBlock = CBI->getFalseBB();
+  jobject FalseGotoNode = nullptr;
+  if (Print) {
+    llvm::outs() << "\t [FBB]: " << FalseBasicBlock << "\n";
+    if (FalseBasicBlock != nullptr) {
+      for (auto &Instr : *FalseBasicBlock) {
+        llvm::outs() << "\t\t [INST" << I++ << "]: " << &Instr << "\n";
+      }
+    }
+  }
+  if (FalseBasicBlock != nullptr) {
+    jobject LabelNode = Wala->makeConstant(BasicBlockLabeller::label(FalseBasicBlock).c_str());
+    FalseGotoNode = Wala->makeNode(CAstWrapper::GOTO, LabelNode);
+  }
+
+  // 4. Assemble them into an if-stmt node
+  jobject IfStmtNode = nullptr;
+  if (FalseGotoNode != nullptr) { // with else block
+    IfStmtNode = Wala->makeNode(CAstWrapper::IF_STMT, CondNode, TrueGotoNode, FalseGotoNode);
+  } else { // without else block
+    IfStmtNode = Wala->makeNode(CAstWrapper::IF_STMT, CondNode, TrueGotoNode);
+  }
+  NodeMap.insert(std::make_pair(CBI, IfStmtNode));
+  return IfStmtNode;
+}
+
+jobject SILWalaInstructionVisitor::visitUnreachableInst(UnreachableInst *UI) {
+  if (Print) {
+    if (UI->isBranch()) {
+      llvm::outs() << "This is a terminator of branch!" << "\n";
+    }
+    if (UI->isFunctionExiting()) {
+      llvm::outs() << "This is a terminator of function!" << "\n";
+    }
+  }
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitCopyValueInst(CopyValueInst *CVI) {
+  llvm::outs() << "\t\t [name]:" << CVI->getOperand() << "\n";
+  jobject Node = findAndRemoveCAstNode(CVI->getOperand().getOpaqueValue());
+
+  NodeMap.insert(std::make_pair(CVI, Node));
+  return Node;
+}
+
+jobject SILWalaInstructionVisitor::visitAllocGlobalInst(AllocGlobalInst *AGI) {
+  SILGlobalVariable *Var = AGI->getReferencedGlobal();
+  StringRef Name = Var->getName();
+  SILType Type = Var->getLoweredType();
+  if (Print) {
+    llvm::outs() << "\t\t[Var name]:" << Name << "\n";
+    llvm::outs() << "\t\t[Var type]:" << Type << "\n";
+  }
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitGlobalAddrInst(GlobalAddrInst *GAI) {
+  SILGlobalVariable *variable = GAI->getReferencedGlobal();
+  StringRef Name = variable->getName();
+  if (Print) {
+    llvm::outs() << "\t\t[Var name]:" << Name << "\n";
+  }
+  SymbolTable.insert(GAI, Name);
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitTryApplyInst(TryApplyInst *TAI) {
+  jobject FuncExprNode = findAndRemoveCAstNode(TAI->getReferencedFunction());
+  list<jobject> Params;
+  for (unsigned i = 0; i < TAI->getNumArguments(); ++i) {
+
+    SILValue v = TAI->getArgument(i);
+    jobject child = findAndRemoveCAstNode(v.getOpaqueValue());
+    if (child != nullptr) {
+      Params.push_back(child);
+    }
+
+    if (Print) {
+      llvm::outs() << "\t [ARG] #" << i << ": " << v;
+      llvm::outs() << "\t [ADDR] #" << i << ": " << v.getOpaqueValue() << "\n";
+    }
+  }
+  jobject Call = Wala->makeNode(CAstWrapper::CALL, FuncExprNode, Wala->makeArray(&Params));
+  jobject TryFunc = Wala->makeNode(CAstWrapper::TRY, Call);
+  jobject VarName = Wala->makeConstant("resulf_of_try");
+  jobject Var = Wala->makeNode(CAstWrapper::VAR, VarName);
+  jobject Node = Wala->makeNode(CAstWrapper::ASSIGN, Var, TryFunc);
+  NodeMap.insert(std::make_pair(TAI, Node));
+  SILBasicBlock *BB = TAI->getNormalBB();
+  SymbolTable.insert(BB->getArgument(0), "resulf_of_try"); // insert the node into the hash map
+  return Node;
+
 }
 
 }
