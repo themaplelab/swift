@@ -242,7 +242,7 @@ jobject InstrKindInfoGetter::handleFloatLiteralInst() {
     nodeMap->insert(std::make_pair(castInst, node));
   } 
   else {
-    // Infinity of NaN, convert to double 
+    // Infinity or NaN, convert to double 
     // as BigDecimal constructor cannot accept strings of these
     bool APFLosesInfo;
     value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
