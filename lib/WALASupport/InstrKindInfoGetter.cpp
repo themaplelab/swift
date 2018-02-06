@@ -385,24 +385,33 @@ jobject InstrKindInfoGetter::handleDebugValueInst() {
       return nullptr;
     }
     
-    SILBasicBlock *parentBB = nullptr;
-    parentBB = castInst->getParent();
+    SILValue val = castInst->getOperand();
+    if (!val) {
+      if (outs) {
+        *outs << "\t Operand is null\n";
+      }
+      return nullptr;
+    }
     
-    SILArgument *argument = nullptr;
+    void *addr = val.getOpaqueValue();
 
-    if (argNo >= 1 && parentBB) {
+    if (argNo >= 1 && addr) {
 
         // TODO: why does this line cause the segfault?
         // argument should be safe, parentBB should be safe, argNo > 0.
 //         argument = parentBB->getArgument(argNo - 1);
 
         // variable declaration
-        symbolTable->insert(argument, varName);
+        symbolTable->insert(addr, varName);
       }
 
-    if (outs && argument) {
-      *outs << "\t\t[addr of arg]:" << argument << "\n";
+    
+  }
+  else{
+    if (outs) {
+      *outs << "\tDecl not found\n";
     }
+    return nullptr;
   }
   
   if (outs) {
