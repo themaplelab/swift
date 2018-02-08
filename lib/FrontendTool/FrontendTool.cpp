@@ -807,11 +807,6 @@ static bool performCompile(CompilerInstance &Instance,
     }
   }
 
-  // WALAWalker Integration
-  WALAWalker ww;
-  ww.analyzeSILModule(*SM);
-  // End WALAWalker Integration
-
   if (observer) {
     observer->performedSILGeneration(*SM);
   }
@@ -1003,6 +998,11 @@ static bool performCompile(CompilerInstance &Instance,
 
   assert(Action >= FrontendOptions::ActionType::EmitSIL &&
          "All actions not requiring SILPasses must have been handled!");
+
+  // WALAWalker Integration
+  WALAWalker ww;
+  ww.analyzeSILModule(*SM);
+  // End WALAWalker Integration
 
   // We've been told to write canonical SIL, so write it now.
   if (Action == FrontendOptions::ActionType::EmitSIL) {
