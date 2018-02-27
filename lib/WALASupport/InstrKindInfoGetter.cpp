@@ -927,7 +927,6 @@ SILInstructionKind InstrKindInfoGetter::get() {
     
     case SILInstructionKind::DebugValueInst: {
       node = handleDebugValueInst();
-      *outs << "<< DebugValueInstInst Broken >>" << "\n";
       break;
     }
     
