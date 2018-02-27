@@ -395,16 +395,24 @@ jobject InstrKindInfoGetter::handleDebugValueInst() {
     
     void *addr = val.getOpaqueValue();
 
-    if (argNo >= 1 && addr) {
+    if (addr) {
 
         // TODO: why does this line cause the segfault?
         // argument should be safe, parentBB should be safe, argNo > 0.
 //         argument = parentBB->getArgument(argNo - 1);
 
         // variable declaration
-        symbolTable->insert(addr, varName);
+      symbolTable->insert(addr, varName);
+      if (val) {
+        *outs << "\t[addr of arg]:" << addr << "\n";
       }
-
+    }
+    else {
+      if (outs) {
+          *outs << "\t Operand OpaqueValue is null\n";
+      }
+      return nullptr;
+    }
     
   }
   else{
@@ -414,12 +422,14 @@ jobject InstrKindInfoGetter::handleDebugValueInst() {
     return nullptr;
   }
   
+/*
   if (outs) {
       SILValue val = castInst->getOperand();
       if (val) {
         *outs << "\t\t[addr of arg]:" << val.getOpaqueValue() << "\n";
       }
   }
+*/
 
   return nullptr;
 }
