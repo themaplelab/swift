@@ -127,9 +127,9 @@ jobject InstrKindInfoGetter::handleAllocBoxInst() {
 
   SILDebugVariable info = castInst->getVarInfo();
   unsigned argNo = info.ArgNo;
-
+  
   VarDecl *decl = castInst->getDecl();
-
+  
   // getDecl() is sometimes returning nullptr, which is causing segfaults
   // when decl is not checked before referencing.
   
@@ -140,6 +140,8 @@ jobject InstrKindInfoGetter::handleAllocBoxInst() {
       *outs << "[Arg]#" << argNo << ":" << varName << "\n";
     }
     symbolTable->insert(castInst, varName);
+   } else {
+     *outs << "Decl is null" << "\n";
   }
 
   return nullptr;
