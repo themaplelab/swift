@@ -802,6 +802,9 @@ jobject SILWalaInstructionVisitor::visitTryApplyInst(TryApplyInst *TAI) {
   SILBasicBlock *BB = TAI->getNormalBB();
   SymbolTable.insert(BB->getArgument(0), "resulf_of_try"); // insert the node into the hash map
   return Node;
+}
+
+jobject SILWalaInstructionVisitor::visitApplySite(ApplySite Apply) {
 
 }
 
