@@ -718,6 +718,14 @@ jobject SILWalaInstructionVisitor::visitTryApplyInst(TryApplyInst *TAI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitBeginApplyInst(BeginApplyInst *BAI) {
+  if (auto Node = visitApplySite(BAI)) {
+    NodeMap.insert(std::make_pair(BAI, Node)); // insert the node into the hash map
+    return Node;
+  }
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitApplySite(ApplySite Apply) {
   jobject Node = nullptr; // the CAst node to be created
   auto *Callee = Apply.getReferencedFunction();

@@ -45,6 +45,7 @@ public:
   jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
   jobject visitGlobalAddrInst(GlobalAddrInst *GAI);
   jobject visitTryApplyInst(TryApplyInst *TAI);
+  jobject visitBeginApplyInst(BeginApplyInst *BAI);
 
 private:
   void updateInstrSourceInfo(SILInstruction *I);
