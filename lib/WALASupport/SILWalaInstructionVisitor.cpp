@@ -743,14 +743,13 @@ jobject SILWalaInstructionVisitor::visitApplySite(ApplySite Apply) {
     if (OperatorNode != nullptr) {
       llvm::outs() << "\t Built in operator\n";
       auto GetOperand = [&Apply, this](int Index) {
-        SILValue Argument = Apply.getArgument(Apply.getNumArguments() - Index);
+        SILValue Argument = Apply.getArgument(Index);
         return findAndRemoveCAstNode(Argument.getOpaqueValue());
       };
       if (FD->isUnaryOperator()) {
-        // Take the second last one operand (last one is metatype).
-        Node = Wala->makeNode(CAstWrapper::UNARY_EXPR, OperatorNode, GetOperand(2));
+        Node = Wala->makeNode(CAstWrapper::UNARY_EXPR, OperatorNode, GetOperand(0));
       } else {
-        Node = Wala->makeNode(CAstWrapper::BINARY_EXPR, OperatorNode, GetOperand(3), GetOperand(2));
+        Node = Wala->makeNode(CAstWrapper::BINARY_EXPR, OperatorNode, GetOperand(0), GetOperand(1));
       }
       return Node;
     } // otherwise, fall through to the regular funcion call logic
