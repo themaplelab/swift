@@ -235,15 +235,11 @@ jobject InstrKindInfoGetter::handleFloatLiteralInst() {
 
   if (&value.getSemantics() == &APFloat::IEEEsingle()) {
     // To Float
-    bool APFLosesInfo;
-    value.convert(APFloat::IEEEsingle(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
     node = (*wala)->makeConstant(value.convertToFloat());
     nodeMap->insert(std::make_pair(castInst, node));
   }
   else if (&value.getSemantics() == &APFloat::IEEEdouble()) {
     // To Double
-    bool APFLosesInfo;
-    value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
     node = (*wala)->makeConstant(value.convertToDouble());
     nodeMap->insert(std::make_pair(castInst, node));
   }
