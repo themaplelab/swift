@@ -236,12 +236,10 @@ jobject InstrKindInfoGetter::handleFloatLiteralInst() {
   if (&value.getSemantics() == &APFloat::IEEEsingle()) {
     // To Float
     node = (*wala)->makeConstant(value.convertToFloat());
-    nodeMap->insert(std::make_pair(castInst, node));
   }
   else if (&value.getSemantics() == &APFloat::IEEEdouble()) {
     // To Double
     node = (*wala)->makeConstant(value.convertToDouble());
-    nodeMap->insert(std::make_pair(castInst, node));
   }
   else if (value.isFinite()) {
     // To BigDecimal
@@ -249,7 +247,6 @@ jobject InstrKindInfoGetter::handleFloatLiteralInst() {
     value.toString(buf);
     jobject bigDecimal = (*wala).makeBigDecimal(buf.data(), buf.size());
     node = (*wala)->makeConstant(bigDecimal);
-    nodeMap->insert(std::make_pair(castInst, node));
   } 
   else {
     // Infinity or NaN, convert to double 
@@ -257,8 +254,8 @@ jobject InstrKindInfoGetter::handleFloatLiteralInst() {
     bool APFLosesInfo;
     value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
     node = (*wala)->makeConstant(value.convertToDouble());
-    nodeMap->insert(std::make_pair(castInst, node));
   }
+  nodeMap->insert(std::make_pair(castInst, node));
   return node;
 }
 
