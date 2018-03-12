@@ -14,9 +14,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
 
 add_swift_library(swiftWALASupport STATIC
   WALAWalker.cpp
-  InstrKindInfoGetter.cpp
   BasicBlockLabeller.cpp
   SymbolTable.cpp
+  SILWalaInstructionVisitor.cpp
   LINK_LIBRARIES
     swiftParse
     swiftSema

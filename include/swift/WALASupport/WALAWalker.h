@@ -66,10 +66,12 @@ class WALAWalker {
 public:
 
   struct ModuleInfo {
+    explicit ModuleInfo(StringRef sourcefile) : sourcefile(sourcefile) {};
     StringRef sourcefile;
   };
 
   struct FunctionInfo {
+    FunctionInfo(StringRef name, StringRef demangled) : name(name), demangled(demangled) {};
     StringRef name;
     StringRef demangled;
   };
@@ -94,26 +96,6 @@ public:
     WALAWalker::FunctionInfo *funcInfo;
   };
 
-private:
-  bool printStdout = false;
-//   llvm::raw_fd_ostream &outfile;
-  
-  // Gets the mangled and demangled SILFunction and returns in a FunctionInfo.
-  WALAWalker::FunctionInfo getSILFunctionInfo(SILFunction &func);
-  
-  // Gets the sourcefile, start line/col, end line/col, and writes it to the 
-  // InstrInfo that is passed in.
-  void getInstrSrcInfo(SILInstruction &instr, WALAWalker::InstrInfo *instrInfo);
-  
-  // The big one - gets the ValueKind of the SILInstruction then goes       
-  // through the mega-switch to cast and handle each appropriately.
-  SILInstructionKind getInstrValueKindInfo(SILInstruction &instr, WALAIntegration &wala, 
-                  unordered_map<void*, jobject>* nodeMap, list<jobject>* nodeList,
-                  SymbolTable* symbolTable, BasicBlockLabeller* labeller);
-
-  // Do something per instruction
-  void perInstruction(WALAWalker::InstrInfo *instrInfo, WALAIntegration &);
-    
 public:
   void analyzeSILModule(SILModule &SM);
 };

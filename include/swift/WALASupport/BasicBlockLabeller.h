@@ -10,7 +10,7 @@ namespace swift {
 
 class BasicBlockLabeller {
 public:
-  string label(SILBasicBlock* basicBlock);
+  static string label(SILBasicBlock* basicBlock);
 };
 
 } // end namespace swift
