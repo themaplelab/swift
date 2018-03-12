@@ -263,82 +263,11 @@ jobject SILWalaInstructionVisitor::getOperatorCAstType(Identifier Name) {
 }
 
 jobject SILWalaInstructionVisitor::visitApplyInst(ApplyInst *AI) {
-  jobject node = nullptr; // the CAst node to be created
-
-  auto *Callee = AI->getReferencedFunction();
-
-  if (!Callee) {
-    return nullptr;
+  if (auto Node = visitApplySite(AI)) {
+    NodeMap.insert(std::make_pair(AI, Node)); // insert the node into the hash map
+    return Node;
   }
-
-  auto *FD = Callee->getLocation().getAsASTNode<FuncDecl>();
-
-  if (FD && (FD->isUnaryOperator() || FD->isBinaryOperator())) {
-    Identifier name = FD->getName();
-    jobject operatorNode = getOperatorCAstType(name);
-    if (operatorNode != nullptr) {
-      if (Print) {
-        llvm::outs() << "\t Built in operator\n";
-        for (unsigned i = 0; i < AI->getNumArguments(); ++i) {
-          SILValue v = AI->getArgument(i);
-          llvm::outs() << "\t [ARG] #" << i << ": " << v;
-          llvm::outs() << "\t [ADDR] #" << i << ": " << v.getOpaqueValue() << "\n";
-        }
-      }
-
-      if (FD->isUnaryOperator()) {
-        // unary operator
-        jobject operand = nullptr;
-        if (AI->getNumArguments() >= 2) {
-          SILValue argument = AI->getArgument(AI->getNumArguments() - 2); // the second last one (last one is metatype)
-          operand = findAndRemoveCAstNode(argument.getOpaqueValue());
-        }
-        node = Wala->makeNode(CAstWrapper::UNARY_EXPR, operatorNode, operand);
-      } else {
-        // binary operator
-        jobject firstOperand = nullptr;
-        jobject secondOperand = nullptr;
-
-        if (AI->getNumArguments() >= 3) {
-          SILValue argument = AI->getArgument(AI->getNumArguments() - 3);
-          firstOperand = findAndRemoveCAstNode(argument);
-        }
-
-        if (AI->getNumArguments() >= 2) {
-          SILValue argument = AI->getArgument(AI->getNumArguments() - 2);
-          secondOperand = findAndRemoveCAstNode(argument);
-        }
-
-        node = Wala->makeNode(CAstWrapper::BINARY_EXPR, operatorNode, firstOperand, secondOperand);
-      }
-      NodeMap.insert(std::make_pair(AI, node)); // insert the node into the hash map
-      return node;
-    } // otherwise, fall through to the regular funcion call logic
-  }
-
-  if (Print) {
-    llvm::outs() << "\t [CALLEE]: " << Demangle::demangleSymbolAsString(Callee->getName()) << "\n";
-  }
-
-  jobject funcExprNode = findAndRemoveCAstNode(Callee);
-  list<jobject> params;
-
-  for (unsigned i = 0; i < AI->getNumArguments(); ++i) {
-    SILValue v = AI->getArgument(i);
-    jobject child = findAndRemoveCAstNode(v.getOpaqueValue());
-    if (child != nullptr) {
-      params.push_back(child);
-    }
-
-    if (Print) {
-      llvm::outs() << "\t [ARG] #" << i << ": " << v;
-      llvm::outs() << "\t [ADDR] #" << i << ": " << v.getOpaqueValue() << "\n";
-    }
-  }
-
-  node = Wala->makeNode(CAstWrapper::CALL, funcExprNode, Wala->makeArray(&params));
-  NodeMap.insert(std::make_pair(AI, node)); // insert the node into the hash map
-  return node;
+  return nullptr;
 }
 
 jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
@@ -778,22 +707,7 @@ jobject SILWalaInstructionVisitor::visitGlobalAddrInst(GlobalAddrInst *GAI) {
 }
 
 jobject SILWalaInstructionVisitor::visitTryApplyInst(TryApplyInst *TAI) {
-  jobject FuncExprNode = findAndRemoveCAstNode(TAI->getReferencedFunction());
-  list<jobject> Params;
-  for (unsigned i = 0; i < TAI->getNumArguments(); ++i) {
-
-    SILValue v = TAI->getArgument(i);
-    jobject child = findAndRemoveCAstNode(v.getOpaqueValue());
-    if (child != nullptr) {
-      Params.push_back(child);
-    }
-
-    if (Print) {
-      llvm::outs() << "\t [ARG] #" << i << ": " << v;
-      llvm::outs() << "\t [ADDR] #" << i << ": " << v.getOpaqueValue() << "\n";
-    }
-  }
-  jobject Call = Wala->makeNode(CAstWrapper::CALL, FuncExprNode, Wala->makeArray(&Params));
+  auto Call = visitApplySite(ApplySite(TAI));
   jobject TryFunc = Wala->makeNode(CAstWrapper::TRY, Call);
   jobject VarName = Wala->makeConstant("resulf_of_try");
   jobject Var = Wala->makeNode(CAstWrapper::VAR, VarName);
@@ -802,7 +716,61 @@ jobject SILWalaInstructionVisitor::visitTryApplyInst(TryApplyInst *TAI) {
   SILBasicBlock *BB = TAI->getNormalBB();
   SymbolTable.insert(BB->getArgument(0), "resulf_of_try"); // insert the node into the hash map
   return Node;
+}
 
+jobject SILWalaInstructionVisitor::visitApplySite(ApplySite Apply) {
+  jobject Node = nullptr; // the CAst node to be created
+  auto *Callee = Apply.getReferencedFunction();
+
+  if (!Callee) {
+    return nullptr;
+  }
+
+  auto *FD = Callee->getLocation().getAsASTNode<FuncDecl>();
+
+  if (Print) {
+    llvm::outs() << "\t [CALLEE]: " << Demangle::demangleSymbolAsString(Callee->getName()) << "\n";
+    for (unsigned I = 0; I < Apply.getNumArguments(); ++I) {
+      SILValue V = Apply.getArgument(I);
+      llvm::outs() << "\t [ARG] #" << I << ": " << V;
+      llvm::outs() << "\t [ADDR] #" << I << ": " << V.getOpaqueValue() << "\n";
+    }
+  }
+
+  if (FD && (FD->isUnaryOperator() || FD->isBinaryOperator())) {
+    Identifier name = FD->getName();
+    jobject OperatorNode = getOperatorCAstType(name);
+    if (OperatorNode != nullptr) {
+      llvm::outs() << "\t Built in operator\n";
+      auto GetOperand = [&Apply, this](unsigned int Index) -> jobject {
+        if (Index < Apply.getNumArguments()) {
+          SILValue Argument = Apply.getArgument(Index);
+          return findAndRemoveCAstNode(Argument.getOpaqueValue());
+        }
+        else return nullptr;
+      };
+      if (FD->isUnaryOperator()) {
+        Node = Wala->makeNode(CAstWrapper::UNARY_EXPR, OperatorNode, GetOperand(0));
+      } else {
+        Node = Wala->makeNode(CAstWrapper::BINARY_EXPR, OperatorNode, GetOperand(0), GetOperand(1));
+      }
+      return Node;
+    } // otherwise, fall through to the regular funcion call logic
+  }
+
+  auto FuncExprNode = findAndRemoveCAstNode(Callee);
+  list<jobject> Params;
+
+  for (unsigned i = 0; i < Apply.getNumArguments(); ++i) {
+    SILValue Arg = Apply.getArgument(i);
+    jobject Child = findAndRemoveCAstNode(Arg.getOpaqueValue());
+    if (Child != nullptr) {
+      Params.push_back(Child);
+    }
+  }
+
+  Node = Wala->makeNode(CAstWrapper::CALL, FuncExprNode, Wala->makeArray(&Params));
+  return Node;
 }
 
 }

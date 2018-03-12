@@ -49,6 +49,7 @@ public:
 private:
   void updateInstrSourceInfo(SILInstruction *I);
   void perInstruction();
+  jobject visitApplySite(ApplySite Apply);
   jobject findAndRemoveCAstNode(void *Key);
   jobject getOperatorCAstType(Identifier Name);
 
