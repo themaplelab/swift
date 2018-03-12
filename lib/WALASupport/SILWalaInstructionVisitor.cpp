@@ -297,7 +297,7 @@ jobject SILWalaInstructionVisitor::visitIntegerLiteralInst(IntegerLiteralInst *I
     if (Value.getMinSignedBits() <= 32) {
       Node = Wala->makeConstant(static_cast<int>(Value.getSExtValue()));
     } else if (Value.getMinSignedBits() <= 64) {
-      Node = Wala->makeConstant(Value.getSExtValue());
+      Node = Wala->makeConstant(static_cast<long>(Value.getSExtValue()));
     }
   } else {
     if (Value.getActiveBits() <= 32) {
@@ -412,38 +412,37 @@ jobject SILWalaInstructionVisitor::visitDebugValueInst(DebugValueInst *DBI) {
   VarDecl *Decl = DBI->getDecl();
 
   if (Decl) {
-    string varName = Decl->getNameStr();
-    if (varName.length() == 0) {
+    string VarName = Decl->getNameStr();
+    if (VarName.length() == 0) {
       llvm::outs() << "\t DebugValue empty name \n";
       return nullptr;
     }
-
-    SILBasicBlock *parentBB = nullptr;
-    parentBB = DBI->getParent();
-
-    SILArgument *Argument = nullptr;
-
-    if (ArgNo >= 1 && parentBB) {
-
-      // TODO: why does this line cause the segfault?
-      // argument should be safe, parentBB should be safe, argNo > 0.
-//         argument = parentBB->getArgument(argNo - 1);
-
-      // variable declaration
-      SymbolTable.insert(Argument, varName);
-    }
-
-    if (Print && Argument) {
-      llvm::outs() << "\t\t[addr of arg]:" << Argument << "\n";
-    }
-  }
-
-  if (Print) {
     SILValue Val = DBI->getOperand();
-    if (Val) {
-      llvm::outs() << "\t\t[addr of arg]:" << Val.getOpaqueValue() << "\n";
+    if (!Val) {
+      if (Print) {
+        llvm::outs() << "\t Operand is null\n";
+      }
+      return nullptr;
+    }
+
+    void *Addr = Val.getOpaqueValue();
+    if (Addr) {
+      SymbolTable.insert(Addr, VarName);
+      llvm::outs() << "\t[addr of arg]:" << Addr << "\n";
+    }
+    else {
+      if (Print) {
+        llvm::outs() << "\t Operand OpaqueValue is null\n";
+      }
+      return nullptr;
     }
   }
+  else {
+    if (Print) {
+      llvm::outs() << "\tDecl not found\n";
+    }
+  }
+
   return nullptr;
 }
 
