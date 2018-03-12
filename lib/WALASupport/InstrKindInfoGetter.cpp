@@ -233,13 +233,20 @@ jobject InstrKindInfoGetter::handleFloatLiteralInst() {
   FloatLiteralInst* castInst = cast<FloatLiteralInst>(instr);
   APFloat value = castInst->getValue();
 
-  if (value.isFinite()) {
+  if (&value.getSemantics() == &APFloat::IEEEsingle()) {
+    // To Float
+    node = (*wala)->makeConstant(value.convertToFloat());
+  }
+  else if (&value.getSemantics() == &APFloat::IEEEdouble()) {
+    // To Double
+    node = (*wala)->makeConstant(value.convertToDouble());
+  }
+  else if (value.isFinite()) {
     // To BigDecimal
     SmallVector<char, 128> buf;
     value.toString(buf);
     jobject bigDecimal = (*wala).makeBigDecimal(buf.data(), buf.size());
     node = (*wala)->makeConstant(bigDecimal);
-    nodeMap->insert(std::make_pair(castInst, node));
   } 
   else {
     // Infinity or NaN, convert to double 
@@ -247,8 +254,8 @@ jobject InstrKindInfoGetter::handleFloatLiteralInst() {
     bool APFLosesInfo;
     value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
     node = (*wala)->makeConstant(value.convertToDouble());
-    nodeMap->insert(std::make_pair(castInst, node));
   }
+  nodeMap->insert(std::make_pair(castInst, node));
   return node;
 }
 
