@@ -47,31 +47,6 @@ jobject InstrKindInfoGetter::findAndRemoveCAstNode(void* key) {
   return node;
 }
 
-bool InstrKindInfoGetter::isBuiltInFunction(SILFunction* function) {
-  return isUnaryOperator(function) || isBinaryOperator(function);
-}
-
-bool InstrKindInfoGetter::isUnaryOperator(SILFunction* function) {
-  SILLocation location = function->getLocation();
-  Decl* ASTnode = location.getAsASTNode<Decl>();
-  FuncDecl* funcDecl = static_cast<FuncDecl*>(ASTnode);
-  return funcDecl->isUnaryOperator();
-}
-
-bool InstrKindInfoGetter::isBinaryOperator(SILFunction* function) {
-  SILLocation location = function->getLocation();
-  Decl* ASTnode = location.getAsASTNode<Decl>();
-  FuncDecl* funcDecl = static_cast<FuncDecl*>(ASTnode);
-  return funcDecl->isBinaryOperator();
-}
-
-Identifier InstrKindInfoGetter::getBuiltInOperatorName(SILFunction* function) {
-  SILLocation location = function->getLocation();
-  Decl* ASTnode = location.getAsASTNode<Decl>();
-  FuncDecl* funcDecl = static_cast<FuncDecl*>(ASTnode);
-  return funcDecl->getName();
-}
-
 jobject InstrKindInfoGetter::getOperatorCAstType(Identifier name) {
   if (name.is("==")) {
     return CAstWrapper::OP_EQ;
@@ -122,7 +97,7 @@ jobject InstrKindInfoGetter::handleAllocBoxInst() {
   if (outs != NULL) {
     *outs << "<< AllocBoxInst >>" << "\n";
   }
-  
+
   AllocBoxInst *castInst = cast<AllocBoxInst>(instr);
 
   SILDebugVariable info = castInst->getVarInfo();
@@ -132,7 +107,7 @@ jobject InstrKindInfoGetter::handleAllocBoxInst() {
 
   // getDecl() is sometimes returning nullptr, which is causing segfaults
   // when decl is not checked before referencing.
-  
+
   // TODO: handle for null condition!
   if (decl) {
     StringRef varName = decl->getNameStr();
@@ -152,27 +127,34 @@ jobject InstrKindInfoGetter::handleApplyInst() {
   }
 
   jobject node = nullptr; // the CAst node to be created
-  // Cast the instr 
-  ApplyInst *castInst = cast<ApplyInst>(instr);
+  ApplySite Apply = ApplySite::isa(instr);
 
-  if (isBuiltInFunction(castInst->getReferencedFunction())) {
-    Identifier name = getBuiltInOperatorName(castInst->getReferencedFunction());
+  auto *Callee = Apply.getReferencedFunction();
+
+  if (!Callee) {
+    return node;
+  }
+
+  auto *FD = Callee->getLocation().getAsASTNode<FuncDecl>();
+
+  if (FD && (FD->isUnaryOperator() || FD->isBinaryOperator())) {
+    Identifier name = FD->getName();
     jobject operatorNode = getOperatorCAstType(name);
     if (operatorNode != nullptr) {
-      if (outs != NULL) {
+      if (outs != nullptr) {
         *outs << "\t Built in operator\n";
-        for (unsigned i = 0; i < castInst->getNumArguments(); ++i) {
-          SILValue v = castInst->getArgument(i);
+        for (unsigned i = 0; i < Apply.getNumArguments(); ++i) {
+          SILValue v = Apply.getArgument(i);
           *outs << "\t [ARG] #" << i << ": " << v;
           *outs << "\t [ADDR] #" << i << ": " << v.getOpaqueValue() << "\n";
         }
       }
 
-      if (isUnaryOperator(castInst->getReferencedFunction())) {
+      if (FD->isUnaryOperator()) {
         // unary operator
         jobject operand = nullptr;
-        if (castInst->getNumArguments() >= 2) {
-          SILValue argument = castInst->getArgument(castInst->getNumArguments() - 2); // the second last one (last one is metatype)
+        if (Apply.getNumArguments() >= 2) {
+          SILValue argument = Apply.getArgument(Apply.getNumArguments() - 2); // the second last one (last one is metatype)
           operand = findAndRemoveCAstNode(argument.getOpaqueValue());
         }
         node = (*wala)->makeNode(CAstWrapper::UNARY_EXPR, operatorNode, operand);
@@ -181,32 +163,32 @@ jobject InstrKindInfoGetter::handleApplyInst() {
         jobject firstOperand = nullptr;
         jobject secondOperand = nullptr;
 
-        if (castInst->getNumArguments() >= 3) {
-          SILValue argument = castInst->getArgument(castInst->getNumArguments() - 3);
+        if (Apply.getNumArguments() >= 3) {
+          SILValue argument = Apply.getArgument(Apply.getNumArguments() - 3);
           firstOperand = findAndRemoveCAstNode(argument);
         }
 
-        if (castInst->getNumArguments() >= 2) {
-          SILValue argument = castInst->getArgument(castInst->getNumArguments() - 2);
+        if (Apply.getNumArguments() >= 2) {
+          SILValue argument = Apply.getArgument(Apply.getNumArguments() - 2);
           secondOperand = findAndRemoveCAstNode(argument);
         }
 
         node = (*wala)->makeNode(CAstWrapper::BINARY_EXPR, operatorNode, firstOperand, secondOperand);
       }
-      nodeMap->insert(std::make_pair(castInst, node)); // insert the node into the hash map
+      nodeMap->insert(std::make_pair(instr, node)); // insert the node into the hash map
       return node;
     } // otherwise, fall through to the regular funcion call logic
-  } 
-
-  if (outs != NULL) {
-    *outs << "\t [CALLEE]: " << Demangle::demangleSymbolAsString(castInst->getReferencedFunction()->getName()) << "\n";
   }
 
-  jobject funcExprNode = findAndRemoveCAstNode(castInst->getReferencedFunction());
+  if (outs != NULL) {
+    *outs << "\t [CALLEE]: " << Demangle::demangleSymbolAsString(Callee->getName()) << "\n";
+  }
+
+  jobject funcExprNode = findAndRemoveCAstNode(Callee);
   list<jobject> params;
-  
-  for (unsigned i = 0; i < castInst->getNumArguments(); ++i) {
-    SILValue v = castInst->getArgument(i);
+
+  for (unsigned i = 0; i < Apply.getNumArguments(); ++i) {
+    SILValue v = Apply.getArgument(i);
     jobject child = findAndRemoveCAstNode(v.getOpaqueValue());
     if (child != nullptr) {
       params.push_back(child);
@@ -217,14 +199,14 @@ jobject InstrKindInfoGetter::handleApplyInst() {
       *outs << "\t [ADDR] #" << i << ": " << v.getOpaqueValue() << "\n";
     }
   }
-  
+
   node = (*wala)->makeNode(CAstWrapper::CALL, funcExprNode, (*wala)->makeArray(&params));
-  nodeMap->insert(std::make_pair(castInst, node)); // insert the node into the hash map
+  nodeMap->insert(std::make_pair(instr, node)); // insert the node into the hash map
   return node;
 }
 
 jobject InstrKindInfoGetter::handleIntegerLiteralInst() {
-  
+
   if (outs != NULL) {
     *outs << "<< IntegerLiteralInst >>" << "\n";
   }
@@ -264,7 +246,7 @@ jobject InstrKindInfoGetter::handleStringLiteralInst() {
 
   // Value: the string data for the literal, in UTF-8.
   StringRef value = castInst->getValue();
-  
+
   if (outs != NULL) {
     *outs << "\t [value] " << value << "\n";
   }
@@ -285,14 +267,14 @@ jobject InstrKindInfoGetter::handleStringLiteralInst() {
       break;
     }
   }
-  
+
   if (outs != NULL) {
     *outs << "\t [encoding] " << encoding << "\n";
   }
 
   // Count: encoding-based length of the string literal in code units.
   uint64_t codeUnitCount = castInst->getCodeUnitCount();
-  
+
   if (outs != NULL) {
     *outs << "\t [codeUnitCount] " << codeUnitCount << "\n";
   }
@@ -377,17 +359,17 @@ jobject InstrKindInfoGetter::handleDebugValueInst() {
   }
 
   VarDecl *decl = castInst->getDecl();
-  
+
   if (decl) {
     string varName = decl->getNameStr();
     if (varName.length() == 0) {
       *outs << "\t DebugValue empty name \n";
       return nullptr;
     }
-    
+
     SILBasicBlock *parentBB = nullptr;
     parentBB = castInst->getParent();
-    
+
     SILArgument *argument = nullptr;
 
     if (argNo >= 1 && parentBB) {
@@ -404,7 +386,7 @@ jobject InstrKindInfoGetter::handleDebugValueInst() {
       *outs << "\t\t[addr of arg]:" << argument << "\n";
     }
   }
-  
+
   if (outs) {
       SILValue val = castInst->getOperand();
       if (val) {
@@ -518,7 +500,7 @@ jobject InstrKindInfoGetter::handleStoreInst() {
     *outs << "\t [DEST]: " << dest.getOpaqueValue() << "\n";
     *outs << instrKindStr;
   }
-  
+
   jobject new_node = nullptr;
   if (symbolTable->has(dest.getOpaqueValue())){
     jobject var = findAndRemoveCAstNode(dest.getOpaqueValue());
@@ -642,7 +624,7 @@ jobject InstrKindInfoGetter::handleBranchInst() {
     jobject assign = (*wala)->makeNode(CAstWrapper::ASSIGN, var, node);
     nodeList->push_back(assign);
   }
-  
+
   return gotoNode;
 }
 
@@ -805,15 +787,15 @@ SILInstructionKind InstrKindInfoGetter::get() {
 
   switch (instrKind) {
 
-// // // // Deprecated    
+// // // // Deprecated
 //     case SILInstructionKind::SILPHIArgument:
 //     case SILInstructionKind::SILFunctionArgument:
-//     case SILInstructionKind::SILUndef: {    
+//     case SILInstructionKind::SILUndef: {
 //       *outs << "<< Not an instruction >>" << "\n";
 //       break;
 //     }
 // // // // Deprecated
-    
+
     case SILInstructionKind::AllocBoxInst: {
       node = handleAllocBoxInst();
       *outs << "<< AllocBoxInst >>" << "\n";
@@ -821,8 +803,8 @@ SILInstructionKind InstrKindInfoGetter::get() {
     }
 
     case SILInstructionKind::ApplyInst: {
-//       node = handleApplyInst();
-      *outs << "<< ApplyInst Fails >>" << "\n";
+       node = handleApplyInst();
+      *outs << "<< ApplyInst >>" << "\n";
       break;
     }
             
