@@ -218,7 +218,7 @@ jobject InstrKindInfoGetter::handleIntegerLiteralInst() {
       Node = (*wala)->makeConstant(static_cast<int>(Value.getSExtValue()));
     }
     else if (Value.getMinSignedBits() <= 64) {
-      Node = (*wala)->makeConstant(Value.getSExtValue());
+      Node = (*wala)->makeConstant(static_cast<long>(Value.getSExtValue()));
     }
   }
   else {
