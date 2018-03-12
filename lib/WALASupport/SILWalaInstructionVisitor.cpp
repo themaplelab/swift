@@ -312,6 +312,39 @@ jobject SILWalaInstructionVisitor::visitIntegerLiteralInst(IntegerLiteralInst *I
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitFloatLiteralInst(FloatLiteralInst *FLI) {
+  if (Print) {
+    llvm::outs() << "<< FloatLiteralInst >>" << "\n";
+  }
+  jobject Node = nullptr;
+  APFloat Value = FLI->getValue();
+
+  if (&Value.getSemantics() == &APFloat::IEEEsingle()) {
+    // To Float
+    Node = Wala->makeConstant(Value.convertToFloat());
+  }
+  else if (&Value.getSemantics() == &APFloat::IEEEdouble()) {
+    // To Double
+    Node = Wala->makeConstant(Value.convertToDouble());
+  }
+  else if (Value.isFinite()) {
+    // To BigDecimal
+    SmallVector<char, 128> buf;
+    Value.toString(buf);
+    jobject BigDecimal = Wala.makeBigDecimal(buf.data(), buf.size());
+    Node = Wala->makeConstant(BigDecimal);
+  }
+  else {
+    // Infinity or NaN, convert to double
+    // as BigDecimal constructor cannot accept strings of these
+    bool APFLosesInfo;
+    Value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
+    Node = Wala->makeConstant(Value.convertToDouble());
+  }
+  NodeMap.insert(std::make_pair(FLI, Node));
+  return Node;
+}
+
 jobject SILWalaInstructionVisitor::visitStringLiteralInst(StringLiteralInst *SLI) {
   // Value: the string data for the literal, in UTF-8.
   StringRef Value = SLI->getValue();
