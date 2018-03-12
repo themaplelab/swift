@@ -36,10 +36,6 @@ private:
   // nullptr will be returned if such node does not exist
   jobject findAndRemoveCAstNode(void* key);
 
-  bool isBuiltInFunction(SILFunction* function);
-  bool isUnaryOperator(SILFunction* function);
-  bool isBinaryOperator(SILFunction* function);
-  Identifier getBuiltInOperatorName(SILFunction* function);
   jobject getOperatorCAstType(Identifier name);
 
   jobject handleAllocBoxInst();
