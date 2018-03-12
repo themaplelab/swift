@@ -54,6 +54,21 @@ jobject WALAIntegration::makePosition(int fl, int fc, int ll, int lc) {
 	return result;
 }
 
+jobject WALAIntegration::makeBigDecimal(const char *strData, int strLen) {
+	char *safeData = strndup(strData, strLen);
+	jobject val = java_env->NewStringUTF(safeData);
+	delete safeData;
+	jclass bigDecimalCls = java_env->FindClass("java/math/BigDecimal");
+	THROW_ANY_EXCEPTION(cpp_ex);
+	jmethodID bigDecimalInit = java_env->GetMethodID(bigDecimalCls, 
+		"<init>", "(Ljava/lang/String;)V");
+	THROW_ANY_EXCEPTION(cpp_ex);
+	jobject bigDecimal = java_env->NewObject(bigDecimalCls, bigDecimalInit, val);
+	THROW_ANY_EXCEPTION(cpp_ex);
+	java_env->DeleteLocalRef(val);
+	return bigDecimal;
+}
+
 void WALAIntegration::print(jobject obj) {
 	print_object(java_env, obj);
 	THROW_ANY_EXCEPTION(cpp_ex);

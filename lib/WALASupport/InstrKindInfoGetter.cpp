@@ -235,6 +235,40 @@ jobject InstrKindInfoGetter::handleIntegerLiteralInst() {
   return Node;
 }
 
+jobject InstrKindInfoGetter::handleFloatLiteralInst() {
+  if (outs != NULL) {
+    *outs << "<< FloatLiteralInst >>" << "\n";
+  }
+  jobject node = nullptr;
+  FloatLiteralInst* castInst = cast<FloatLiteralInst>(instr);
+  APFloat value = castInst->getValue();
+
+  if (&value.getSemantics() == &APFloat::IEEEsingle()) {
+    // To Float
+    node = (*wala)->makeConstant(value.convertToFloat());
+  }
+  else if (&value.getSemantics() == &APFloat::IEEEdouble()) {
+    // To Double
+    node = (*wala)->makeConstant(value.convertToDouble());
+  }
+  else if (value.isFinite()) {
+    // To BigDecimal
+    SmallVector<char, 128> buf;
+    value.toString(buf);
+    jobject bigDecimal = (*wala).makeBigDecimal(buf.data(), buf.size());
+    node = (*wala)->makeConstant(bigDecimal);
+  } 
+  else {
+    // Infinity or NaN, convert to double 
+    // as BigDecimal constructor cannot accept strings of these
+    bool APFLosesInfo;
+    value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
+    node = (*wala)->makeConstant(value.convertToDouble());
+  }
+  nodeMap->insert(std::make_pair(castInst, node));
+  return node;
+}
+
 jobject InstrKindInfoGetter::handleStringLiteralInst() {
   // ValueKind indentifier
   if (outs != NULL) {
@@ -840,7 +874,7 @@ SILInstructionKind InstrKindInfoGetter::get() {
     }
     
     case SILInstructionKind::FloatLiteralInst: {
-      *outs << "<< FloatLiteralInst >>" << "\n";
+      node = handleFloatLiteralInst();
       break;
     }
     
