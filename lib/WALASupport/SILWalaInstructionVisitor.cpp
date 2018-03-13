@@ -297,7 +297,7 @@ jobject SILWalaInstructionVisitor::visitIntegerLiteralInst(IntegerLiteralInst *I
     if (Value.getMinSignedBits() <= 32) {
       Node = Wala->makeConstant(static_cast<int>(Value.getSExtValue()));
     } else if (Value.getMinSignedBits() <= 64) {
-      Node = Wala->makeConstant(Value.getSExtValue());
+      Node = Wala->makeConstant(static_cast<long>(Value.getSExtValue()));
     }
   } else {
     if (Value.getActiveBits() <= 32) {
@@ -309,6 +309,39 @@ jobject SILWalaInstructionVisitor::visitIntegerLiteralInst(IntegerLiteralInst *I
   if (Node != nullptr) {
     NodeMap.insert(std::make_pair(ILI, Node));
   }
+  return Node;
+}
+
+jobject SILWalaInstructionVisitor::visitFloatLiteralInst(FloatLiteralInst *FLI) {
+  if (Print) {
+    llvm::outs() << "<< FloatLiteralInst >>" << "\n";
+  }
+  jobject Node = nullptr;
+  APFloat Value = FLI->getValue();
+
+  if (&Value.getSemantics() == &APFloat::IEEEsingle()) {
+    // To Float
+    Node = Wala->makeConstant(Value.convertToFloat());
+  }
+  else if (&Value.getSemantics() == &APFloat::IEEEdouble()) {
+    // To Double
+    Node = Wala->makeConstant(Value.convertToDouble());
+  }
+  else if (Value.isFinite()) {
+    // To BigDecimal
+    SmallVector<char, 128> buf;
+    Value.toString(buf);
+    jobject BigDecimal = Wala.makeBigDecimal(buf.data(), buf.size());
+    Node = Wala->makeConstant(BigDecimal);
+  }
+  else {
+    // Infinity or NaN, convert to double
+    // as BigDecimal constructor cannot accept strings of these
+    bool APFLosesInfo;
+    Value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
+    Node = Wala->makeConstant(Value.convertToDouble());
+  }
+  NodeMap.insert(std::make_pair(FLI, Node));
   return Node;
 }
 
@@ -412,38 +445,37 @@ jobject SILWalaInstructionVisitor::visitDebugValueInst(DebugValueInst *DBI) {
   VarDecl *Decl = DBI->getDecl();
 
   if (Decl) {
-    string varName = Decl->getNameStr();
-    if (varName.length() == 0) {
+    string VarName = Decl->getNameStr();
+    if (VarName.length() == 0) {
       llvm::outs() << "\t DebugValue empty name \n";
       return nullptr;
     }
-
-    SILBasicBlock *parentBB = nullptr;
-    parentBB = DBI->getParent();
-
-    SILArgument *Argument = nullptr;
-
-    if (ArgNo >= 1 && parentBB) {
-
-      // TODO: why does this line cause the segfault?
-      // argument should be safe, parentBB should be safe, argNo > 0.
-//         argument = parentBB->getArgument(argNo - 1);
-
-      // variable declaration
-      SymbolTable.insert(Argument, varName);
-    }
-
-    if (Print && Argument) {
-      llvm::outs() << "\t\t[addr of arg]:" << Argument << "\n";
-    }
-  }
-
-  if (Print) {
     SILValue Val = DBI->getOperand();
-    if (Val) {
-      llvm::outs() << "\t\t[addr of arg]:" << Val.getOpaqueValue() << "\n";
+    if (!Val) {
+      if (Print) {
+        llvm::outs() << "\t Operand is null\n";
+      }
+      return nullptr;
+    }
+
+    void *Addr = Val.getOpaqueValue();
+    if (Addr) {
+      SymbolTable.insert(Addr, VarName);
+      llvm::outs() << "\t[addr of arg]:" << Addr << "\n";
+    }
+    else {
+      if (Print) {
+        llvm::outs() << "\t Operand OpaqueValue is null\n";
+      }
+      return nullptr;
     }
   }
+  else {
+    if (Print) {
+      llvm::outs() << "\tDecl not found\n";
+    }
+  }
+
   return nullptr;
 }
 
@@ -750,15 +782,17 @@ jobject SILWalaInstructionVisitor::visitApplySite(ApplySite Apply) {
     jobject OperatorNode = getOperatorCAstType(name);
     if (OperatorNode != nullptr) {
       llvm::outs() << "\t Built in operator\n";
-      auto GetOperand = [&Apply, this](int Index) {
-        SILValue Argument = Apply.getArgument(Apply.getNumArguments() - Index);
-        return findAndRemoveCAstNode(Argument.getOpaqueValue());
+      auto GetOperand = [&Apply, this](unsigned int Index) -> jobject {
+        if (Index < Apply.getNumArguments()) {
+          SILValue Argument = Apply.getArgument(Index);
+          return findAndRemoveCAstNode(Argument.getOpaqueValue());
+        }
+        else return nullptr;
       };
       if (FD->isUnaryOperator()) {
-        // Take the second last one operand (last one is metatype).
-        Node = Wala->makeNode(CAstWrapper::UNARY_EXPR, OperatorNode, GetOperand(2));
+        Node = Wala->makeNode(CAstWrapper::UNARY_EXPR, OperatorNode, GetOperand(0));
       } else {
-        Node = Wala->makeNode(CAstWrapper::BINARY_EXPR, OperatorNode, GetOperand(3), GetOperand(2));
+        Node = Wala->makeNode(CAstWrapper::BINARY_EXPR, OperatorNode, GetOperand(0), GetOperand(1));
       }
       return Node;
     } // otherwise, fall through to the regular funcion call logic
