@@ -611,6 +611,28 @@ jobject SILWalaInstructionVisitor::visitReturnInst(ReturnInst *RI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitThrowInst(ThrowInst *TI) {
+  SILValue TV = TI->getOperand();
+
+  if (Print) {
+    llvm::outs() << "operand:" << TV << "\n";
+    llvm::outs() << "addr:" << TV.getOpaqueValue() << "\n";
+  }
+
+  jobject Node = nullptr;
+  if (TV != nullptr) {
+    jobject V = nullptr;
+    V = findAndRemoveCAstNode(TV.getOpaqueValue());
+    if (V == nullptr) {
+      Node = Wala->makeNode(CAstWrapper::THROW);
+    } else {
+      Node = Wala->makeNode(CAstWrapper::THROW, V);
+    }
+    NodeMap.insert(std::make_pair(TV, Node));
+  }
+  return Node;
+}
+
 jobject SILWalaInstructionVisitor::visitBranchInst(BranchInst *BI) {
   // This is an unconditional branch
   jobject GotoNode = nullptr;
