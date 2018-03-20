@@ -291,6 +291,19 @@ jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
   return nullptr;
 }
 
+jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
+    if (Print) {
+      llvm::outs() << "\tConcreteType " << AEBI->getFormalConcreteType() << "\n";
+      llvm::outs() << "\tExistentialType " << AEBI->getExistentialType() << "\n";
+    }
+
+    auto name = "ExistentialBox:" + 
+      AEBI->getFormalConcreteType().getString() + "->" + AEBI->getExistentialType().getAsString();
+    SymbolTable.insert(AEBI, name);
+
+    return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitIntegerLiteralInst(IntegerLiteralInst *ILI) {
   APInt Value = ILI->getValue();
   jobject Node = nullptr;

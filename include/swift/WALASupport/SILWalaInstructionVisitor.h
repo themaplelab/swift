@@ -26,6 +26,7 @@ public:
 
   jobject visitApplyInst(ApplyInst *AI);
   jobject visitAllocBoxInst(AllocBoxInst *ABI);
+  jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
   jobject visitIntegerLiteralInst(IntegerLiteralInst *ILI);
   jobject visitStringLiteralInst(StringLiteralInst *SLI);
   jobject visitConstStringLiteralInst(ConstStringLiteralInst *CSLI);
