@@ -47,6 +47,7 @@ public:
   jobject visitTryApplyInst(TryApplyInst *TAI);
   jobject visitBeginApplyInst(BeginApplyInst *BAI);
   jobject visitFloatLiteralInst(FloatLiteralInst *FLI);
+  jobject visitPartialApplyInst(PartialApplyInst *PAI);
 
 private:
   void updateInstrSourceInfo(SILInstruction *I);
