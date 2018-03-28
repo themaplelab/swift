@@ -274,18 +274,19 @@ jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
   SILDebugVariable Info = ABI->getVarInfo();
   unsigned ArgNo = Info.ArgNo;
 
-  VarDecl *Decl = ABI->getDecl();
-
-  // getDecl() is sometimes returning nullptr, which is causing segfaults
-  // when decl is not checked before referencing.
-
-  // TODO: handle for null condition!
-  if (Decl) {
+  if (auto *Decl = ABI->getDecl()) {
     StringRef varName = Decl->getNameStr();
     if (Print) {
       llvm::outs() << "[Arg]#" << ArgNo << ":" << varName << "\n";
     }
     SymbolTable.insert(ABI, varName);
+  }
+  else {
+    // temporary allocation when referencing self.
+    if (Print) {
+      llvm::outs() << "[Arg]#" << ArgNo << ":" << "self" << "\n";
+    }
+    SymbolTable.insert(ABI, "self");
   }
   return nullptr;
 }
