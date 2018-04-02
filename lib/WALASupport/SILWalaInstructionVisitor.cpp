@@ -697,6 +697,38 @@ jobject SILWalaInstructionVisitor::visitCondBranchInst(CondBranchInst *CBI) {
   return IfStmtNode;
 }
 
+jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
+  
+  list<jobject> Properties;
+
+  StringRef discriminantName = EI->getElement()->getNameStr();
+
+  jobject DiscriminantNameNode = Wala->makeConstant("__DISCRIMINANT__");
+  jobject DiscriminantValueNode = Wala->makeConstant(discriminantName.data());
+
+  Properties.push_back(DiscriminantNameNode);
+  Properties.push_back(DiscriminantValueNode);
+
+  if (Print) {
+    llvm::outs() << "[DISCRIMINANT] " << discriminantName <<  "\n";
+  }
+
+  int I = 0;
+  for (auto &EnumOperand : EI->getAllOperands()) {
+      jobject OperandValueNode = findAndRemoveCAstNode(EnumOperand.get().getOpaqueValue());
+      jobject OperandNameNode = Wala->makeConstant(std::to_string(I).c_str());
+
+      if (Print) {
+        llvm::outs() << "Operand: " << I << " " << EnumOperand.get().getOpaqueValue() << "\n";
+      }
+
+      Properties.push_back(OperandNameNode);
+      Properties.push_back(OperandValueNode);
+  }
+
+  return Wala->makeNode(CAstWrapper::OBJECT_LITERAL, Wala->makeArray(&Properties)); 
+}
+
 jobject SILWalaInstructionVisitor::visitUnreachableInst(UnreachableInst *UI) {
   if (Print) {
     if (UI->isBranch()) {
