@@ -697,6 +697,11 @@ jobject SILWalaInstructionVisitor::visitCondBranchInst(CondBranchInst *CBI) {
   return IfStmtNode;
 }
 
+jobject SILWalaInstructionVisitor::visitSelectValueInst(SelectValueInst *SVI) {
+  llvm::outs() << "This should never be reached! Swift does not support this" << "\n";
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitUnreachableInst(UnreachableInst *UI) {
   if (Print) {
     if (UI->isBranch()) {

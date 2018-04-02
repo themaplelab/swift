@@ -39,6 +39,7 @@ public:
   jobject visitAllocStackInst(AllocStackInst *ASI);
   jobject visitReturnInst(ReturnInst *RI);
   jobject visitBranchInst(BranchInst *BI);
+  jobject visitSelectValueInst(SelectValueInst *SVI);
   jobject visitCondBranchInst(CondBranchInst *CBI);
   jobject visitUnreachableInst(UnreachableInst *UI);
   jobject visitCopyValueInst(CopyValueInst *CVI);
