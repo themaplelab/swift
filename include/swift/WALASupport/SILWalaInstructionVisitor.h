@@ -40,6 +40,7 @@ public:
   jobject visitReturnInst(ReturnInst *RI);
   jobject visitBranchInst(BranchInst *BI);
   jobject visitCondBranchInst(CondBranchInst *CBI);
+  jobject visitSwitchValueInst(SwitchValueInst *SVI);
   jobject visitUnreachableInst(UnreachableInst *UI);
   jobject visitCopyValueInst(CopyValueInst *CVI);
   jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
@@ -48,6 +49,7 @@ public:
   jobject visitBeginApplyInst(BeginApplyInst *BAI);
   jobject visitFloatLiteralInst(FloatLiteralInst *FLI);
   jobject visitPartialApplyInst(PartialApplyInst *PAI);
+  jobject visitThrowInst(ThrowInst *TI);
 
 private:
   void updateInstrSourceInfo(SILInstruction *I);
