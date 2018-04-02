@@ -37,6 +37,7 @@ public:
   jobject visitBeginAccessInst(BeginAccessInst *BAI);
   jobject visitAssignInst(AssignInst *AI);
   jobject visitAllocStackInst(AllocStackInst *ASI);
+  jobject visitSwitchEnumInst(SwitchEnumInst *SWI);
   jobject visitReturnInst(ReturnInst *RI);
   jobject visitBranchInst(BranchInst *BI);
   jobject visitCondBranchInst(CondBranchInst *CBI);
