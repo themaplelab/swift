@@ -719,7 +719,7 @@ jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
       jobject OperandNameNode = Wala->makeConstant(std::to_string(I).c_str());
 
       if (Print) {
-        llvm::outs() << "Operand: " << I << " " << EnumOperand.get().getOpaqueValue() << "\n";
+        llvm::outs() << "Operand: " << I++ << " " << EnumOperand.get().getOpaqueValue() << "\n";
       }
 
       Properties.push_back(OperandNameNode);
