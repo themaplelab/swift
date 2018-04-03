@@ -48,6 +48,7 @@ public:
   jobject visitTryApplyInst(TryApplyInst *TAI);
   jobject visitBeginApplyInst(BeginApplyInst *BAI);
   jobject visitFloatLiteralInst(FloatLiteralInst *FLI);
+  jobject visitPartialApplyInst(PartialApplyInst *PAI);
   jobject visitThrowInst(ThrowInst *TI);
 
 private:
