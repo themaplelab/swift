@@ -34,6 +34,7 @@ public:
   jobject visitBeginBorrowInst(BeginBorrowInst *BBI);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitStoreInst(StoreInst *SI);
+  jobject visitSwitchEnumInst(SwitchEnumInst *SWI);
   jobject visitBeginAccessInst(BeginAccessInst *BAI);
   jobject visitAssignInst(AssignInst *AI);
   jobject visitAllocStackInst(AllocStackInst *ASI);

@@ -697,6 +697,54 @@ jobject SILWalaInstructionVisitor::visitCondBranchInst(CondBranchInst *CBI) {
   return IfStmtNode;
 }
 
+jobject SILWalaInstructionVisitor::visitSwitchEnumInst(SwitchEnumInst *SWI) {
+
+  SILValue Cond = SWI->getOperand();
+  jobject CondNode = findAndRemoveCAstNode(Cond.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [COND]: " << Cond.getOpaqueValue() << "\n";
+  }
+
+  list<jobject> Children;
+
+  for (unsigned Idx = 0, Num = SWI->getNumCases(); Idx < Num; ++Idx) {
+    auto Case = SWI->getCase(Idx);
+    EnumElementDecl *CaseDecl = Case.first;
+    SILBasicBlock *CaseBasicBlock = Case.second;
+
+    auto LabelNodeName = BasicBlockLabeller::label(CaseBasicBlock);
+    jobject LabelNode = Wala->makeConstant(LabelNodeName.c_str());
+    Children.push_back(LabelNode);
+
+    if (Print) {
+      if (SWI->hasDefault() && CaseBasicBlock == SWI->getDefaultBB()) {
+        // Default Node.
+        llvm::outs() << "\t [DEFAULT]: " << LabelNode << " => " << *CaseBasicBlock << "\n";
+      } else {
+        // Not Default Node.
+        llvm::outs() << "\t [CASE]: DECL = " << CaseDecl << " " << LabelNodeName << " => " << *CaseBasicBlock << "\n";
+      }
+
+      int I = 0;
+      for (auto &Instr : *CaseBasicBlock) {
+        llvm::outs() << "\t\t [INST" << I++ << "]: " << &Instr << "\n";
+      }
+    }
+
+    auto GotoCaseNode = Wala->makeNode(CAstWrapper::GOTO, LabelNode);
+    Children.push_back(GotoCaseNode);
+  }
+
+  auto SwitchCasesNode = Wala->makeNode(CAstWrapper::BLOCK_STMT,  Wala->makeArray(&Children));
+  auto SwitchNode = Wala->makeNode(CAstWrapper::SWITCH, CondNode, SwitchCasesNode);
+
+  NodeMap.insert(std::make_pair(SWI, SwitchCasesNode));
+
+  return SwitchCasesNode;
+}
+
+
 jobject SILWalaInstructionVisitor::visitUnreachableInst(UnreachableInst *UI) {
   if (Print) {
     if (UI->isBranch()) {
