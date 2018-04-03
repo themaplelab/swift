@@ -19,7 +19,10 @@ public:
   void visitModule(SILModule *M);
   void beforeVisit(SILInstruction *I);
 
-  jobject visitSILInstruction(SILInstruction *I) { return nullptr; }
+  jobject visitSILInstruction(SILInstruction *I) {
+    llvm::outs() << "Not handled instruction: \n" << *I << "\n";
+    return nullptr;
+  }
 
   jobject visitApplyInst(ApplyInst *AI);
   jobject visitAllocBoxInst(AllocBoxInst *ABI);
