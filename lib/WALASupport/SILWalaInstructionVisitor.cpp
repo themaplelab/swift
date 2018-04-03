@@ -698,7 +698,9 @@ jobject SILWalaInstructionVisitor::visitCondBranchInst(CondBranchInst *CBI) {
 }
 
 jobject SILWalaInstructionVisitor::visitSelectValueInst(SelectValueInst *SVI) {
-  llvm::outs() << "This should never be reached! Swift does not support this" << "\n";
+  if (Print) {
+    llvm::outs() << "The Select Value Instruction should never be reached!" << "\n";
+  }
   return nullptr;
 }
 
