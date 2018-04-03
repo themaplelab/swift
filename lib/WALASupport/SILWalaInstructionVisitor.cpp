@@ -697,20 +697,20 @@ jobject SILWalaInstructionVisitor::visitCondBranchInst(CondBranchInst *CBI) {
   return IfStmtNode;
 }
 
-jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
-  
+jobject void SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
+ 
   list<jobject> Properties;
 
   StringRef discriminantName = EI->getElement()->getNameStr();
 
-  jobject DiscriminantNameNode = Wala->makeConstant("__DISCRIMINANT__");
+  jobject DiscriminantNameNode = Wala->makeConstant("__DISCRIMINATOR__");
   jobject DiscriminantValueNode = Wala->makeConstant(discriminantName.data());
 
   Properties.push_back(DiscriminantNameNode);
   Properties.push_back(DiscriminantValueNode);
 
   if (Print) {
-    llvm::outs() << "[DISCRIMINANT] " << discriminantName <<  "\n";
+    llvm::outs() << "[DISCRIMINATOR] " << discriminantName <<  "\n";
   }
 
   int I = 0;
@@ -726,8 +726,13 @@ jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
       Properties.push_back(OperandValueNode);
   }
 
-  return Wala->makeNode(CAstWrapper::OBJECT_LITERAL, Wala->makeArray(&Properties)); 
-}
+  auto VisitEnumNode = Wala->makeNode(CAstWrapper::OBJECT_LITERAL, Wala->makeArray(&Properties));;
+
+
+  NodeMap.insert(std::make_pair(SWI, VisitEnumNode));
+
+  return VisitEnumNode
+ }
 
 jobject SILWalaInstructionVisitor::visitUnreachableInst(UnreachableInst *UI) {
   if (Print) {
