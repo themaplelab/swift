@@ -805,6 +805,15 @@ jobject SILWalaInstructionVisitor::visitSwitchValueInst(SwitchValueInst *SVI) {
 
 }
 
+jobject SILWalaInstructionVisitor::visitSelectValueInst(SelectValueInst *SVI) {
+
+  if (Print) {
+    llvm::outs() << "This should never be reached! Swift does not support this anymore" << "\n";
+  }
+
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitUnreachableInst(UnreachableInst *UI) {
   if (Print) {
     if (UI->isBranch()) {
