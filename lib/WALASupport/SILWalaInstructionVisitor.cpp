@@ -721,88 +721,50 @@ jobject SILWalaInstructionVisitor::visitCondBranchInst(CondBranchInst *CBI) {
 }
 
 jobject SILWalaInstructionVisitor::visitSwitchValueInst(SwitchValueInst *SVI) {
-
   SILValue Cond = SVI->getOperand();
-  jobject CondNode = findAndRemoveCAstNode(Cond.getOpaqueValue()); 
+  jobject CondNode = findAndRemoveCAstNode(Cond.getOpaqueValue());
   
   if (Print) {
     llvm::outs() << "\t [COND]: " << Cond.getOpaqueValue() << "\n";
   }
 
-  SILBasicBlock *FalseBasicBlock = nullptr;
-  SILBasicBlock *TrueBasicBlock = nullptr;
-  
-  // Evaluate cases
+  // Make children
+  list<jobject> Children;
+
   for (unsigned Idx = 0, Num = SVI->getNumCases(); Idx < Num; ++Idx) {
     auto Case = SVI->getCase(Idx);
     auto *CaseVal = dyn_cast<IntegerLiteralInst>(Case.first);
+    SILBasicBlock *CaseBasicBlock = Case.second;
 
-    if (!CaseVal)
-      return nullptr;
-    SILBasicBlock *DestBasicBlock = Case.second;
-    if (CaseVal->getValue() == 0) {
-      FalseBasicBlock = DestBasicBlock;
-    } else {
-      TrueBasicBlock = DestBasicBlock;
-    }
-  }
+    auto LabelNodeName = BasicBlockLabeller::label(CaseBasicBlock);
+    jobject LabelNode = Wala->makeConstant(LabelNodeName.c_str());
+    Children.push_back(LabelNode);
 
-  // Check for defaults
-  if (SVI->hasDefault()) {
-    if (!FalseBasicBlock) {
-      FalseBasicBlock = SVI->getDefaultBB();
-    } else if (!TrueBasicBlock) {
-      TrueBasicBlock = SVI->getDefaultBB();
-    }
-  }
+    if (Print) {
+      if (SVI->hasDefault() && CaseBasicBlock == SVI->getDefaultBB()) {
+        // Default Node.
+        llvm::outs() << "\t [DEFAULT]: " << LabelNode << " => " << *CaseBasicBlock << "\n";
+      } else {
+        // Not Default Node.
+        llvm::outs() << "\t [CASE]: VAL = " << *CaseVal << " " << LabelNodeName << " => " << *CaseBasicBlock << "\n";
+      }
 
-  if (!FalseBasicBlock || !TrueBasicBlock)
-    return nullptr;
-
-
-  int I = 0;
-  jobject TrueGotoNode = nullptr;
-  if (Print) {
-    llvm::outs() << "\t [TBB]: " << TrueBasicBlock << "\n";
-    if (TrueBasicBlock != nullptr) {
-      for (auto &Instr : *TrueBasicBlock) {
+      int I = 0;
+      for (auto &Instr : *CaseBasicBlock) {
         llvm::outs() << "\t\t [INST" << I++ << "]: " << &Instr << "\n";
       }
     }
+
+    auto GotoCaseNode = Wala->makeNode(CAstWrapper::GOTO, LabelNode);
+    Children.push_back(GotoCaseNode);
   }
 
-  if (TrueBasicBlock != nullptr) {
-    jobject LabelNode = Wala->makeConstant(BasicBlockLabeller::label(TrueBasicBlock).c_str());
-    TrueGotoNode = Wala->makeNode(CAstWrapper::GOTO, LabelNode);
-  }
-  
-  I = 0;
-  jobject FalseGotoNode = nullptr;
-  if (Print) {
-    llvm::outs() << "\t [FBB]: " << FalseBasicBlock << "\n";
-    if (FalseBasicBlock != nullptr) {
-      for (auto &Instr : *FalseBasicBlock) {
-        llvm::outs() << "\t\t [INST" << I++ << "]: " << &Instr << "\n";
-      }
-    }
-  }
+  auto SwitchCasesNode = Wala->makeNode(CAstWrapper::BLOCK_STMT,  Wala->makeArray(&Children));
+  auto SwitchNode = Wala->makeNode(CAstWrapper::SWITCH, CondNode, SwitchCasesNode);
 
-  FalseGotoNode = nullptr;
-  if (FalseBasicBlock != nullptr) {
-    jobject LabelNode = Wala->makeConstant(BasicBlockLabeller::label(FalseBasicBlock).c_str());
-    FalseGotoNode = Wala->makeNode(CAstWrapper::GOTO, LabelNode);
-  }
+  NodeMap.insert(std::make_pair(SVI, SwitchCasesNode));
 
-  jobject IfStmtNode = nullptr;
-  if (FalseGotoNode != nullptr) { // with else block
-    IfStmtNode = Wala->makeNode(CAstWrapper::IF_STMT, CondNode, TrueGotoNode, FalseGotoNode);
-  } else { // without else block
-    IfStmtNode = Wala->makeNode(CAstWrapper::IF_STMT, CondNode, TrueGotoNode);
-  }
-  NodeMap.insert(std::make_pair(SVI, IfStmtNode));
-
-  return IfStmtNode;
-
+  return SwitchNode;
 }
 
 jobject SILWalaInstructionVisitor::visitUnreachableInst(UnreachableInst *UI) {
