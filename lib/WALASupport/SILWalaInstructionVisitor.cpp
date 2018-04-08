@@ -736,6 +736,8 @@ jobject SILWalaInstructionVisitor::visitSwitchValueInst(SwitchValueInst *SVI) {
     auto *CaseVal = dyn_cast<IntegerLiteralInst>(Case.first);
     SILBasicBlock *CaseBasicBlock = Case.second;
 
+    Children.push_back(Wala->makeConstant(CaseVal));
+
     auto LabelNodeName = BasicBlockLabeller::label(CaseBasicBlock);
     jobject LabelNode = Wala->makeConstant(LabelNodeName.c_str());
     Children.push_back(LabelNode);
