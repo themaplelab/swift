@@ -821,24 +821,27 @@ jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
     llvm::outs() << "[DISCRIMINATOR] " << discriminantName <<  "\n";
   }
 
-  int I = 0;
-  for (auto &EnumOperand : EI->getAllOperands()) {
+  for (Operand &EnumOperand : EI->getElement()->getParentEnum()) {
+
+      unsigned OperandNumberString = EnumOperand.getOperandNumber();
+
       jobject OperandValueNode = findAndRemoveCAstNode(EnumOperand.get().getOpaqueValue());
-      jobject OperandNameNode = Wala->makeConstant(std::to_string(I).c_str());
+      jobject OperandNameNode = Wala->makeConstant(std::to_string(OperandNumberString));
 
       if (Print) {
-        llvm::outs() << "Operand: " << I++ << " " << EnumOperand.get().getOpaqueValue() << "\n";
+        llvm::outs() << "Operand: " << OperandNumberString << " " << OperandValueNode << "\n";
       }
 
       Properties.push_back(OperandNameNode);
       Properties.push_back(OperandValueNode);
   }
 
-  auto VisitEnumNode = Wala->makeNode(CAstWrapper::OBJECT_LITERAL, Wala->makeArray(&Properties));;
+  auto VisitEnumNode = Wala->makeNode(CAstWrapper::OBJECT_LITERAL, Wala->makeArray(&Properties));
 
   NodeMap.insert(std::make_pair(EI, VisitEnumNode));
 
   return VisitEnumNode;
+
  }
 
 jobject SILWalaInstructionVisitor::visitUnreachableInst(UnreachableInst *UI) {
