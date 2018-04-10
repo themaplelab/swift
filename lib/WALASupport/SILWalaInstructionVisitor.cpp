@@ -293,6 +293,7 @@ jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
 
 jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
     if (Print) {
+      llvm::outs() << "AEBI " << AEBI << "\n";
       llvm::outs() << "\tConcreteType " << AEBI->getFormalConcreteType() << "\n";
       llvm::outs() << "\tExistentialType " << AEBI->getExistentialType() << "\n";
     }
@@ -446,6 +447,20 @@ jobject SILWalaInstructionVisitor::visitProjectBoxInst(ProjectBoxInst *PBI) {
   }
   return nullptr;
 }
+
+jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI) {
+  if (Print) {
+    llvm::outs() << "PEBI " << PEBI << "\n";
+    llvm::outs() << "Operand " << PEBI->getOperand() << "\n";
+    llvm::outs() << "Operand addr " << PEBI->getOperand().getOpaqueValue() << "\n";
+  }
+  if (SymbolTable.has(PEBI->getOperand().getOpaqueValue())) {
+    SymbolTable.duplicate(PEBI, SymbolTable.get(PEBI->getOperand().getOpaqueValue()).c_str());
+  }
+
+  return nullptr;
+}
+
 
 jobject SILWalaInstructionVisitor::visitDebugValueInst(DebugValueInst *DBI) {
   SILDebugVariable Info = DBI->getVarInfo();

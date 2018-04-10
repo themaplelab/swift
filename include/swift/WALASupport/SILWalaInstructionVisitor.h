@@ -31,6 +31,7 @@ public:
   jobject visitStringLiteralInst(StringLiteralInst *SLI);
   jobject visitConstStringLiteralInst(ConstStringLiteralInst *CSLI);
   jobject visitProjectBoxInst(ProjectBoxInst *PBI);
+  jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
   jobject visitDebugValueInst(DebugValueInst *DBI);
   jobject visitFunctionRefInst(FunctionRefInst *FRI);
   jobject visitLoadInst(LoadInst *LI);
