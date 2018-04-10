@@ -300,7 +300,7 @@ jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistential
 
     auto name = "ExistentialBox:" + 
       AEBI->getFormalConcreteType().getString() + "->" + AEBI->getExistentialType().getAsString();
-    SymbolTable.insert(AEBI, name);
+    SymbolTable.insert(((char *)AEBI) + 0x48 , name);
 
     return nullptr;
 }
@@ -455,7 +455,7 @@ jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExisten
     llvm::outs() << "Operand addr " << PEBI->getOperand().getOpaqueValue() << "\n";
   }
   if (SymbolTable.has(PEBI->getOperand().getOpaqueValue())) {
-    SymbolTable.duplicate(PEBI, SymbolTable.get(PEBI->getOperand().getOpaqueValue()).c_str());
+    SymbolTable.duplicate(((char *)PEBI) + 0x48, SymbolTable.get(PEBI->getOperand().getOpaqueValue()).c_str());
   }
 
   return nullptr;
