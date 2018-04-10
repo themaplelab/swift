@@ -721,6 +721,7 @@ jobject SILWalaInstructionVisitor::visitCondBranchInst(CondBranchInst *CBI) {
 }
 
 jobject SILWalaInstructionVisitor::visitSwitchValueInst(SwitchValueInst *SVI) {
+
   SILValue Cond = SVI->getOperand();
   jobject CondNode = findAndRemoveCAstNode(Cond.getOpaqueValue());
   
@@ -733,10 +734,11 @@ jobject SILWalaInstructionVisitor::visitSwitchValueInst(SwitchValueInst *SVI) {
 
   for (unsigned Idx = 0, Num = SVI->getNumCases(); Idx < Num; ++Idx) {
     auto Case = SVI->getCase(Idx);
-    auto *CaseVal = dyn_cast<IntegerLiteralInst>(Case.first);
+
+    jobject CaseValNode = findAndRemoveCAstNode(Case.first);
     SILBasicBlock *CaseBasicBlock = Case.second;
 
-    Children.push_back(Wala->makeConstant(CaseVal));
+    Children.push_back(CaseValNode);
 
     auto LabelNodeName = BasicBlockLabeller::label(CaseBasicBlock);
     jobject LabelNode = Wala->makeConstant(LabelNodeName.c_str());
@@ -748,7 +750,7 @@ jobject SILWalaInstructionVisitor::visitSwitchValueInst(SwitchValueInst *SVI) {
         llvm::outs() << "\t [DEFAULT]: " << LabelNode << " => " << *CaseBasicBlock << "\n";
       } else {
         // Not Default Node.
-        llvm::outs() << "\t [CASE]: VAL = " << *CaseVal << " " << LabelNodeName << " => " << *CaseBasicBlock << "\n";
+        llvm::outs() << "\t [CASE]: VAL = " << CaseValNode << " " << LabelNodeName << " => " << *CaseBasicBlock << "\n";
       }
 
       int I = 0;
