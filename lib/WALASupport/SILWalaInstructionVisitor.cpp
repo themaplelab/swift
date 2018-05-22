@@ -291,6 +291,20 @@ jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
   return nullptr;
 }
 
+jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
+    if (Print) {
+      llvm::outs() << "AEBI " << AEBI << "\n";
+      llvm::outs() << "\tConcreteType " << AEBI->getFormalConcreteType() << "\n";
+      llvm::outs() << "\tExistentialType " << AEBI->getExistentialType() << "\n";
+    }
+
+    auto name = "ExistentialBox:" + 
+      AEBI->getFormalConcreteType().getString() + "->" + AEBI->getExistentialType().getAsString();
+    SymbolTable.insert(((char *)AEBI) + sizeof(SILInstruction) , name);
+
+    return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitIntegerLiteralInst(IntegerLiteralInst *ILI) {
   APInt Value = ILI->getValue();
   jobject Node = nullptr;
@@ -433,6 +447,20 @@ jobject SILWalaInstructionVisitor::visitProjectBoxInst(ProjectBoxInst *PBI) {
   }
   return nullptr;
 }
+
+jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI) {
+  if (Print) {
+    llvm::outs() << "PEBI " << PEBI << "\n";
+    llvm::outs() << "Operand " << PEBI->getOperand() << "\n";
+    llvm::outs() << "Operand addr " << PEBI->getOperand().getOpaqueValue() << "\n";
+  }
+  if (SymbolTable.has(PEBI->getOperand().getOpaqueValue())) {
+    SymbolTable.duplicate(((char *)PEBI) + sizeof(SILInstruction), SymbolTable.get(PEBI->getOperand().getOpaqueValue()).c_str());
+  }
+
+  return nullptr;
+}
+
 
 jobject SILWalaInstructionVisitor::visitDebugValueInst(DebugValueInst *DBI) {
   SILDebugVariable Info = DBI->getVarInfo();
