@@ -771,6 +771,44 @@ jobject SILWalaInstructionVisitor::visitSwitchValueInst(SwitchValueInst *SVI) {
   return SwitchNode;
 }
 
+jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
+ 
+  list<jobject> Properties;
+
+  StringRef discriminantName = EI->getElement()->getNameStr();
+
+  jobject DiscriminantNameNode = Wala->makeConstant("__DISCRIMINATOR__");
+  jobject DiscriminantValueNode = Wala->makeConstant(discriminantName.data());
+
+  Properties.push_back(DiscriminantNameNode);
+  Properties.push_back(DiscriminantValueNode);
+
+  if (Print) {
+    llvm::outs() << "[DISCRIMINATOR] " << discriminantName <<  "\n";
+  }
+
+  for (Operand &EnumOperand : EI->getAllOperands()) {
+
+      unsigned OperandNumber = EnumOperand.getOperandNumber();
+
+      jobject OperandValueNode = findAndRemoveCAstNode(EnumOperand.get().getOpaqueValue());
+      jobject OperandNameNode = Wala->makeConstant(std::to_string(OperandNumber).c_str());
+
+      if (Print) {
+        llvm::outs() << "Operand: " << OperandNumber << " " << OperandValueNode << "\n";
+      }
+
+      Properties.push_back(OperandNameNode);
+      Properties.push_back(OperandValueNode);
+  }
+
+  auto VisitEnumNode = Wala->makeNode(CAstWrapper::OBJECT_LITERAL, Wala->makeArray(&Properties));
+
+  NodeMap.insert(std::make_pair(EI, VisitEnumNode));
+
+  return VisitEnumNode;
+ }
+
 jobject SILWalaInstructionVisitor::visitUnreachableInst(UnreachableInst *UI) {
   if (Print) {
     if (UI->isBranch()) {

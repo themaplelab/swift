@@ -44,6 +44,7 @@ public:
   jobject visitBranchInst(BranchInst *BI);
   jobject visitCondBranchInst(CondBranchInst *CBI);
   jobject visitSwitchValueInst(SwitchValueInst *SVI);
+  jobject visitEnumInst(EnumInst *EI);
   jobject visitUnreachableInst(UnreachableInst *UI);
   jobject visitCopyValueInst(CopyValueInst *CVI);
   jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
