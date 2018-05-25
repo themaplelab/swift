@@ -26,10 +26,12 @@ public:
 
   jobject visitApplyInst(ApplyInst *AI);
   jobject visitAllocBoxInst(AllocBoxInst *ABI);
+  jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
   jobject visitIntegerLiteralInst(IntegerLiteralInst *ILI);
   jobject visitStringLiteralInst(StringLiteralInst *SLI);
   jobject visitConstStringLiteralInst(ConstStringLiteralInst *CSLI);
   jobject visitProjectBoxInst(ProjectBoxInst *PBI);
+  jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
   jobject visitDebugValueInst(DebugValueInst *DBI);
   jobject visitFunctionRefInst(FunctionRefInst *FRI);
   jobject visitLoadInst(LoadInst *LI);
@@ -45,6 +47,7 @@ public:
   jobject visitCondBranchInst(CondBranchInst *CBI);
   jobject visitSwitchValueInst(SwitchValueInst *SVI);
   jobject visitSwitchEnumInst(SwitchEnumInst *SWI);
+  jobject visitEnumInst(EnumInst *EI);
   jobject visitUnreachableInst(UnreachableInst *UI);
   jobject visitCopyValueInst(CopyValueInst *CVI);
   jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
