@@ -837,6 +837,7 @@ jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
   return VisitEnumNode;
  }
 
+
 jobject SILWalaInstructionVisitor::visitSwitchEnumInst(SwitchEnumInst *SWI) {
 
   SILValue Cond = SWI->getOperand();
@@ -882,6 +883,15 @@ jobject SILWalaInstructionVisitor::visitSwitchEnumInst(SwitchEnumInst *SWI) {
   NodeMap.insert(std::make_pair(SWI, SwitchNode));
 
   return SwitchNode;
+}
+  
+jobject SILWalaInstructionVisitor::visitSelectValueInst(SelectValueInst *SVI) {
+
+  if (Print) {
+    llvm::outs() << "This should never be reached! Swift does not support this anymore" << "\n";
+  }
+
+  return nullptr;
 }
 
 jobject SILWalaInstructionVisitor::visitUnreachableInst(UnreachableInst *UI) {
