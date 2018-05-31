@@ -264,7 +264,7 @@ jobject SILWalaInstructionVisitor::getOperatorCAstType(Identifier Name) {
 
 jobject SILWalaInstructionVisitor::visitApplyInst(ApplyInst *AI) {
   if (auto Node = visitApplySite(AI)) {
-    NodeMap.insert(std::make_pair(AI, Node)); // insert the node into the hash map
+    NodeMap.insert(std::make_pair(static_cast<ValueBase *>(AI), Node)); // insert the node into the hash map
     return Node;
   }
   return nullptr;
@@ -279,14 +279,14 @@ jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
     if (Print) {
       llvm::outs() << "[Arg]#" << ArgNo << ":" << varName << "\n";
     }
-    SymbolTable.insert(ABI, varName);
+    SymbolTable.insert(static_cast<ValueBase *>(ABI), varName);
   }
   else {
     // temporary allocation when referencing self.
     if (Print) {
       llvm::outs() << "[Arg]#" << ArgNo << ":" << "self" << "\n";
     }
-    SymbolTable.insert(ABI, "self");
+    SymbolTable.insert(static_cast<ValueBase *>(ABI), "self");
   }
   return nullptr;
 }
@@ -300,7 +300,7 @@ jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistential
 
     auto name = "ExistentialBox:" + 
       AEBI->getFormalConcreteType().getString() + "->" + AEBI->getExistentialType().getAsString();
-    SymbolTable.insert(((char *)AEBI) + sizeof(SILInstruction) , name);
+    SymbolTable.insert(static_cast<ValueBase *>(AEBI), name);
 
     return nullptr;
 }
@@ -322,7 +322,7 @@ jobject SILWalaInstructionVisitor::visitIntegerLiteralInst(IntegerLiteralInst *I
     }
   }
   if (Node != nullptr) {
-    NodeMap.insert(std::make_pair(ILI, Node));
+    NodeMap.insert(std::make_pair(static_cast<ValueBase *>(ILI), Node));
   }
   return Node;
 }
@@ -356,7 +356,7 @@ jobject SILWalaInstructionVisitor::visitFloatLiteralInst(FloatLiteralInst *FLI) 
     Value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven, &APFLosesInfo);
     Node = Wala->makeConstant(Value.convertToDouble());
   }
-  NodeMap.insert(std::make_pair(FLI, Node));
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(FLI), Node));
   return Node;
 }
 
@@ -398,7 +398,7 @@ jobject SILWalaInstructionVisitor::visitStringLiteralInst(StringLiteralInst *SLI
 
   // Call WALA in Java
   jobject walaConstant = Wala->makeConstant((Value.str()).c_str());
-  NodeMap.insert(std::make_pair(SLI, walaConstant));
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(SLI), walaConstant));
   return walaConstant;
 }
 
@@ -434,7 +434,7 @@ jobject SILWalaInstructionVisitor::visitConstStringLiteralInst(ConstStringLitera
   // Call WALA in Java
   jobject C = Wala->makeConstant((Value.str()).c_str());
 
-  NodeMap.insert(std::make_pair(CSLI, C));
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CSLI), C));
 
   return C;
 
@@ -443,7 +443,7 @@ jobject SILWalaInstructionVisitor::visitConstStringLiteralInst(ConstStringLitera
 jobject SILWalaInstructionVisitor::visitProjectBoxInst(ProjectBoxInst *PBI) {
   if (SymbolTable.has(PBI->getOperand().getOpaqueValue())) {
     // this is a variable
-    SymbolTable.duplicate(PBI, SymbolTable.get(PBI->getOperand().getOpaqueValue()).c_str());
+    SymbolTable.duplicate(static_cast<ValueBase *>(PBI), SymbolTable.get(PBI->getOperand().getOpaqueValue()).c_str());
   }
   return nullptr;
 }
@@ -455,7 +455,7 @@ jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExisten
     llvm::outs() << "Operand addr " << PEBI->getOperand().getOpaqueValue() << "\n";
   }
   if (SymbolTable.has(PEBI->getOperand().getOpaqueValue())) {
-    SymbolTable.duplicate(((char *)PEBI) + sizeof(SILInstruction), SymbolTable.get(PEBI->getOperand().getOpaqueValue()).c_str());
+    SymbolTable.duplicate(static_cast<ValueBase *>(PEBI), SymbolTable.get(PEBI->getOperand().getOpaqueValue()).c_str());
   }
 
   return nullptr;
@@ -520,7 +520,7 @@ jobject SILWalaInstructionVisitor::visitFunctionRefInst(FunctionRefInst *FRI) {
   }
 
   NodeMap.insert(std::make_pair(FRI->getReferencedFunction(), FuncExprNode));
-  NodeMap.insert(std::make_pair(FRI, FuncExprNode));
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(FRI), FuncExprNode));
   return nullptr;
 }
 
@@ -530,7 +530,7 @@ jobject SILWalaInstructionVisitor::visitLoadInst(LoadInst *LI) {
   }
   jobject Node = findAndRemoveCAstNode((LI->getOperand()).getOpaqueValue());
 
-  NodeMap.insert(std::make_pair(LI, Node));
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(LI), Node));
   return Node;
 }
 
@@ -544,7 +544,7 @@ jobject SILWalaInstructionVisitor::visitLoadBorrowInst(LoadBorrowInst *LBI) {
 
 jobject SILWalaInstructionVisitor::visitBeginBorrowInst(BeginBorrowInst *BBI) {
   jobject Node = findAndRemoveCAstNode(BBI->getOperand().getOpaqueValue());
-  NodeMap.insert(std::make_pair(BBI, Node));
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(BBI), Node));
   return Node;
 }
 
@@ -556,7 +556,7 @@ jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunct
   }
   jobject FuncRefNode = findAndRemoveCAstNode(TTFI->getCallee().getOpaqueValue());
   // cast in CASt
-  NodeMap.insert(std::make_pair(TTFI, FuncRefNode));
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TTFI), FuncRefNode));
   return nullptr;
 }
 
@@ -592,7 +592,7 @@ jobject SILWalaInstructionVisitor::visitBeginAccessInst(BeginAccessInst *BAI) {
     llvm::outs() << "\t\t [oper_addr]:" << (BAI->getSource()).getOpaqueValue() << "\n";
   }
   jobject Var = findAndRemoveCAstNode(BAI->getSource().getOpaqueValue());
-  NodeMap.insert(std::make_pair(BAI, Var));
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(BAI), Var));
   return nullptr;
 }
 
@@ -832,7 +832,7 @@ jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
 
   auto VisitEnumNode = Wala->makeNode(CAstWrapper::OBJECT_LITERAL, Wala->makeArray(&Properties));
 
-  NodeMap.insert(std::make_pair(EI, VisitEnumNode));
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(EI), VisitEnumNode));
 
   return VisitEnumNode;
  }
@@ -910,7 +910,7 @@ jobject SILWalaInstructionVisitor::visitCopyValueInst(CopyValueInst *CVI) {
   llvm::outs() << "\t\t [name]:" << CVI->getOperand() << "\n";
   jobject Node = findAndRemoveCAstNode(CVI->getOperand().getOpaqueValue());
 
-  NodeMap.insert(std::make_pair(CVI, Node));
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CVI), Node));
   return Node;
 }
 
@@ -931,7 +931,7 @@ jobject SILWalaInstructionVisitor::visitGlobalAddrInst(GlobalAddrInst *GAI) {
   if (Print) {
     llvm::outs() << "\t\t[Var name]:" << Name << "\n";
   }
-  SymbolTable.insert(GAI, Name);
+  SymbolTable.insert(static_cast<ValueBase *>(GAI), Name);
   return nullptr;
 }
 
@@ -957,7 +957,7 @@ jobject SILWalaInstructionVisitor::visitBeginApplyInst(BeginApplyInst *BAI) {
 
 jobject SILWalaInstructionVisitor::visitPartialApplyInst(PartialApplyInst *PAI) {
   if (auto Node = visitApplySite(PAI)) {
-    NodeMap.insert(std::make_pair(PAI, Node)); // insert the node into the hash map
+    NodeMap.insert(std::make_pair(static_cast<ValueBase *>(PAI), Node)); // insert the node into the hash map
     return Node;
   }
   return nullptr;
