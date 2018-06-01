@@ -45,6 +45,7 @@ public:
   jobject visitReturnInst(ReturnInst *RI);
   jobject visitBranchInst(BranchInst *BI);
   jobject visitCondBranchInst(CondBranchInst *CBI);
+  jobject visitSelectValueInst(SelectValueInst *SVI);
   jobject visitSwitchValueInst(SwitchValueInst *SVI);
   jobject visitSwitchEnumInst(SwitchEnumInst *SWI);
   jobject visitEnumInst(EnumInst *EI);
