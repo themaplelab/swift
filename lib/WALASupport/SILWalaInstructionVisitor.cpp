@@ -518,7 +518,7 @@ jobject SILWalaInstructionVisitor::visitDebugValueAddrInst(DebugValueAddrInst *D
 
   VarDecl *Decl = DVAI->getDecl();
 
-  if (Decl) {z
+  if (Decl) {
     string VarName = Decl->getNameStr();
     if (Print) {
       llvm::outs() << "[DECL NAME]: " << VarName << "\n";
