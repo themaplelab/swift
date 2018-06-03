@@ -508,6 +508,48 @@ jobject SILWalaInstructionVisitor::visitDebugValueInst(DebugValueInst *DBI) {
   return nullptr;
 }
 
+jobject SILWalaInstructionVisitor::visitDebugValueAddrInst(DebugValueAddrInst *DVAI) {
+
+  SILDebugVariable DebugVar = DVAI->getVarInfo();
+
+  if (Print) {
+    llvm::outs() << "[ARGNO]: " << DebugVar.ArgNo << "\n";
+  }
+
+  VarDecl *Decl = DVAI->getDecl();
+
+  if (Decl) {z
+    string VarName = Decl->getNameStr();
+    if (Print) {
+      llvm::outs() << "[DECL NAME]: " << VarName << "\n";
+    }
+
+    SILValue Operand = DVAI->getOperand();
+    if (Operand) {
+      void *Addr = Operand.getOpaqueValue();
+      if (Print) {
+        llvm::outs() << "[ADDR OF OPERAND]: " << Addr << "\n";
+      }
+
+      SymbolTable.insert(Addr, VarName);
+
+    } else {
+      if (Print) {
+        llvm::outs() << "OPERAND IS NULL" << "\n";
+      }
+      return nullptr;
+    }
+
+  } else {
+      if (Print) {
+        llvm::outs() << "DECL IS NULL" << "\n";
+      }
+    return nullptr;
+  }
+
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitFunctionRefInst(FunctionRefInst *FRI) {
   // Cast the instr to access methods
   string FuncName = Demangle::demangleSymbolAsString(FRI->getReferencedFunction()->getName());
@@ -854,6 +896,8 @@ jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
 
   return UncheckedEnumData;
 }
+
+
 
 
 jobject SILWalaInstructionVisitor::visitSwitchEnumInst(SwitchEnumInst *SWI) {
