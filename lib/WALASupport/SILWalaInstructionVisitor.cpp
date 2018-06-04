@@ -508,6 +508,23 @@ jobject SILWalaInstructionVisitor::visitDebugValueInst(DebugValueInst *DBI) {
   return nullptr;
 }
 
+jobject SILWalaInstructionVisitor::visitValueMetatypeInst(ValueMetatypeInst *VMI) {
+
+  auto ValueMetatypeOperand = VMI->getOperand();
+
+  if (Print) {
+    llvm::outs() << "[TYPE]: " << VMI->getType().getAsString() << "\n";
+    llvm::outs() << "[OPERAND]: " << ValueMetatypeOperand << "\n";
+    llvm::outs() << "[ADDR]: " << ValueMetatypeOperand.getOpaqueValue() << "\n";
+  }
+
+  jobject TypeNode = findAndRemoveCAstNode(ValueMetatypeOperand.getOpaqueValue());
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(VMI), TypeNode));
+  
+  return TypeNode;
+}
+
 jobject SILWalaInstructionVisitor::visitFunctionRefInst(FunctionRefInst *FRI) {
   // Cast the instr to access methods
   string FuncName = Demangle::demangleSymbolAsString(FRI->getReferencedFunction()->getName());
