@@ -711,6 +711,16 @@ jobject SILWalaInstructionVisitor::visitAllocStackInst(AllocStackInst *ASI) {
   return nullptr;
 }
 
+jobject SILWalaInstructionVisitor::visitDeallocStackInst(DeallocStackInst *DSI) {
+  if (Print) {
+    for (auto &OP : DSI->getAllOperands()) {
+      llvm::outs() << "\t [OPERAND]: " << OP.get() << "\n";
+      llvm::outs() << "\t [ADDR]: " << OP.get().getOpaqueValue() << "\n";
+    }
+  }
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitReturnInst(ReturnInst *RI) {
   SILValue RV = RI->getOperand();
 
