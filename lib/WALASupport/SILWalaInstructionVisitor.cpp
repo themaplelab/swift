@@ -508,6 +508,48 @@ jobject SILWalaInstructionVisitor::visitDebugValueInst(DebugValueInst *DBI) {
   return nullptr;
 }
 
+jobject SILWalaInstructionVisitor::visitDebugValueAddrInst(DebugValueAddrInst *DVAI) {
+
+  SILDebugVariable DebugVar = DVAI->getVarInfo();
+
+  if (Print) {
+    llvm::outs() << "[ARGNO]: " << DebugVar.ArgNo << "\n";
+  }
+
+  VarDecl *Decl = DVAI->getDecl();
+
+  if (Decl) {
+    string VarName = Decl->getNameStr();
+    if (Print) {
+      llvm::outs() << "[DECL NAME]: " << VarName << "\n";
+    }
+
+    SILValue Operand = DVAI->getOperand();
+    if (Operand) {
+      void *Addr = Operand.getOpaqueValue();
+      if (Print) {
+        llvm::outs() << "[ADDR OF OPERAND]: " << Addr << "\n";
+      }
+
+      SymbolTable.insert(Addr, VarName);
+
+    } else {
+      if (Print) {
+        llvm::outs() << "OPERAND IS NULL" << "\n";
+      }
+      return nullptr;
+    }
+
+  } else {
+      if (Print) {
+        llvm::outs() << "DECL IS NULL" << "\n";
+      }
+    return nullptr;
+  }
+
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitMetatypeInst(MetatypeInst *MI) {
 
   string MetatypeName = MI->getType().getAsString();
@@ -523,7 +565,7 @@ jobject SILWalaInstructionVisitor::visitMetatypeInst(MetatypeInst *MI) {
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(MI), MetaTypeConstNode));
 
   return nullptr;
-} 
+}
 
 jobject SILWalaInstructionVisitor::visitFunctionRefInst(FunctionRefInst *FRI) {
   // Cast the instr to access methods
@@ -820,16 +862,18 @@ jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
  
   list<jobject> Properties;
 
+  StringRef enumName = EI->getElement()->getParentEnum()->getName().str();
   StringRef discriminantName = EI->getElement()->getNameStr();
 
-  jobject DiscriminantNameNode = Wala->makeConstant("__DISCRIMINATOR__");
+  jobject DiscriminantNameNode = Wala->makeConstant(enumName.data());
   jobject DiscriminantValueNode = Wala->makeConstant(discriminantName.data());
 
   Properties.push_back(DiscriminantNameNode);
   Properties.push_back(DiscriminantValueNode);
 
   if (Print) {
-    llvm::outs() << "[DISCRIMINATOR] " << discriminantName <<  "\n";
+    llvm::outs() << "[ENUM] " << enumName <<  "\n";
+    llvm::outs() << "[CASE] " << discriminantName <<  "\n";
   }
 
   for (Operand &EnumOperand : EI->getAllOperands()) {
@@ -840,7 +884,7 @@ jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
       jobject OperandNameNode = Wala->makeConstant(std::to_string(OperandNumber).c_str());
 
       if (Print) {
-        llvm::outs() << "Operand: " << OperandNumber << " " << OperandValueNode << "\n";
+        llvm::outs() << "Operand: " << OperandNumber << " Value: "<< OperandValueNode  << "\n";
       }
 
       Properties.push_back(OperandNameNode);
@@ -853,6 +897,24 @@ jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
 
   return VisitEnumNode;
  }
+
+ jobject SILWalaInstructionVisitor::visitUncheckedEnumDataInst(UncheckedEnumDataInst *UED) {
+
+  SILValue Value = UED->getOperand();
+
+  if (Print) {
+    llvm::outs() << "[ENUM]: " << UED->getEnumDecl()->getName() << "\n";
+    llvm::outs() << "[CASE]: " << UED->getElement()->getNameStr() << "\n";
+    llvm::outs() << "Operand: " << Value.getOpaqueValue() << "\n";
+  }
+  
+  jobject UncheckedEnumData = findAndRemoveCAstNode(Value.getOpaqueValue());
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(UED), UncheckedEnumData));
+
+  return UncheckedEnumData;
+}
+
+
 
 
 jobject SILWalaInstructionVisitor::visitSwitchEnumInst(SwitchEnumInst *SWI) {
