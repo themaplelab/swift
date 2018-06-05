@@ -623,6 +623,22 @@ jobject SILWalaInstructionVisitor::visitBeginBorrowInst(BeginBorrowInst *BBI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitEndBorrowInst(EndBorrowInst *EBI) {
+  if (Print) {
+    llvm::outs() << "\t\t [borrowed value]:" << EBI->getBorrowedValue() << "\n";
+    llvm::outs() << "\t\t [borrowed value addr]:" << EBI->getBorrowedValue().getOpaqueValue() << "\n";
+    llvm::outs() << "\t\t [original value]:" << EBI->getOriginalValue() << "\n";
+    llvm::outs() << "\t\t [original value addr]:" << EBI->getOriginalValue().getOpaqueValue() << "\n";
+  }
+  if (NodeMap.find(EBI->getBorrowedValue()) != NodeMap.end()) {
+    if (Print) {
+      llvm::outs() << "\t\t borrowed value found in NodeMap, remove from NodeMap\n";
+    }
+    NodeMap.erase(EBI->getBorrowedValue());
+  }
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
   // Cast the instr to access methods
   if (Print) {
