@@ -35,6 +35,8 @@ public:
   jobject visitDebugValueInst(DebugValueInst *DBI);
   jobject visitMetatypeInst(MetatypeInst *MI);
   jobject visitDebugValueAddrInst(DebugValueAddrInst *DVAI);
+  jobject visitMetatypeInst(MetatypeInst *MI);
+  jobject visitValueMetatypeInst(ValueMetatypeInst *VMI);
   jobject visitFunctionRefInst(FunctionRefInst *FRI);
   jobject visitLoadInst(LoadInst *LI);
   jobject visitLoadBorrowInst(LoadBorrowInst *LBI);
