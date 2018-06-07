@@ -33,7 +33,6 @@ public:
   jobject visitProjectBoxInst(ProjectBoxInst *PBI);
   jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
   jobject visitDebugValueInst(DebugValueInst *DBI);
-  jobject visitMetatypeInst(MetatypeInst *MI);
   jobject visitDebugValueAddrInst(DebugValueAddrInst *DVAI);
   jobject visitMetatypeInst(MetatypeInst *MI);
   jobject visitValueMetatypeInst(ValueMetatypeInst *VMI);
