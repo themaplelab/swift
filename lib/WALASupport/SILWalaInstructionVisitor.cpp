@@ -550,22 +550,6 @@ jobject SILWalaInstructionVisitor::visitDebugValueAddrInst(DebugValueAddrInst *D
   return nullptr;
 }
   
-jobject SILWalaInstructionVisitor::visitMetatypeInst(MetatypeInst *MI) {
-
-  string MetatypeName = MI->getType().getAsString();
-
-  jobject NameNode = Wala->makeConstant(MetatypeName.c_str());
-  jobject MetaTypeConstNode = Wala->makeNode(CAstWrapper::CONSTANT, NameNode);
-
-  if (Print) {
-    llvm::outs() << "[Metatype]: " << MetatypeName << "\n";
-  }
-  
-  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(MI), MetaTypeConstNode));
-
-  return nullptr;
-} 
-
 jobject SILWalaInstructionVisitor::visitValueMetatypeInst(ValueMetatypeInst *VMI) {
 
   auto ValueMetatypeOperand = VMI->getOperand();
@@ -594,7 +578,6 @@ jobject SILWalaInstructionVisitor::visitMetatypeInst(MetatypeInst *MI) {
     llvm::outs() << "[Metatype]: " << MetatypeName << "\n";
   }
 
-  // NodeMap.insert(std::make_pair(MI->getType().getOpaqueValue(), MetaTypeConstNode));
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(MI), MetaTypeConstNode));
 
   return nullptr;
