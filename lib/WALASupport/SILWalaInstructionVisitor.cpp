@@ -618,6 +618,11 @@ jobject SILWalaInstructionVisitor::visitLoadBorrowInst(LoadBorrowInst *LBI) {
 }
 
 jobject SILWalaInstructionVisitor::visitBeginBorrowInst(BeginBorrowInst *BBI) {
+  if (Print) {
+    llvm::outs() << "\t\t [BBI]:" << BBI << "\n";
+    llvm::outs() << "\t\t [Operand]:" << BBI->getOperand() << "\n";
+    llvm::outs() << "\t\t [Operand addr]:" << BBI->getOperand().getOpaqueValue() << "\n";
+  }
   jobject Node = findAndRemoveCAstNode(BBI->getOperand().getOpaqueValue());
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(BBI), Node));
   return Node;
