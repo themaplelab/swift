@@ -692,6 +692,20 @@ jobject SILWalaInstructionVisitor::visitBeginAccessInst(BeginAccessInst *BAI) {
   return nullptr;
 }
 
+jobject SILWalaInstructionVisitor::visitEndAccessInst(EndAccessInst *EAI) {
+  if (Print) {
+    llvm::outs() << "\t\t [Begin Access]: " << EAI->getBeginAccess() << "\n";
+  }
+  ValueBase *key = static_cast<ValueBase *>(EAI->getBeginAccess());
+  if (NodeMap.find(key) != NodeMap.end()) {
+    if (Print) {
+      llvm::outs() << "\t\t borrowed value found in NodeMap, remove from NodeMap\n";
+    }
+    NodeMap.erase(key);
+  }
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitAssignInst(AssignInst *AI) {
   if (Print) {
     llvm::outs() << "[source]:" << AI->getSrc().getOpaqueValue() << "\n";

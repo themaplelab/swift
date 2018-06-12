@@ -44,6 +44,7 @@ public:
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitStoreInst(StoreInst *SI);
   jobject visitBeginAccessInst(BeginAccessInst *BAI);
+  jobject visitEndAccessInst(EndAccessInst *EAI);
   jobject visitAssignInst(AssignInst *AI);
   jobject visitAllocStackInst(AllocStackInst *ASI);
   jobject visitDeallocStackInst(DeallocStackInst *DSI);
