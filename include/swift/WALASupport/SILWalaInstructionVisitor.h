@@ -68,6 +68,7 @@ public:
   jobject visitFloatLiteralInst(FloatLiteralInst *FLI);
   jobject visitPartialApplyInst(PartialApplyInst *PAI);
   jobject visitThrowInst(ThrowInst *TI);
+  jobject visitStructInst(StructInst *SI);
 
 private:
   void updateInstrSourceInfo(SILInstruction *I);
