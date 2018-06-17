@@ -1090,6 +1090,23 @@ jobject SILWalaInstructionVisitor::visitCopyValueInst(CopyValueInst *CVI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitDestroyValueInst(DestroyValueInst *DVI) {
+
+  SILValue Value = DVI->getOperand();
+  jobject Node = findAndRemoveCAstNode(Value.getOpaqueValue());
+
+
+  ValueBase *key = static_cast<ValueBase *>(Value);
+  if (NodeMap.find(key) != NodeMap.end()) {
+    if (Print) {
+      llvm::outs() << "\t\t Value " << Value.getOpaqueValue() <<  " destroyed \n";
+    }
+    NodeMap.erase(key);
+  }
+
+  return Node;
+}
+
 jobject SILWalaInstructionVisitor::visitAllocGlobalInst(AllocGlobalInst *AGI) {
   SILGlobalVariable *Var = AGI->getReferencedGlobal();
   StringRef Name = Var->getName();
