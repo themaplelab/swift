@@ -720,11 +720,22 @@ jobject SILWalaInstructionVisitor::visitAssignInst(AssignInst *AI) {
 }
 
 jobject SILWalaInstructionVisitor::visitAllocStackInst(AllocStackInst *ASI) {
-  if (Print) {
-    for (auto &OP : ASI->getAllOperands()) {
-      llvm::outs() << "\t [OPERAND]: " << OP.get() << "\n";
-      llvm::outs() << "\t [ADDR]: " << OP.get().getOpaqueValue() << "\n";
+  SILDebugVariable Info = ASI->getVarInfo();
+  unsigned ArgNo = Info.ArgNo;
+
+  if (auto *Decl = ASI->getDecl()) {
+    StringRef varName = Decl->getNameStr();
+    if (Print) {
+      llvm::outs() << "[Arg]#" << ArgNo << ":" << varName << "\n";
     }
+    SymbolTable.insert(static_cast<ValueBase *>(ASI), varName);
+  }
+  else {
+    // temporary allocation when referencing self.
+    if (Print) {
+      llvm::outs() << "[Arg]#" << ArgNo << ":" << "self" << "\n";
+    }
+    SymbolTable.insert(static_cast<ValueBase *>(ASI), "self");
   }
   return nullptr;
 }
