@@ -46,6 +46,7 @@ public:
   jobject visitBeginAccessInst(BeginAccessInst *BAI);
   jobject visitEndAccessInst(EndAccessInst *EAI);
   jobject visitAssignInst(AssignInst *AI);
+  jobject visitCopyAddrInst(CopyAddrInst *CAI);
   jobject visitAllocStackInst(AllocStackInst *ASI);
   jobject visitDeallocStackInst(DeallocStackInst *DSI);
   jobject visitReturnInst(ReturnInst *RI);

@@ -719,6 +719,25 @@ jobject SILWalaInstructionVisitor::visitAssignInst(AssignInst *AI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitCopyAddrInst(CopyAddrInst *CAI) {
+
+  SILValue Source = CAI->getSrc();
+  SILValue Dest = CAI->getDest();
+
+  if (Print) {
+    llvm::outs() << "[SOURCE]: " << Source << "\n";
+    llvm::outs() << "[DEST]: " << Dest << "\n";
+  }
+
+  jobject NewVar = findAndRemoveCAstNode(Source.getOpaqueValue());
+  jobject OldVar = findAndRemoveCAstNode(Dest.getOpaqueValue());
+  
+  jobject Node = Wala->makeNode(CAstWrapper::ASSIGN, NewVar, OldVar);
+  NodeMap.insert(std::make_pair(CAI, Node));
+
+  return Node;
+}
+
 jobject SILWalaInstructionVisitor::visitAllocStackInst(AllocStackInst *ASI) {
   SILDebugVariable Info = ASI->getVarInfo();
   unsigned ArgNo = Info.ArgNo;
