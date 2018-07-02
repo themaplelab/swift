@@ -30,6 +30,7 @@ public:
   jobject visitIntegerLiteralInst(IntegerLiteralInst *ILI);
   jobject visitStringLiteralInst(StringLiteralInst *SLI);
   jobject visitConstStringLiteralInst(ConstStringLiteralInst *CSLI);
+  jobject visitWitnessMethodInst(WitnessMethodInst *WMI);
   jobject visitProjectBoxInst(ProjectBoxInst *PBI);
   jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
   jobject visitDebugValueInst(DebugValueInst *DBI);

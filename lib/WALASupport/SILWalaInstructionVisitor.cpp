@@ -440,6 +440,25 @@ jobject SILWalaInstructionVisitor::visitConstStringLiteralInst(ConstStringLitera
 
 }
 
+jobject SILWalaInstructionVisitor::visitWitnessMethodInst(WitnessMethodInst *WMI) {
+
+  string ProtocolMemberName = Demangle::demangleSymbolAsString(WMI->getMember().mangle());
+  jobject NameNode = Wala->makeConstant(ProtocolMemberName.c_str());
+
+  jobject FuncExprNode = Wala->makeNode(CAstWrapper::FUNCTION_EXPR, NameNode);
+
+  if (Print) {
+    llvm::outs() << "[PROTOCOL]: " << WMI->getLookupProtocol()->getNameStr() << "\n";
+    llvm::outs() << "[MEMBER]: " << ProtocolMemberName << "\n";
+  }
+
+  NodeMap.insert(std::make_pair(WMI->getConformance().getOpaqueValue(), FuncExprNode));
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(WMI), FuncExprNode));
+
+  return nullptr;
+}
+
+
 jobject SILWalaInstructionVisitor::visitProjectBoxInst(ProjectBoxInst *PBI) {
   if (SymbolTable.has(PBI->getOperand().getOpaqueValue())) {
     // this is a variable
@@ -1010,9 +1029,6 @@ jobject SILWalaInstructionVisitor::visitEnumInst(EnumInst *EI) {
 
   return UncheckedEnumData;
 }
-
-
-
 
 jobject SILWalaInstructionVisitor::visitSwitchEnumInst(SwitchEnumInst *SWI) {
 
