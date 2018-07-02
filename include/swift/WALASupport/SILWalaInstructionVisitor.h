@@ -59,6 +59,7 @@ public:
   jobject visitSwitchEnumInst(SwitchEnumInst *SWI);
   jobject visitEnumInst(EnumInst *EI);
   jobject visitUncheckedEnumDataInst(UncheckedEnumDataInst *UED);
+  jobject visitSelectEnumInst(SelectEnumInst *SEI);
   jobject visitUnreachableInst(UnreachableInst *UI);
   jobject visitCopyValueInst(CopyValueInst *CVI);
   jobject visitDestroyValueInst(DestroyValueInst *DVI);
