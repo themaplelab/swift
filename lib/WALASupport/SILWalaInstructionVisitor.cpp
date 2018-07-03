@@ -738,23 +738,6 @@ jobject SILWalaInstructionVisitor::visitCopyAddrInst(CopyAddrInst *CAI) {
   return Node;
 }
 
-jobject SILWalaInstructionVisitor::visitDestroyAddrInst(DestroyAddrInst *DAI) {
-
-  SILValue Value = DAI->getOperand();
-  jobject Node = findAndRemoveCAstNode(Value.getOpaqueValue());
-
-
-  ValueBase *key = static_cast<ValueBase *>(Value);
-  if (NodeMap.find(key) != NodeMap.end()) {
-    if (Print) {
-      llvm::outs() << "\t\t Address " << Value.getOpaqueValue() <<  " destroyed \n";
-    }
-    NodeMap.erase(key);
-  }
-
-  return Node;
-}
-
 jobject SILWalaInstructionVisitor::visitAllocStackInst(AllocStackInst *ASI) {
   if (Print) {
     for (auto &OP : ASI->getAllOperands()) {
@@ -1087,23 +1070,6 @@ jobject SILWalaInstructionVisitor::visitCopyValueInst(CopyValueInst *CVI) {
   jobject Node = findAndRemoveCAstNode(CVI->getOperand().getOpaqueValue());
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CVI), Node));
-  return Node;
-}
-
-jobject SILWalaInstructionVisitor::visitDestroyValueInst(DestroyValueInst *DVI) {
-
-  SILValue Value = DVI->getOperand();
-  jobject Node = findAndRemoveCAstNode(Value.getOpaqueValue());
-
-
-  ValueBase *key = static_cast<ValueBase *>(Value);
-  if (NodeMap.find(key) != NodeMap.end()) {
-    if (Print) {
-      llvm::outs() << "\t\t Value " << Value.getOpaqueValue() <<  " destroyed \n";
-    }
-    NodeMap.erase(key);
-  }
-
   return Node;
 }
 
