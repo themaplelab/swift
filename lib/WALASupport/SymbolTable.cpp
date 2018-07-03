@@ -25,3 +25,11 @@ void SymbolTable::insert(void* key, const string& name) {
 void SymbolTable::duplicate(void* key, const string& name) {
 	table.insert(std::make_pair(key, name));
 }
+
+bool SymbolTable::remove(void* key) {
+	if (has(key)) {
+		table.erase(key);
+		return true;
+	}
+	return false;
+}
