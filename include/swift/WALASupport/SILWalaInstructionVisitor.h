@@ -63,6 +63,7 @@ public:
   jobject visitSelectEnumInst(SelectEnumInst *SEI);
   jobject visitUnreachableInst(UnreachableInst *UI);
   jobject visitCopyValueInst(CopyValueInst *CVI);
+  jobject visitTupleInst(TupleInst *TI);
   jobject visitDestroyValueInst(DestroyValueInst *DVI);
   jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
   jobject visitGlobalAddrInst(GlobalAddrInst *GAI);

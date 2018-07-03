@@ -1202,6 +1202,37 @@ jobject SILWalaInstructionVisitor::visitDestroyValueInst(DestroyValueInst *DVI) 
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitTupleInst(TupleInst *TI) {
+
+  list<jobject> Properties;
+
+  jobject TupleIdentifierNode = Wala->makeConstant("Tuple");
+
+  Properties.push_back(TupleIdentifierNode);
+
+  for (Operand &TupleOperand : TI->getElementOperands()) {
+
+      SILValue Value = TupleOperand.get();
+      unsigned ValueNumber = TupleOperand.getOperandNumber();
+
+      jobject OperandNameNode = Wala->makeConstant(std::to_string(ValueNumber).c_str());
+      jobject OperandValueNode = findAndRemoveCAstNode(Value.getOpaqueValue());
+
+      if (Print) {
+        llvm::outs() << "Operand: " << ValueNumber << " Value: "<< Value.getOpaqueValue()  << "\n";
+      }
+
+      Properties.push_back(OperandNameNode);
+      Properties.push_back(OperandValueNode);
+  }
+
+  auto VisitTupleNode = Wala->makeNode(CAstWrapper::OBJECT_LITERAL, Wala->makeArray(&Properties));
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TI), VisitTupleNode));
+
+  return VisitTupleNode;
+}  
+
 jobject SILWalaInstructionVisitor::visitStructInst(StructInst *SI) {
 
   list<jobject> Fields;
