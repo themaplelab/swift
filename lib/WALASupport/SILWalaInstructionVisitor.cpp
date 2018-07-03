@@ -1223,4 +1223,40 @@ jobject SILWalaInstructionVisitor::visitApplySite(ApplySite Apply) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitBuiltinInst(BuiltinInst *BI) {
+
+  list<jobject> params;
+
+  string FuncName = BI->getName().str();
+  if (FuncName.empty()) {
+    // cannot get function name, abort
+    return nullptr;
+  }
+
+  // To prevent confusion if there is a user defined func with the same name
+  FuncName = "Builtin." + FuncName;
+
+  if (Print) {
+    llvm::outs() << "Builtin Function Name: " << FuncName << "\n";
+  }
+
+  jobject NameNode = Wala->makeConstant(FuncName.c_str());
+  jobject FuncExprNode = Wala->makeNode(CAstWrapper::FUNCTION_EXPR, NameNode);
+
+  for (const auto &operand : BI->getArguments()) {
+    if (Print) {
+      llvm::outs() << "\tOperand: " << operand << "\n";
+    }
+    jobject child = findAndRemoveCAstNode(operand);
+    if (child != nullptr) {
+      params.push_back(child);
+    }
+  }
+
+  jobject Node = Wala->makeNode(CAstWrapper::CALL, FuncExprNode, Wala->makeArray(&params));
+
+  return Node;
+}
+
+
 }
