@@ -15,6 +15,7 @@ public:
   string get(void* key);
   void insert(void* key, const string& name);
   void duplicate(void* key, const string& name);
+  bool remove(void* key);
 private:
   unordered_map<void*, string> table;
 };
