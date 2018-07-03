@@ -738,23 +738,6 @@ jobject SILWalaInstructionVisitor::visitCopyAddrInst(CopyAddrInst *CAI) {
   return Node;
 }
 
-jobject SILWalaInstructionVisitor::visitDestroyAddrInst(DestroyAddrInst *DAI) {
-
-  SILValue Value = DAI->getOperand();
-  jobject Node = findAndRemoveCAstNode(Value.getOpaqueValue());
-
-
-  ValueBase *key = static_cast<ValueBase *>(Value);
-  if (NodeMap.find(key) != NodeMap.end()) {
-    if (Print) {
-      llvm::outs() << "\t\t Address " << Value.getOpaqueValue() <<  " destroyed \n";
-    }
-    NodeMap.erase(key);
-  }
-
-  return Node;
-}
-
 jobject SILWalaInstructionVisitor::visitAllocStackInst(AllocStackInst *ASI) {
   if (Print) {
     for (auto &OP : ASI->getAllOperands()) {
