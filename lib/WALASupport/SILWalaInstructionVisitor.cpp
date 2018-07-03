@@ -663,6 +663,17 @@ jobject SILWalaInstructionVisitor::visitEndBorrowInst(EndBorrowInst *EBI) {
   return nullptr;
 }
 
+jobject SILWalaInstructionVisitor::visitConvertFunctionInst(ConvertFunctionInst *CFI) {
+
+  if (Print) {
+    llvm::outs() << "Converted: " << CFI->getConverted().getOpaqueValue() << "\n";
+  }
+
+  jobject ConvertedFunctionNode = findAndRemoveCAstNode(CFI->getConverted().getOpaqueValue());
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CFI), ConvertedFunctionNode));
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
   // Cast the instr to access methods
   if (Print) {
@@ -775,11 +786,22 @@ jobject SILWalaInstructionVisitor::visitDestroyAddrInst(DestroyAddrInst *DAI) {
 }
 
 jobject SILWalaInstructionVisitor::visitAllocStackInst(AllocStackInst *ASI) {
-  if (Print) {
-    for (auto &OP : ASI->getAllOperands()) {
-      llvm::outs() << "\t [OPERAND]: " << OP.get() << "\n";
-      llvm::outs() << "\t [ADDR]: " << OP.get().getOpaqueValue() << "\n";
+  SILDebugVariable Info = ASI->getVarInfo();
+  unsigned ArgNo = Info.ArgNo;
+
+  if (auto *Decl = ASI->getDecl()) {
+    StringRef varName = Decl->getNameStr();
+    if (Print) {
+      llvm::outs() << "[Arg]#" << ArgNo << ":" << varName << "\n";
     }
+    SymbolTable.insert(static_cast<ValueBase *>(ASI), varName);
+  }
+  else {
+    // temporary allocation when referencing self.
+    if (Print) {
+      llvm::outs() << "[Arg]#" << ArgNo << ":" << "self" << "\n";
+    }
+    SymbolTable.insert(static_cast<ValueBase *>(ASI), "self");
   }
   return nullptr;
 }
