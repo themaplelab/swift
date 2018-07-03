@@ -1084,6 +1084,41 @@ jobject SILWalaInstructionVisitor::visitCopyValueInst(CopyValueInst *CVI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitStructInst(StructInst *SI) {
+
+  list<jobject> Fields;
+
+  StringRef StructName = SI->getStructDecl()->getNameStr();
+
+  jobject DiscriminantNameNode = Wala->makeConstant(StructName.data());
+
+  llvm::outs() << "[STRUCT] " << StructName <<  "\n";
+
+  Fields.push_back(DiscriminantNameNode);
+
+  for (Operand &StructOperand : SI->getElementOperands()) {
+
+      unsigned OperandNumber = StructOperand.getOperandNumber();
+
+      jobject OperandValueNode = findAndRemoveCAstNode(StructOperand.get().getOpaqueValue());
+      jobject OperandNameNode = Wala->makeConstant(std::to_string(OperandNumber).c_str());
+
+      if (Print) {
+        llvm::outs() << "Operand: " << OperandNumber << " Value: "<< OperandValueNode  << "\n";
+      }
+
+      Fields.push_back(OperandNameNode);
+      Fields.push_back(OperandValueNode);
+  }
+
+  auto VisitStructNode = Wala->makeNode(CAstWrapper::OBJECT_LITERAL, Wala->makeArray(&Fields));
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(SI), VisitStructNode));
+
+  return VisitStructNode;
+}
+
+
 jobject SILWalaInstructionVisitor::visitAllocGlobalInst(AllocGlobalInst *AGI) {
   SILGlobalVariable *Var = AGI->getReferencedGlobal();
   StringRef Name = Var->getName();
