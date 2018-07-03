@@ -1081,7 +1081,7 @@ jobject SILWalaInstructionVisitor::visitCopyValueInst(CopyValueInst *CVI) {
   jobject Node = findAndRemoveCAstNode(CVI->getOperand().getOpaqueValue());
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CVI), Node));
-  return Node;
+  return nullptr;
 }
 
 jobject SILWalaInstructionVisitor::visitStructInst(StructInst *SI) {
