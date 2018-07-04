@@ -67,6 +67,7 @@ public:
   jobject visitPartialApplyInst(PartialApplyInst *PAI);
   jobject visitThrowInst(ThrowInst *TI);
   jobject visitStructInst(StructInst *SI);
+  jobject visitBuiltinInst(BuiltinInst *BI);
 
 private:
   void updateInstrSourceInfo(SILInstruction *I);
