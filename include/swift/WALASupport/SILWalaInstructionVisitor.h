@@ -41,6 +41,7 @@ public:
   jobject visitLoadBorrowInst(LoadBorrowInst *LBI);
   jobject visitBeginBorrowInst(BeginBorrowInst *BBI);
   jobject visitEndBorrowInst(EndBorrowInst *EBI);
+  jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitStoreInst(StoreInst *SI);
   jobject visitBeginAccessInst(BeginAccessInst *BAI);
