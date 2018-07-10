@@ -1259,11 +1259,15 @@ jobject SILWalaInstructionVisitor::visitBuiltinInst(BuiltinInst *BI) {
 }
 
 jobject SILWalaInstructionVisitor::visitIndexAddrInst(IndexAddrInst *IAI){
+  SILValue base = IAI->getBase();
+  SILValue idx = IAI->getIndex();
   if(Print){
     llvm::outs() << "\t [IA]: " << IAI << "\n";
-    llvm::outs() << "\t [BASE Address]" << IAI->getOperand(0).getOpaqueValue() << "\n";
-    llvm::outs() << "\t [Index]" << IAI->getOperand(1) << "\n";
+    llvm::outs() << "\t [Base]" << base.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [Index]" << idx.getOpaqueValue() << "\n";
   }
-  return nullptr;
+  jobject Node = nullptr;
+  Node = Wala->makeNode(CAstWrapper::ARRAY_REF, findAndRemoveCAstNode(base.getOpaqueValue()), findAndRemoveCAstNode(idx.getOpaqueValue()));
+  return Node;
 }
 }
