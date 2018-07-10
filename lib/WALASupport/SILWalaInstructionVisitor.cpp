@@ -736,6 +736,94 @@ jobject SILWalaInstructionVisitor::visitEndAccessInst(EndAccessInst *EAI) {
   return nullptr;
 }
 
+
+
+
+
+
+
+
+
+jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessInst *EAI) {
+
+  if (Print) {
+    llvm::outs() << "[VALUE BUFFER ADDR]: " << EAI->getBuffer().getOpaqueValue() << "\n";
+  }
+
+  ValueBase *key = static_cast<ValueBase *>(EAI->getBuffer().getOpaqueValue());
+  if (NodeMap.find(key) != NodeMap.end()) {
+    if (Print) {
+      llvm::outs() << "\t\t borrowed value found in NodeMap, remove from NodeMap\n";
+    }
+    NodeMap.erase(key);
+  }
+  return nullptr;
+}
+
+
+
+
+
+jobject SILWalaInstructionVisitor::visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI) {
+
+  jobject SourceVar = findAndRemoveCAstNode(BUI->getSource().getOpaqueValue());
+  jobject BufferVar = findAndRemoveCAstNode(BUI->getBuffer().getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t\t [OPERAND]:" << BUI->getSource() << "\n";
+    llvm::outs() << "\t\t [OPERAND ADDR]:" << BUI->getSource().getOpaqueValue() << "\n";
+    llvm::outs() << "\t\t [BUFFER ADDR]:" << BUI->getBuffer().getOpaqueValue() << "\n";
+    llvm::outs() << "\t\t [OPERAND NODE]:" << SourceVar << "\n";
+    llvm::outs() << "\t\t [BUFFER NODE]:" << BufferVar << "\n";
+  }
+
+  NodeMap.insert(std::make_pair(BUI, SourceVar));
+  // NodeMap.insert(std::make_pair(static_cast<ValueBase *>(BUI), BufferVar));
+
+  return nullptr;
+}
+
+jobject SILWalaInstructionVisitor::visitAddressToPointerInst(AddressToPointerInst *ATPI) {
+
+  SILValue ConvertedValue = ATPI->getOperand();
+
+  if (Print) {
+    llvm::outs() << "\t\t [OPERAND ADDR]:" << ConvertedValue << "\n";
+  }
+
+
+  jobject ConverteSourceNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  jobject Node = Wala->makeNode(CAstWrapper::CAST, ConverteSourceNode);
+
+  NodeMap.insert(std::make_pair(ATPI, Node));
+
+  return Node;
+}
+
+
+jobject SILWalaInstructionVisitor::visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI) {
+  SILValue ConvertedValue = TFPI->getOperand();
+
+  if (Print) {
+    llvm::outs() << "\t\t [OPERAND ADDR]:" << ConvertedValue << "\n";
+  }
+
+  jobject ConverteSourceNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  jobject Node = Wala->makeNode(CAstWrapper::CAST, ConverteSourceNode);
+
+  NodeMap.insert(std::make_pair(TFPI, Node));
+
+  return Node;
+}
+
+
+
+
+
+
+
 jobject SILWalaInstructionVisitor::visitAssignInst(AssignInst *AI) {
   if (Print) {
     llvm::outs() << "[source]:" << AI->getSrc().getOpaqueValue() << "\n";
@@ -1265,6 +1353,65 @@ jobject SILWalaInstructionVisitor::visitStructInst(StructInst *SI) {
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(SI), VisitStructNode));
 
   return VisitStructNode;
+}
+
+jobject SILWalaInstructionVisitor::visitRefElementAddrInst(RefElementAddrInst *REAI) {
+
+  /**
+        CHECK THIS MORE MAYBE?
+  **/
+
+  SILValue ElementOperand = REAI->getOperand();
+
+  VarDecl *VarElement = REAI->getField();
+  ClassDecl *ClassElement = REAI->getClassDecl();
+
+  if (Print) {
+        llvm::outs() << "[OPERAND]: " << ElementOperand.getOpaqueValue()  << "\n";
+
+        llvm::outs() << "[CLASS]: " << ClassElement->getDeclaredType().getString() << "\n";
+        llvm::outs() << "[CLASS FIELD]: " << VarElement->getNameStr() << "\n";
+  }
+
+  SymbolTable.insert(static_cast<ValueBase *>(REAI), VarElement->getNameStr());
+
+  return nullptr;
+}
+
+
+jobject SILWalaInstructionVisitor::visitBuiltinInst(BuiltinInst *BI) {
+
+  list<jobject> params;
+
+  string FuncName = BI->getName().str();
+  if (FuncName.empty()) {
+    // cannot get function name, abort
+    return nullptr;
+  }
+
+  // To prevent confusion if there is a user defined func with the same name
+  FuncName = "Builtin." + FuncName;
+
+  if (Print) {
+    llvm::outs() << "Builtin Function Name: " << FuncName << "\n";
+  }
+
+  jobject NameNode = Wala->makeConstant(FuncName.c_str());
+  jobject FuncExprNode = Wala->makeNode(CAstWrapper::FUNCTION_EXPR, NameNode);
+
+  for (const auto &operand : BI->getArguments()) {
+    if (Print) {
+      llvm::outs() << "\tOperand: " << operand << "\n";
+    }
+    jobject child = findAndRemoveCAstNode(operand);
+    if (child != nullptr) {
+      params.push_back(child);
+    }
+  }
+
+  jobject Node = Wala->makeNode(CAstWrapper::CALL, FuncExprNode, Wala->makeArray(&params));
+
+  return Node;
 }
 
 

@@ -73,6 +73,12 @@ public:
   jobject visitPartialApplyInst(PartialApplyInst *PAI);
   jobject visitThrowInst(ThrowInst *TI);
   jobject visitStructInst(StructInst *SI);
+  jobject visitRefElementAddrInst(RefElementAddrInst *REAI);
+  jobject visitBuiltinInst(BuiltinInst *BI);
+  jobject visitEndUnpairedAccessInst(EndUnpairedAccessInst *EAI);
+  jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
+  jobject visitAddressToPointerInst(AddressToPointerInst *API);
+  jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
 
 private:
   void updateInstrSourceInfo(SILInstruction *I);
