@@ -59,6 +59,8 @@ public:
   jobject visitUncheckedEnumDataInst(UncheckedEnumDataInst *UED);
   jobject visitUnreachableInst(UnreachableInst *UI);
   jobject visitCopyValueInst(CopyValueInst *CVI);
+  jobject visitTupleInst(TupleInst *TI);
+  jobject visitStructInst(StructInst *SI);
   jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
   jobject visitGlobalAddrInst(GlobalAddrInst *GAI);
   jobject visitTryApplyInst(TryApplyInst *TAI);
@@ -66,7 +68,6 @@ public:
   jobject visitFloatLiteralInst(FloatLiteralInst *FLI);
   jobject visitPartialApplyInst(PartialApplyInst *PAI);
   jobject visitThrowInst(ThrowInst *TI);
-  jobject visitStructInst(StructInst *SI);
   jobject visitBuiltinInst(BuiltinInst *BI);
 
 private:
