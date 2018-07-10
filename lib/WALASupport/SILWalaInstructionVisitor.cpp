@@ -1258,5 +1258,12 @@ jobject SILWalaInstructionVisitor::visitBuiltinInst(BuiltinInst *BI) {
   return Node;
 }
 
-
+jobject SILWalaInstructionVisitor::visitIndexAddrInst(IndexAddrInst *IAI){
+  if(Print){
+    llvm::outs() << "\t [IA]: " << IAI << "\n";
+    llvm::outs() << "\t [BASE Address]" << IAI->getOperand(0).getOpaqueValue() << "\n";
+    llvm::outs() << "\t [Index]" << IAI->getOperand(1) << "\n";
+  }
+  return nullptr;
+}
 }

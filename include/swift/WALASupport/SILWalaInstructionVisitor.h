@@ -12,8 +12,7 @@ namespace swift {
 class SILWalaInstructionVisitor : public SILInstructionVisitor<SILWalaInstructionVisitor, jobject> {
 public:
   SILWalaInstructionVisitor(const WALAIntegration &Wala, bool Print) : Print(Print), Wala(Wala) {}
-
-  void visitSILModule(SILModule *M);
+void visitSILModule(SILModule *M);
   void visitSILFunction(SILFunction *F);
   void visitSILBasicBlock(SILBasicBlock *BB);
   void visitModule(SILModule *M);
@@ -68,6 +67,7 @@ public:
   jobject visitThrowInst(ThrowInst *TI);
   jobject visitStructInst(StructInst *SI);
   jobject visitBuiltinInst(BuiltinInst *BI);
+  jobject visitIndexAddrInst(IndexAddrInst *IAI);
 
 private:
   void updateInstrSourceInfo(SILInstruction *I);
