@@ -1064,6 +1064,63 @@ jobject SILWalaInstructionVisitor::visitSelectValueInst(SelectValueInst *SVI) {
   return nullptr;
 }
 
+jobject SILWalaInstructionVisitor::visitSelectEnumInst(SelectEnumInst *SEI) {
+
+  list<jobject> Children;
+
+  SILValue Cond = SEI->getEnumOperand();
+
+  jobject CondNode = findAndRemoveCAstNode(Cond.getOpaqueValue());
+  jobject DescriminatorNameNode = Wala->makeConstant("DISCRIMINATOR");
+
+  if (Print) {
+    llvm::outs() << "[COND]: " << Cond << "\n";
+    llvm::outs() << "[COND NODE]: " << Cond.getOpaqueValue() << "\n";
+  }
+
+  Children.push_back(DescriminatorNameNode);
+  Children.push_back(CondNode);
+
+  for (unsigned Idx = 0, Num = SEI->getNumCases(); Idx < Num; ++Idx) {
+    auto Case = SEI->getCase(Idx);
+
+    EnumElementDecl *CaseDecl = Case.first;
+    // SILValue CaseVal = Case.second;
+
+    StringRef EnumName = CaseDecl->getParentEnum()->getName().str();
+
+    for (EnumElementDecl *E : CaseDecl->getParentEnum()->getAllElements()) {
+      
+      StringRef CaseName = E->getNameStr();
+
+      SILValue CaseVal = SEI->getCaseResult(E);
+      if (auto intLit = dyn_cast<IntegerLiteralInst>(CaseVal)) {
+
+        auto CaseNameString = EnumName.str() + "." + CaseName.str() + ".enumlet!." + intLit->getValue().toString(10, false);
+
+        jobject CaseNameNode = Wala->makeConstant(CaseNameString.c_str());
+        jobject CaseValNode = findAndRemoveCAstNode(CaseVal);
+
+        if (Print) {
+          llvm::outs() << "[CASE NAME]: " << CaseNameString << "\n";
+          llvm::outs() << "[CASE VAL]: " << CaseValNode << "\n";
+        }
+
+        Children.push_back(CaseNameNode);
+        Children.push_back(CaseValNode);
+
+      }
+    }
+  }
+
+  auto SelectEnumNode = Wala->makeNode(CAstWrapper::BLOCK_STMT,  Wala->makeArray(&Children));
+  auto SelectNode = Wala->makeNode(CAstWrapper::SWITCH, CondNode, SelectEnumNode);
+
+  NodeMap.insert(std::make_pair(SEI, SelectNode));
+
+  return SelectNode;
+}
+
 jobject SILWalaInstructionVisitor::visitUnreachableInst(UnreachableInst *UI) {
   if (Print) {
     if (UI->isBranch()) {
