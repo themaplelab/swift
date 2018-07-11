@@ -1268,6 +1268,7 @@ jobject SILWalaInstructionVisitor::visitIndexAddrInst(IndexAddrInst *IAI){
   }
   jobject Node = nullptr;
   Node = Wala->makeNode(CAstWrapper::ARRAY_REF, findAndRemoveCAstNode(base.getOpaqueValue()), findAndRemoveCAstNode(idx.getOpaqueValue()));
+  if(Node != nullptr) NodeMap.insert(std::make_pair(static_cast<ValueBase *>(IAI), Node));
   return Node;
 }
 }
