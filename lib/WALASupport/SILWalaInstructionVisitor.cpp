@@ -1357,25 +1357,27 @@ jobject SILWalaInstructionVisitor::visitStructInst(StructInst *SI) {
 
 jobject SILWalaInstructionVisitor::visitRefElementAddrInst(RefElementAddrInst *REAI) {
 
-  /**
-        CHECK THIS MORE MAYBE?
-  **/
-
   SILValue ElementOperand = REAI->getOperand();
-
-  VarDecl *VarElement = REAI->getField();
   ClassDecl *ClassElement = REAI->getClassDecl();
+  VarDecl *ClassField = REAI->getField();
+  
+  jobject ElementNode = findAndRemoveCAstNode(ElementOperand.getOpaqueValue());
 
   if (Print) {
-        llvm::outs() << "[OPERAND]: " << ElementOperand.getOpaqueValue()  << "\n";
-
+        llvm::outs() << "[OPERAND]: " << ElementOperand << "\n";
+        llvm::outs() << "[OPERAND NODE ]: " << ElementNode << "\n";
         llvm::outs() << "[CLASS]: " << ClassElement->getDeclaredType().getString() << "\n";
-        llvm::outs() << "[CLASS FIELD]: " << VarElement->getNameStr() << "\n";
+        llvm::outs() << "[CLASS FIELD]: " << ClassField->getNameStr() << "\n";
   }
 
-  SymbolTable.insert(static_cast<ValueBase *>(REAI), VarElement->getNameStr());
+  string ClassName = ClassField->getNameStr();
+  jobject FieldNameNode = Wala->makeConstant(ClassName.c_str());
+  jobject FieldNode = Wala->makeNode(CAstWrapper::VAR, FieldNameNode);
 
-  return nullptr;
+
+  // OBJECT_REF takes (CLASS , FIELD)
+  auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode );
+  return Node;
 }
 
 
