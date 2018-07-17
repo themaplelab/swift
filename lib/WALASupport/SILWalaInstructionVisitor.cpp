@@ -291,6 +291,17 @@ jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
   return nullptr;
 }
 
+jobject SILWalaInstructionVisitor::visitDeallocBoxInst(DeallocBoxInst *DBI) {
+  for (auto &OP : DBI->getAllOperands()) {
+    if (Print) {
+      llvm::outs() << "\t [OPERAND]: " << OP.get() << "\n";
+      llvm::outs() << "\t [BOX]: " << OP.get().getOpaqueValue() << "\n";
+    }
+    SymbolTable.remove(OP.get().getOpaqueValue());
+  }
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
     if (Print) {
       llvm::outs() << "AEBI " << AEBI << "\n";
