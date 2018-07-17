@@ -1239,6 +1239,9 @@ jobject SILWalaInstructionVisitor::visitRefElementAddrInst(RefElementAddrInst *R
 
   // OBJECT_REF takes (CLASS , FIELD)
   auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode );
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(REAI), Node));
+
   return Node;
 }
 
