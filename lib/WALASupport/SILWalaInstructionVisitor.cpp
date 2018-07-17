@@ -292,11 +292,12 @@ jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
 }
 
 jobject SILWalaInstructionVisitor::visitDeallocBoxInst(DeallocBoxInst *DBI) {
-  if (Print) {
-    for (auto &OP : DBI->getAllOperands()) {
+  for (auto &OP : DBI->getAllOperands()) {
+    if (Print) {
       llvm::outs() << "\t [OPERAND]: " << OP.get() << "\n";
       llvm::outs() << "\t [BOX]: " << OP.get().getOpaqueValue() << "\n";
     }
+    SymbolTable.remove(OP.get().getOpaqueValue());
   }
   return nullptr;
 }
