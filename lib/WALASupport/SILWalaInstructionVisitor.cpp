@@ -1217,6 +1217,35 @@ jobject SILWalaInstructionVisitor::visitStructInst(StructInst *SI) {
   return VisitStructNode;
 }
 
+jobject SILWalaInstructionVisitor::visitRefElementAddrInst(RefElementAddrInst *REAI) {
+
+  SILValue ElementOperand = REAI->getOperand();
+
+  ClassDecl *ClassElement = REAI->getClassDecl();
+  VarDecl *ClassField = REAI->getField();
+  
+  jobject ElementNode = findAndRemoveCAstNode(ElementOperand.getOpaqueValue());
+
+  if (Print) {
+        llvm::outs() << "[OPERAND]: " << ElementOperand << "\n";
+        llvm::outs() << "[CLASS]: " << ClassElement->getDeclaredType().getString() << "\n";
+        llvm::outs() << "[CLASS FIELD]: " << ClassField->getNameStr() << "\n";
+  }
+
+  string ClassName = ClassField->getNameStr();
+  jobject FieldNameNode = Wala->makeConstant(ClassName.c_str());
+  jobject FieldNode = Wala->makeNode(CAstWrapper::VAR, FieldNameNode);
+
+
+  // OBJECT_REF takes (CLASS , FIELD)
+  auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode );
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(REAI), Node));
+
+  return Node;
+}
+
+
 
 jobject SILWalaInstructionVisitor::visitAllocGlobalInst(AllocGlobalInst *AGI) {
   SILGlobalVariable *Var = AGI->getReferencedGlobal();
