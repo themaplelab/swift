@@ -1386,5 +1386,17 @@ jobject SILWalaInstructionVisitor::visitBuiltinInst(BuiltinInst *BI) {
   return Node;
 }
 
-
+jobject SILWalaInstructionVisitor::visitIndexAddrInst(IndexAddrInst *IAI){
+  SILValue base = IAI->getBase();
+  SILValue idx = IAI->getIndex();
+  if(Print){
+    llvm::outs() << "\t [IA]: " << IAI << "\n";
+    llvm::outs() << "\t [Base]" << base.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [Index]" << idx.getOpaqueValue() << "\n";
+  }
+  jobject Node = nullptr;
+  Node = Wala->makeNode(CAstWrapper::ARRAY_REF, findAndRemoveCAstNode(base.getOpaqueValue()), findAndRemoveCAstNode(idx.getOpaqueValue()));
+  if(Node != nullptr) NodeMap.insert(std::make_pair(static_cast<ValueBase *>(IAI), Node));
+  return Node;
+}
 }
