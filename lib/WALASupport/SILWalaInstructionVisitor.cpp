@@ -655,6 +655,17 @@ jobject SILWalaInstructionVisitor::visitEndBorrowInst(EndBorrowInst *EBI) {
   return nullptr;
 }
 
+jobject SILWalaInstructionVisitor::visitConvertFunctionInst(ConvertFunctionInst *CFI) {
+
+  if (Print) {
+    llvm::outs() << "Converted: " << CFI->getConverted().getOpaqueValue() << "\n";
+  }
+
+  jobject ConvertedFunctionNode = findAndRemoveCAstNode(CFI->getConverted().getOpaqueValue());
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CFI), ConvertedFunctionNode));
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
   // Cast the instr to access methods
   if (Print) {
