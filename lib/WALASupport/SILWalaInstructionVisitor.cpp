@@ -348,6 +348,23 @@ jobject SILWalaInstructionVisitor::visitProjectBoxInst(ProjectBoxInst *PBI) {
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI) {
+
+  SILValue SourceValue = BUI->getSource();
+  SILValue BufferValue = BUI->getBuffer();
+
+  if (Print) {
+    llvm::outs() << "\t [OPERAND]: " << SourceValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [BUFFER]: " << SourceValue.getOpaqueValue() << "\n";
+  }
+
+  jobject SourceNode = findAndRemoveCAstNode(SourceValue.getOpaqueValue());
+
+  NodeMap.insert(std::make_pair(BufferValue.getOpaqueValue(), SourceNode));
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 /*******************************************************************************/
 /*                        DEBUG INFROMATION                                    */
 /*******************************************************************************/
@@ -514,7 +531,9 @@ jobject SILWalaInstructionVisitor::visitEndBorrowInst(EndBorrowInst *EBI) {
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+
 jobject SILWalaInstructionVisitor::visitAssignInst(AssignInst *AI) {
+
   if (Print) {
     llvm::outs() << "\t [SOURCE]: " << AI->getSrc().getOpaqueValue() << "\n";
     llvm::outs() << "\t [DEST]: " << AI->getDest().getOpaqueValue() << "\n";
@@ -646,6 +665,7 @@ jobject SILWalaInstructionVisitor::visitIntegerLiteralInst(IntegerLiteralInst *I
   }
   return Node;
 }
+
 
 jobject SILWalaInstructionVisitor::visitFloatLiteralInst(FloatLiteralInst *FLI) {
   jobject Node = Wala->makeNode(CAstWrapper::EMPTY);
@@ -1175,12 +1195,29 @@ jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExisten
 
 jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
   // Cast the instr to access methods
+
+  SILValue CalleeValue = TTFI->getCallee();
+
   if (Print) {
-    llvm::outs() << "\t [CALLEE ADDR]: " << TTFI->getCallee().getOpaqueValue() << "\n";
+    llvm::outs() << "\t [CALLEE ADDR]: " << CalleeValue.getOpaqueValue() << "\n";
   }
-  jobject FuncRefNode = findAndRemoveCAstNode(TTFI->getCallee().getOpaqueValue());
+  jobject FuncRefNode = findAndRemoveCAstNode(CalleeValue.getOpaqueValue());
   // cast in CASt
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TTFI), FuncRefNode));
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitConvertFunctionInst(ConvertFunctionInst *CFI) {
+
+  SILValue ConvertedValue = CFI->getConverted();
+
+  if (Print) {
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << "\n";
+  }
+
+  jobject ConvertedFunctionNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CFI), ConvertedFunctionNode));
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 

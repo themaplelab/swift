@@ -23,7 +23,6 @@ public:
     llvm::outs() << "Not handled instruction: \n" << *I << "\n";
     return nullptr;
   }
-
   
 /*******************************************************************************/
 /*                      Allocation and Deallocation                            */
@@ -35,6 +34,7 @@ jobject visitDeallocStackInst(DeallocStackInst *DSI);
 jobject visitDeallocBoxInst(DeallocBoxInst *DBI);
 jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
 jobject visitProjectBoxInst(ProjectBoxInst *PBI);
+jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
 
 /*******************************************************************************/
 /*                        Debug Information                                    */
@@ -126,6 +126,7 @@ jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
 /*******************************************************************************/
 
 jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
+jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
 
 /*******************************************************************************/
 /*                          Checked Conversions                                */
@@ -148,6 +149,7 @@ jobject visitSwitchValueInst(SwitchValueInst *SVI);
 jobject visitSelectValueInst(SelectValueInst *SVI);
 jobject visitSwitchEnumInst(SwitchEnumInst *SWI);
 jobject visitTryApplyInst(TryApplyInst *TAI);
+
 
 private:
   void updateInstrSourceInfo(SILInstruction *I);
