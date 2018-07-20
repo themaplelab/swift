@@ -760,6 +760,19 @@ jobject SILWalaInstructionVisitor::visitCopyAddrInst(CopyAddrInst *CAI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI) {
+
+  jobject SourceVar = findAndRemoveCAstNode(BUI->getSource().getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t\t [OPERAND]:" << BUI->getSource().getOpaqueValue() << "\n";
+  }
+
+  NodeMap.insert(std::make_pair(BUI->getBuffer().getOpaqueValue(), SourceVar));
+
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitAllocStackInst(AllocStackInst *ASI) {
   SILDebugVariable Info = ASI->getVarInfo();
   unsigned ArgNo = Info.ArgNo;
