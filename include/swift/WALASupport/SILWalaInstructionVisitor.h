@@ -127,6 +127,7 @@ jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
 /*                          Unchecked Conversions                              */
 /*******************************************************************************/
 
+jobject visitAddressToPointerInst(AddressToPointerInst *ATPI);
 jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
 jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
 
