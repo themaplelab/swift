@@ -100,8 +100,8 @@ jobject visitValueMetatypeInst(ValueMetatypeInst *VMI);
 jobject visitCopyValueInst(CopyValueInst *CVI);
 jobject visitTupleInst(TupleInst *TI);
 jobject visitStructInst(StructInst *SI);
-jobject visitStructElementAddrInst(StructElementAddrInst *SEAI);
 jobject visitStructExtractInst(StructExtractInst *SEI);
+jobject visitRefElementAddrInst(RefElementAddrInst *REAI);
 
 /*******************************************************************************/
 /*                          Enums                                              */
