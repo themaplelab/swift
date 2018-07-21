@@ -35,6 +35,7 @@ jobject visitDeallocBoxInst(DeallocBoxInst *DBI);
 jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
 jobject visitProjectBoxInst(ProjectBoxInst *PBI);
 jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
+jobject visitEndUnpairedAccessInst(EndUnpairedAccessInst *EUAI);
 
 /*******************************************************************************/
 /*                        Debug Information                                    */

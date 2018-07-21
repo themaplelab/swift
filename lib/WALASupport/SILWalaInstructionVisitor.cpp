@@ -365,6 +365,17 @@ jobject SILWalaInstructionVisitor::visitBeginUnpairedAccessInst(BeginUnpairedAcc
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessInst *EUAI) {
+  SILValue BufferValue = EUAI->getBuffer();
+
+  if (Print) {
+    llvm::outs() << "\t [BUFFER]: " << BufferValue << "\n";
+    llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
+  }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 /*******************************************************************************/
 /*                        DEBUG INFROMATION                                    */
 /*******************************************************************************/
