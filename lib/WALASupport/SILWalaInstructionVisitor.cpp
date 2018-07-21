@@ -1193,32 +1193,55 @@ jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExisten
 /*                  UNCHECKED CONVERSIONS                                      */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitAddressToPointerInst(AddressToPointerInst *ATPI) {
+
+  SILValue ConvertedValue = ATPI->getConverted();
+  string CovertedType = ATPI->getType().getAsString();
+
+  jobject RawPointerNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << RawPointerNode << "\n";
+  }
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(ATPI), RawPointerNode));
+
+  return RawPointerNode;
+}
+
 jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
   // Cast the instr to access methods
 
   SILValue CalleeValue = TTFI->getCallee();
+  string CovertedType = TTFI->getType().getAsString();
+
+  jobject FuncRefNode = findAndRemoveCAstNode(CalleeValue.getOpaqueValue());
 
   if (Print) {
-    llvm::outs() << "\t [CALLEE ADDR]: " << CalleeValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [CALLEE ADDR]: " << CalleeValue.getOpaqueValue()  << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CALLEE NODE]: " << FuncRefNode << "\n";
   }
-  jobject FuncRefNode = findAndRemoveCAstNode(CalleeValue.getOpaqueValue());
+  
   // cast in CASt
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TTFI), FuncRefNode));
-  return Wala->makeNode(CAstWrapper::EMPTY);
+  return FuncRefNode;
 }
 
 jobject SILWalaInstructionVisitor::visitConvertFunctionInst(ConvertFunctionInst *CFI) {
 
   SILValue ConvertedValue = CFI->getConverted();
-
-  if (Print) {
-    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << "\n";
-  }
+  string CovertedType = CFI->getType().getAsString();
 
   jobject ConvertedFunctionNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
 
+  if (Print) {
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue()  << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << ConvertedFunctionNode << "\n";
+  }
+
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CFI), ConvertedFunctionNode));
-  return Wala->makeNode(CAstWrapper::EMPTY);
+  return ConvertedFunctionNode;
 }
 
 /*******************************************************************************/
