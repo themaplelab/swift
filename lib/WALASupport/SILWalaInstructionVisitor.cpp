@@ -1253,6 +1253,23 @@ jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunct
   return FuncRefNode;
 }
 
+jobject SILWalaInstructionVisitor::visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI) {
+
+   SILValue ConvertedFunction = TFPI->getConverted();
+   string CovertedType = TFPI->getType().getAsString();
+ 
+   jobject FunctionPointerNode = findAndRemoveCAstNode(ConvertedFunction.getOpaqueValue());
+ 
+   if (Print) {
+     llvm::outs() << "\t [FUNCTION ADDR]: " << ConvertedFunction.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+     llvm::outs() << "\t [FUNCTION NODE]: " << FunctionPointerNode << "\n";
+   }
+ 
+   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TFPI), FunctionPointerNode));
+ 
+   return FunctionPointerNode;
+}
+
 jobject SILWalaInstructionVisitor::visitConvertFunctionInst(ConvertFunctionInst *CFI) {
 
   SILValue ConvertedValue = CFI->getConverted();
