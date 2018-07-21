@@ -77,6 +77,8 @@ jobject visitConstStringLiteralInst(ConstStringLiteralInst *CSLI);
 /*                         Dynamic Dispatch                                    */
 /*******************************************************************************/
 
+jobject visitWitnessMethodInst(WitnessMethodInst *WMI);
+
 /*******************************************************************************/
 /*                         Function Application                                */
 /*******************************************************************************/
