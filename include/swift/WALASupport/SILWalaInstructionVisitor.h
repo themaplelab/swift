@@ -126,6 +126,7 @@ jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
 /*******************************************************************************/
 
 jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
+jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
 jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
 
 /*******************************************************************************/
