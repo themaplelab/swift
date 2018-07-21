@@ -780,6 +780,31 @@ jobject SILWalaInstructionVisitor::visitStringLiteralInst(StringLiteralInst *SLI
 /*                               DYNAMIC DISPATCH                              */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitWitnessMethodInst(WitnessMethodInst *WMI) {
+
+  ProtocolDecl *Protocol = WMI->getLookupProtocol();
+  SILDeclRef MemberFunc = WMI->getMember();
+
+  string ProtocolName = Protocol->getNameStr();
+  string MemberFuncName = Demangle::demangleSymbolAsString(MemberFunc.mangle());
+
+  if (Print) {
+    llvm::outs() << "\t [PROTOCOL]: " << ProtocolName << "\n";
+    llvm::outs() << "\t [MEMBER]: " << MemberFuncName << "\n";
+  }
+
+  jobject ProtocolNode = Wala->makeConstant(ProtocolName.c_str());
+
+  jobject MemberNameNode = Wala->makeConstant(MemberFuncName.c_str());  
+  jobject FuncNode = Wala->makeNode(CAstWrapper::FUNCTION_EXPR, MemberNameNode);
+
+  jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ProtocolNode , FuncNode );
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(WMI), Node));
+
+  return Node;
+}
+
 /*******************************************************************************/
 /*                              FUNCTION APPLICATION                           */
 /*******************************************************************************/
