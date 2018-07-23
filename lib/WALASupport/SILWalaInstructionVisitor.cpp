@@ -1183,6 +1183,23 @@ jobject SILWalaInstructionVisitor::visitSelectEnumInst(SelectEnumInst *SEI) {
 /*                      PROTOCOL AND PROTOCOL COMPARISON TYPES                 */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitInitExistentialAddrInst(InitExistentialAddrInst *IEAI) {
+  if (Print) {
+    llvm::outs() << "IEAI " << IEAI << "\n";
+    llvm::outs() << "Operand: " << IEAI->getOperand() << "\n";
+    llvm::outs() << "FormalConcreteType: " << IEAI->getFormalConcreteType() << "\n";
+  }
+
+  if (SymbolTable.has(IEAI->getOperand().getOpaqueValue())) {
+    auto name = "ExistentialAddr of " + 
+      SymbolTable.get(IEAI->getOperand().getOpaqueValue()) + " -> " + 
+      IEAI->getFormalConcreteType().getString();
+    SymbolTable.insert(static_cast<ValueBase *>(IEAI), name);
+  }
+
+  return nullptr;
+}
+
 jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
     if (Print) {
       llvm::outs() << "\t [AEBI]: " << AEBI << "\n";

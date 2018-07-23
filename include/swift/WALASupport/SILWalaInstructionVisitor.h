@@ -116,6 +116,7 @@ jobject visitSelectEnumInst(SelectEnumInst *SEI);
 /*                          Protocol and Protocol Composition Types            */
 /*******************************************************************************/
 
+jobject visitInitExistentialAddrInst(InitExistentialAddrInst *IEAI);
 jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
 jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
 
