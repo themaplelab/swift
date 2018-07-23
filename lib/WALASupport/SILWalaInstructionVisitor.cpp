@@ -1197,7 +1197,7 @@ jobject SILWalaInstructionVisitor::visitInitExistentialAddrInst(InitExistentialA
     SymbolTable.insert(static_cast<ValueBase *>(IEAI), name);
   }
 
-  return nullptr;
+  return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
 jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
