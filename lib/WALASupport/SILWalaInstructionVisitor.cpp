@@ -1200,6 +1200,17 @@ jobject SILWalaInstructionVisitor::visitInitExistentialAddrInst(InitExistentialA
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitDeinitExistentialAddrInst(DeinitExistentialAddrInst *DEAI) {
+  if (Print) {
+    llvm::outs() << "[OPERAND]: " << DEAI->getOperand() << "\n";
+  }
+
+  findAndRemoveCAstNode(DEAI->getOperand().getOpaqueValue());
+  SymbolTable.remove(DEAI->getOperand().getOpaqueValue());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
     if (Print) {
       llvm::outs() << "\t [AEBI]: " << AEBI << "\n";
