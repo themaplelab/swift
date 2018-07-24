@@ -1029,7 +1029,7 @@ jobject SILWalaInstructionVisitor::visitStructElementAddrInst(StructElementAddrI
   jobject FieldNameNode = Wala->makeConstant(FieldName.c_str());
   jobject FieldNode = Wala->makeNode(CAstWrapper::VAR, FieldNameNode);
 
-  auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode );
+  auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode);
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(SEAI), Node));
 
