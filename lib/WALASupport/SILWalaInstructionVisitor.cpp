@@ -823,7 +823,27 @@ jobject SILWalaInstructionVisitor::visitBeginApplyInst(BeginApplyInst *BAI) {
     return Node;
   }
   return Wala->makeNode(CAstWrapper::EMPTY);
-}            
+}
+
+jobject SILWalaInstructionVisitor::visitEndApplyInst(EndApplyInst *EAI) {
+  if (Print) {
+    llvm::outs() << "[BEGIN APPLY]: " << EAI->getBeginApply() << "\n";
+  }
+
+  findAndRemoveCAstNode(EAI->getBeginApply());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitAbortApplyInst(AbortApplyInst *AAI) {
+  if (Print) {
+    llvm::outs() << "[BEGIN APPLY]: " << AAI->getBeginApply() << "\n";
+  }
+
+  findAndRemoveCAstNode(AAI->getBeginApply());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
 
 jobject SILWalaInstructionVisitor::visitPartialApplyInst(PartialApplyInst *PAI) {
   if (auto Node = visitApplySite(PAI)) {
