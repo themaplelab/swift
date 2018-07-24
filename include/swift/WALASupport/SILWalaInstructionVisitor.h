@@ -118,6 +118,8 @@ jobject visitSelectEnumInst(SelectEnumInst *SEI);
 
 jobject visitInitExistentialAddrInst(InitExistentialAddrInst *IEAI);
 jobject visitDeinitExistentialAddrInst(DeinitExistentialAddrInst *DEAI);
+jobject visitInitExistentialValueInst(InitExistentialValueInst *IEVI);
+jobject visitDeinitExistentialValueInst(DeinitExistentialValueInst *DEVI);
 jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
 jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
 

@@ -1195,6 +1195,23 @@ jobject SILWalaInstructionVisitor::visitInitExistentialAddrInst(InitExistentialA
       SymbolTable.get(IEAI->getOperand().getOpaqueValue()) + " -> " + 
       IEAI->getFormalConcreteType().getString();
     SymbolTable.insert(static_cast<ValueBase *>(IEAI), name);
+    }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitInitExistentialValueInst(InitExistentialValueInst *IEVI) {
+  if (Print) {
+    llvm::outs() << "IEVI " << IEVI << "\n";
+    llvm::outs() << "Operand " << IEVI->getOperand() << "\n";
+    llvm::outs() << "ConcreteType " << IEVI->getFormalConcreteType() << "\n";
+  }
+
+   if (SymbolTable.has(IEVI->getOperand().getOpaqueValue())) {
+    auto name = "ExistentialValue of " + 
+      SymbolTable.get(IEVI->getOperand().getOpaqueValue()) + " -> " + 
+      IEVI->getFormalConcreteType().getString();
+    SymbolTable.insert(static_cast<ValueBase *>(IEVI), name);
   }
 
   return Wala->makeNode(CAstWrapper::EMPTY);
@@ -1207,6 +1224,19 @@ jobject SILWalaInstructionVisitor::visitDeinitExistentialAddrInst(DeinitExistent
 
   findAndRemoveCAstNode(DEAI->getOperand().getOpaqueValue());
   SymbolTable.remove(DEAI->getOperand().getOpaqueValue());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+
+jobject SILWalaInstructionVisitor::visitDeinitExistentialValueInst(DeinitExistentialValueInst *DEVI) {
+  if (Print) {
+    llvm::outs() << "DEVI " << DEVI << "\n";
+    llvm::outs() << "Operand " << DEVI->getOperand() << "\n";
+  }
+
+  findAndRemoveCAstNode(DEVI->getOperand().getOpaqueValue());
+  SymbolTable.remove(DEVI->getOperand().getOpaqueValue());
 
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
