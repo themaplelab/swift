@@ -1056,7 +1056,7 @@ jobject SILWalaInstructionVisitor::visitRefElementAddrInst(RefElementAddrInst *R
   jobject FieldNode = Wala->makeNode(CAstWrapper::VAR, FieldNameNode);
 
   // OBJECT_REF takes (CLASS , FIELD)
-  auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode );
+  auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode);
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(REAI), Node));
 
