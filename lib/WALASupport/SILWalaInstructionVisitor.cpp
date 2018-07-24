@@ -373,6 +373,8 @@ jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessI
     llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
   }
 
+  jobject Node = findAndRemoveCAstNode(BufferValue.getOpaqueValue());
+
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
