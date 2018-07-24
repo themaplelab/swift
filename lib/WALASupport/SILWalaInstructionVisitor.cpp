@@ -1704,4 +1704,56 @@ jobject SILWalaInstructionVisitor::visitTryApplyInst(TryApplyInst *TAI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitTupleExtractInst(TupleExtractInst *TEI) {
+  // Operand is a tuple type from which some field needs to be extracted.
+  // So it must have been created earlier. We just find the corresponding nodee
+  auto tupleTypeOperand = TEI->getOperand();
+  jobject tupleTypeNode = findAndRemoveCAstNode(tupleTypeOperand.getOpaqueValue());
+
+  // We get the tuple type variable from the instruction
+  auto tupleType = TEI->getTupleType();
+  
+  // And also the field number to be extracted
+  auto fieldNo = TEI->getFieldNo();
+  
+  // We get the element from above two information
+  auto tupleTypeElt = tupleType->getElement(fieldNo);
+
+  // We would need two information to create a node resembling this instruction - (object, field)
+  // First information, object, is already available as tupleTypeNode
+  // Need to find the second information, field.
+  // Then would create new node with the field name or field type name
+  // Depending on whether field name is available or not
+  jobject fieldNode = nullptr;
+  if(tupleTypeElt.hasName()){
+    string fieldName = tupleTypeElt.getName().str();
+    jobject fieldNameNode = Wala->makeConstant(fieldName.c_str());
+    fieldNode = Wala->makeNode(CAstWrapper::VAR, fieldNameNode);
+  }
+  else{
+    string fieldTypeName = tupleTypeElt.getType().getString();
+    jobject fieldTypeNameNode = Wala->makeConstant(fieldTypeName.c_str());
+    fieldNode = Wala->makeNode(CAstWrapper::VAR, fieldTypeNameNode);
+  }
+
+  // Now create a new Wala node of OBJECT_REF type with these two nodes
+  jobject tupleExtractNode = Wala->makeNode(CAstWrapper::OBJECT_REF, tupleTypeNode, fieldNode);
+
+  //And insert the new node to the NodeMap
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TEI), tupleExtractNode));
+  
+  if (Print) {
+    llvm::outs() << "\t [OPERAND ADDR]: " << tupleTypeOperand.getOpaqueValue() << "\n";
+    if(tupleTypeElt.hasName()){
+      llvm::outs() << "\t [TUPLE FIELD NAME]: " << tupleTypeElt.getName().str() << "\n";
+    }
+    else{
+      llvm::outs() << "\t [TUPLE FIELD TYPE NAME]: " << tupleTypeElt.getType().getString() << "\n";
+    }
+  }
+
+  return tupleExtractNode;
+}
+
+
 }
