@@ -86,6 +86,8 @@ jobject visitWitnessMethodInst(WitnessMethodInst *WMI);
 
 jobject visitApplyInst(ApplyInst *AI);
 jobject visitBeginApplyInst(BeginApplyInst *BAI);
+jobject visitEndApplyInst(EndApplyInst *EAI);
+jobject visitAbortApplyInst(AbortApplyInst *AAI);
 jobject visitPartialApplyInst(PartialApplyInst *PAI);
 jobject visitBuiltinInst(BuiltinInst *BI);
 
