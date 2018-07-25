@@ -35,6 +35,7 @@ jobject visitDeallocBoxInst(DeallocBoxInst *DBI);
 jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
 jobject visitProjectBoxInst(ProjectBoxInst *PBI);
 jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
+jobject visitEndUnpairedAccessInst(EndUnpairedAccessInst *EUAI);
 
 /*******************************************************************************/
 /*                        Debug Information                                    */
@@ -77,12 +78,16 @@ jobject visitConstStringLiteralInst(ConstStringLiteralInst *CSLI);
 /*                         Dynamic Dispatch                                    */
 /*******************************************************************************/
 
+jobject visitWitnessMethodInst(WitnessMethodInst *WMI);
+
 /*******************************************************************************/
 /*                         Function Application                                */
 /*******************************************************************************/
 
 jobject visitApplyInst(ApplyInst *AI);
 jobject visitBeginApplyInst(BeginApplyInst *BAI);
+jobject visitEndApplyInst(EndApplyInst *EAI);
+jobject visitAbortApplyInst(AbortApplyInst *AAI);
 jobject visitPartialApplyInst(PartialApplyInst *PAI);
 jobject visitBuiltinInst(BuiltinInst *BI);
 
@@ -101,6 +106,7 @@ jobject visitCopyValueInst(CopyValueInst *CVI);
 jobject visitTupleInst(TupleInst *TI);
 jobject visitStructInst(StructInst *SI);
 jobject visitStructExtractInst(StructExtractInst *SEI);
+jobject visitStructElementAddrInst(StructElementAddrInst *SEAI);
 jobject visitRefElementAddrInst(RefElementAddrInst *REAI);
 
 /*******************************************************************************/
@@ -115,6 +121,10 @@ jobject visitSelectEnumInst(SelectEnumInst *SEI);
 /*                          Protocol and Protocol Composition Types            */
 /*******************************************************************************/
 
+jobject visitInitExistentialAddrInst(InitExistentialAddrInst *IEAI);
+jobject visitDeinitExistentialAddrInst(DeinitExistentialAddrInst *DEAI);
+jobject visitInitExistentialValueInst(InitExistentialValueInst *IEVI);
+jobject visitDeinitExistentialValueInst(DeinitExistentialValueInst *DEVI);
 jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
 jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
 
@@ -126,7 +136,9 @@ jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
 /*                          Unchecked Conversions                              */
 /*******************************************************************************/
 
+jobject visitAddressToPointerInst(AddressToPointerInst *ATPI);
 jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
+jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
 jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
 
 /*******************************************************************************/

@@ -365,6 +365,19 @@ jobject SILWalaInstructionVisitor::visitBeginUnpairedAccessInst(BeginUnpairedAcc
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessInst *EUAI) {
+  SILValue BufferValue = EUAI->getBuffer();
+
+  if (Print) {
+    llvm::outs() << "\t [BUFFER]: " << BufferValue << "\n";
+    llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
+  }
+
+  jobject Node = findAndRemoveCAstNode(BufferValue.getOpaqueValue());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 /*******************************************************************************/
 /*                        DEBUG INFROMATION                                    */
 /*******************************************************************************/
@@ -780,6 +793,31 @@ jobject SILWalaInstructionVisitor::visitStringLiteralInst(StringLiteralInst *SLI
 /*                               DYNAMIC DISPATCH                              */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitWitnessMethodInst(WitnessMethodInst *WMI) {
+
+  ProtocolDecl *Protocol = WMI->getLookupProtocol();
+  SILDeclRef MemberFunc = WMI->getMember();
+
+  string ProtocolName = Protocol->getNameStr();
+  string MemberFuncName = Demangle::demangleSymbolAsString(MemberFunc.mangle());
+
+  if (Print) {
+    llvm::outs() << "\t [PROTOCOL]: " << ProtocolName << "\n";
+    llvm::outs() << "\t [MEMBER]: " << MemberFuncName << "\n";
+  }
+
+  jobject ProtocolNode = Wala->makeConstant(ProtocolName.c_str());
+
+  jobject MemberNameNode = Wala->makeConstant(MemberFuncName.c_str());  
+  jobject FuncNode = Wala->makeNode(CAstWrapper::FUNCTION_EXPR, MemberNameNode);
+
+  jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ProtocolNode , FuncNode );
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(WMI), Node));
+
+  return Node;
+}
+
 /*******************************************************************************/
 /*                              FUNCTION APPLICATION                           */
 /*******************************************************************************/
@@ -798,7 +836,27 @@ jobject SILWalaInstructionVisitor::visitBeginApplyInst(BeginApplyInst *BAI) {
     return Node;
   }
   return Wala->makeNode(CAstWrapper::EMPTY);
-}            
+}
+
+jobject SILWalaInstructionVisitor::visitEndApplyInst(EndApplyInst *EAI) {
+  if (Print) {
+    llvm::outs() << "[BEGIN APPLY]: " << EAI->getBeginApply() << "\n";
+  }
+
+  findAndRemoveCAstNode(EAI->getBeginApply());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitAbortApplyInst(AbortApplyInst *AAI) {
+  if (Print) {
+    llvm::outs() << "[BEGIN APPLY]: " << AAI->getBeginApply() << "\n";
+  }
+
+  findAndRemoveCAstNode(AAI->getBeginApply());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
 
 jobject SILWalaInstructionVisitor::visitPartialApplyInst(PartialApplyInst *PAI) {
   if (auto Node = visitApplySite(PAI)) {
@@ -1009,14 +1067,14 @@ jobject SILWalaInstructionVisitor::visitStructInst(StructInst *SI) {
 
   return VisitStructNode;
 }
-
+  
 jobject SILWalaInstructionVisitor::visitStructExtractInst(StructExtractInst *SEI) {
 
   SILValue StructOperand = SEI->getOperand();
 
   StructDecl *StructElement = SEI->getStructDecl();
   VarDecl *StructField = SEI->getField();
-  
+
   jobject ElementNode = findAndRemoveCAstNode(StructOperand.getOpaqueValue());
 
   if (Print) {
@@ -1029,9 +1087,38 @@ jobject SILWalaInstructionVisitor::visitStructExtractInst(StructExtractInst *SEI
   jobject FieldNameNode = Wala->makeConstant(FieldName.c_str());
   jobject FieldNode = Wala->makeNode(CAstWrapper::VAR, FieldNameNode);
 
-  auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode );
+}
+
+  jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode);
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(SEI), Node));
+
+  return Node;
+}
+
+
+jobject SILWalaInstructionVisitor::visitStructElementAddrInst(StructElementAddrInst *SEAI) {
+
+  SILValue StructOperand = SEAI->getOperand();
+
+  StructDecl *StructElement = SEAI->getStructDecl();
+  VarDecl *StructField = SEAI->getField();
+
+  jobject ElementNode = findAndRemoveCAstNode(StructOperand.getOpaqueValue());
+
+  if (Print) {
+        llvm::outs() << "\t [OPERAND ADDR]: " << StructOperand.getOpaqueValue() << "\n";
+        llvm::outs() << "\t [STRUCT]: " << StructElement->getDeclaredType().getString() << "\n";
+        llvm::outs() << "\t [STRUCT FIELD]: " << StructField->getNameStr() << "\n";
+  }
+
+  string FieldName = StructField->getNameStr();
+  jobject FieldNameNode = Wala->makeConstant(FieldName.c_str());
+  jobject FieldNode = Wala->makeNode(CAstWrapper::VAR, FieldNameNode);
+
+  jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(SEAI), Node));
 
   return Node;
 }
@@ -1184,6 +1271,64 @@ jobject SILWalaInstructionVisitor::visitSelectEnumInst(SelectEnumInst *SEI) {
 /*                      PROTOCOL AND PROTOCOL COMPARISON TYPES                 */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitInitExistentialAddrInst(InitExistentialAddrInst *IEAI) {
+  if (Print) {
+    llvm::outs() << "IEAI " << IEAI << "\n";
+    llvm::outs() << "Operand: " << IEAI->getOperand() << "\n";
+    llvm::outs() << "FormalConcreteType: " << IEAI->getFormalConcreteType() << "\n";
+  }
+
+  if (SymbolTable.has(IEAI->getOperand().getOpaqueValue())) {
+    auto name = "ExistentialAddr of " + 
+      SymbolTable.get(IEAI->getOperand().getOpaqueValue()) + " -> " + 
+      IEAI->getFormalConcreteType().getString();
+    SymbolTable.insert(static_cast<ValueBase *>(IEAI), name);
+    }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitInitExistentialValueInst(InitExistentialValueInst *IEVI) {
+  if (Print) {
+    llvm::outs() << "IEVI " << IEVI << "\n";
+    llvm::outs() << "Operand " << IEVI->getOperand() << "\n";
+    llvm::outs() << "ConcreteType " << IEVI->getFormalConcreteType() << "\n";
+  }
+
+   if (SymbolTable.has(IEVI->getOperand().getOpaqueValue())) {
+    auto name = "ExistentialValue of " + 
+      SymbolTable.get(IEVI->getOperand().getOpaqueValue()) + " -> " + 
+      IEVI->getFormalConcreteType().getString();
+    SymbolTable.insert(static_cast<ValueBase *>(IEVI), name);
+  }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitDeinitExistentialAddrInst(DeinitExistentialAddrInst *DEAI) {
+  if (Print) {
+    llvm::outs() << "[OPERAND]: " << DEAI->getOperand() << "\n";
+  }
+
+  findAndRemoveCAstNode(DEAI->getOperand().getOpaqueValue());
+  SymbolTable.remove(DEAI->getOperand().getOpaqueValue());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+
+jobject SILWalaInstructionVisitor::visitDeinitExistentialValueInst(DeinitExistentialValueInst *DEVI) {
+  if (Print) {
+    llvm::outs() << "DEVI " << DEVI << "\n";
+    llvm::outs() << "Operand " << DEVI->getOperand() << "\n";
+  }
+
+  findAndRemoveCAstNode(DEVI->getOperand().getOpaqueValue());
+  SymbolTable.remove(DEVI->getOperand().getOpaqueValue());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
     if (Print) {
       llvm::outs() << "\t [AEBI]: " << AEBI << "\n";
@@ -1219,32 +1364,72 @@ jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExisten
 /*                  UNCHECKED CONVERSIONS                                      */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitAddressToPointerInst(AddressToPointerInst *ATPI) {
+
+  SILValue ConvertedValue = ATPI->getConverted();
+  string CovertedType = ATPI->getType().getAsString();
+
+  jobject RawPointerNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << RawPointerNode << "\n";
+  }
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(ATPI), RawPointerNode));
+
+  return RawPointerNode;
+}
+
 jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
   // Cast the instr to access methods
 
   SILValue CalleeValue = TTFI->getCallee();
+  string CovertedType = TTFI->getType().getAsString();
+
+  jobject FuncRefNode = findAndRemoveCAstNode(CalleeValue.getOpaqueValue());
 
   if (Print) {
-    llvm::outs() << "\t [CALLEE ADDR]: " << CalleeValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [CALLEE ADDR]: " << CalleeValue.getOpaqueValue()  << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CALLEE NODE]: " << FuncRefNode << "\n";
   }
-  jobject FuncRefNode = findAndRemoveCAstNode(CalleeValue.getOpaqueValue());
+  
   // cast in CASt
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TTFI), FuncRefNode));
-  return Wala->makeNode(CAstWrapper::EMPTY);
+  return FuncRefNode;
+}
+
+jobject SILWalaInstructionVisitor::visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI) {
+
+   SILValue ConvertedFunction = TFPI->getConverted();
+   string CovertedType = TFPI->getType().getAsString();
+ 
+   jobject FunctionPointerNode = findAndRemoveCAstNode(ConvertedFunction.getOpaqueValue());
+ 
+   if (Print) {
+     llvm::outs() << "\t [FUNCTION ADDR]: " << ConvertedFunction.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+     llvm::outs() << "\t [FUNCTION NODE]: " << FunctionPointerNode << "\n";
+   }
+ 
+   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TFPI), FunctionPointerNode));
+ 
+   return FunctionPointerNode;
 }
 
 jobject SILWalaInstructionVisitor::visitConvertFunctionInst(ConvertFunctionInst *CFI) {
 
   SILValue ConvertedValue = CFI->getConverted();
-
-  if (Print) {
-    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << "\n";
-  }
+  string CovertedType = CFI->getType().getAsString();
 
   jobject ConvertedFunctionNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
 
+  if (Print) {
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue()  << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << ConvertedFunctionNode << "\n";
+  }
+
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CFI), ConvertedFunctionNode));
-  return Wala->makeNode(CAstWrapper::EMPTY);
+  return ConvertedFunctionNode;
 }
 
 /*******************************************************************************/
