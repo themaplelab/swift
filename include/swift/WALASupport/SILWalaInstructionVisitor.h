@@ -105,6 +105,7 @@ jobject visitValueMetatypeInst(ValueMetatypeInst *VMI);
 jobject visitCopyValueInst(CopyValueInst *CVI);
 jobject visitTupleInst(TupleInst *TI);
 jobject visitStructInst(StructInst *SI);
+jobject visitStructExtractInst(StructExtractInst *SEI);
 jobject visitStructElementAddrInst(StructElementAddrInst *SEAI);
 jobject visitRefElementAddrInst(RefElementAddrInst *REAI);
 

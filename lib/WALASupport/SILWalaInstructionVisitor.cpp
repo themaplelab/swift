@@ -1067,14 +1067,14 @@ jobject SILWalaInstructionVisitor::visitStructInst(StructInst *SI) {
 
   return VisitStructNode;
 }
-
-jobject SILWalaInstructionVisitor::visitStructElementAddrInst(StructElementAddrInst *SEAI) {
-
-  SILValue StructOperand = SEAI->getOperand();
-
-  StructDecl *StructElement = SEAI->getStructDecl();
-  VarDecl *StructField = SEAI->getField();
   
+jobject SILWalaInstructionVisitor::visitStructExtractInst(StructExtractInst *SEI) {
+
+  SILValue StructOperand = SEI->getOperand();
+
+  StructDecl *StructElement = SEI->getStructDecl();
+  VarDecl *StructField = SEI->getField();
+
   jobject ElementNode = findAndRemoveCAstNode(StructOperand.getOpaqueValue());
 
   if (Print) {
@@ -1087,7 +1087,36 @@ jobject SILWalaInstructionVisitor::visitStructElementAddrInst(StructElementAddrI
   jobject FieldNameNode = Wala->makeConstant(FieldName.c_str());
   jobject FieldNode = Wala->makeNode(CAstWrapper::VAR, FieldNameNode);
 
-  auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode);
+}
+
+  jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(SEI), Node));
+
+  return Node;
+}
+
+
+jobject SILWalaInstructionVisitor::visitStructElementAddrInst(StructElementAddrInst *SEAI) {
+
+  SILValue StructOperand = SEAI->getOperand();
+
+  StructDecl *StructElement = SEAI->getStructDecl();
+  VarDecl *StructField = SEAI->getField();
+
+  jobject ElementNode = findAndRemoveCAstNode(StructOperand.getOpaqueValue());
+
+  if (Print) {
+        llvm::outs() << "\t [OPERAND ADDR]: " << StructOperand.getOpaqueValue() << "\n";
+        llvm::outs() << "\t [STRUCT]: " << StructElement->getDeclaredType().getString() << "\n";
+        llvm::outs() << "\t [STRUCT FIELD]: " << StructField->getNameStr() << "\n";
+  }
+
+  string FieldName = StructField->getNameStr();
+  jobject FieldNameNode = Wala->makeConstant(FieldName.c_str());
+  jobject FieldNode = Wala->makeNode(CAstWrapper::VAR, FieldNameNode);
+
+  jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode);
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(SEAI), Node));
 
@@ -1114,7 +1143,7 @@ jobject SILWalaInstructionVisitor::visitRefElementAddrInst(RefElementAddrInst *R
   jobject FieldNode = Wala->makeNode(CAstWrapper::VAR, FieldNameNode);
 
   // OBJECT_REF takes (CLASS , FIELD)
-  auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode );
+  auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode);
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(REAI), Node));
 
