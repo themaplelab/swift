@@ -1034,6 +1034,49 @@ jobject SILWalaInstructionVisitor::visitTupleInst(TupleInst *TI) {
   return VisitTupleNode;
 }  
 
+jobject SILWalaInstructionVisitor::visitTupleExtractInst(TupleExtractInst *TEI) {
+  // Operand is a tuple type from which some field needs to be extracted.
+  // So it must have been created earlier. We just find the corresponding node
+  SILValue TupleTypeOperand = TEI->getOperand();
+  jobject TupleTypeNode = findAndRemoveCAstNode(TupleTypeOperand.getOpaqueValue());
+
+  // Now we get the element
+  const TupleTypeElt &Element = TEI->getTupleType()->getElement(TEI->getFieldNo());
+
+  // We would need two information to create a node resembling this instruction - (object, field)
+  // First information, object, is already available as TupleTypeNode
+  // Need to find the second information, field.
+  // Then would create new node with the field name or field type name
+  // Depending on whether field name is available or not
+  jobject FieldNode = Wala->makeNode(CAstWrapper::EMPTY);
+  if(Element.hasName()){
+    string FieldName = Element.getName().str();
+    FieldNode = Wala->makeConstant(FieldName.c_str());
+  }
+  else{
+    string FieldTypeName = Element.getType().getString();
+    FieldNode = Wala->makeConstant(FieldTypeName.c_str());
+  }
+
+  // Now create a new Wala node of OBJECT_REF type with these two nodes
+  jobject TupleExtractNode = Wala->makeNode(CAstWrapper::OBJECT_REF, TupleTypeNode, FieldNode);
+
+  //And insert the new node to the NodeMap
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TEI), TupleExtractNode));
+  
+  if (Print) {
+    llvm::outs() << "\t [OPERAND ADDR]: " << TupleTypeOperand.getOpaqueValue() << "\n";
+    if(Element.hasName()){
+      llvm::outs() << "\t [TUPLE FIELD NAME]: " << Element.getName().str() << "\n";
+    }
+    else{
+      llvm::outs() << "\t [TUPLE FIELD TYPE NAME]: " << Element.getType().getString() << "\n";
+    }
+  }
+
+  return TupleExtractNode;
+}
+
 jobject SILWalaInstructionVisitor::visitStructInst(StructInst *SI) {
 
   list<jobject> Fields;
@@ -1086,9 +1129,6 @@ jobject SILWalaInstructionVisitor::visitStructExtractInst(StructExtractInst *SEI
   string FieldName = StructField->getNameStr();
   jobject FieldNameNode = Wala->makeConstant(FieldName.c_str());
   jobject FieldNode = Wala->makeNode(CAstWrapper::VAR, FieldNameNode);
-
-}
-
   jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , FieldNode);
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(SEI), Node));
