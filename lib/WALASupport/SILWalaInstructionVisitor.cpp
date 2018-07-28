@@ -1492,6 +1492,23 @@ jobject SILWalaInstructionVisitor::visitConvertFunctionInst(ConvertFunctionInst 
   return ConvertedFunctionNode;
 }
 
+jobject SILWalaInstructionVisitor::visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI) {
+
+  SILValue ConversionOperand = UOCI->getOperand();
+  string ConversionType = UOCI->getType().getAsString();
+
+  jobject ConversionNode = findAndRemoveCAstNode(ConversionOperand.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConversionOperand.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << ConversionNode << "\n";
+    
+  }
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(UOCI), ConversionNode));
+  return ConversionNode;
+}
+
 /*******************************************************************************/
 /*                   CHECKED CONVERSIONS                                       */
 /*******************************************************************************/

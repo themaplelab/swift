@@ -142,6 +142,7 @@ public:
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
   jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
+  jobject visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI);
 
   /*******************************************************************************/
   /*                          Checked Conversions                                */
