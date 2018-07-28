@@ -78,6 +78,7 @@ public:
   /*                         Dynamic Dispatch                                    */
   /*******************************************************************************/
 
+  jobject visitClassMethodInst(ClassMethodInst *CMI);
   jobject visitWitnessMethodInst(WitnessMethodInst *WMI);
 
   /*******************************************************************************/
