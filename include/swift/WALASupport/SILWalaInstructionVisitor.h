@@ -137,6 +137,7 @@ public:
   /*                          Unchecked Conversions                              */
   /*******************************************************************************/
 
+  jobject visitUpcastInst(UpcastInst *UI);
   jobject visitAddressToPointerInst(AddressToPointerInst *ATPI);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);

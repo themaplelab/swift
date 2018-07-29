@@ -1404,6 +1404,25 @@ jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExisten
 /*                  UNCHECKED CONVERSIONS                                      */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitUpcastInst(UpcastInst *UI) {
+  SILValue ConvertedValue = UI->getConverted();
+  string CovertedType = UI->getType().getAsString();
+
+  jobject UpcastNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << UpcastNode << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UpcastNode, ConvertedTypeNode );
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(UI), CastedNode));
+
+  return CastedNode;
+}
+
 jobject SILWalaInstructionVisitor::visitAddressToPointerInst(AddressToPointerInst *ATPI) {
 
   SILValue ConvertedValue = ATPI->getConverted();
