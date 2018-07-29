@@ -12,7 +12,7 @@ namespace swift {
 class SILWalaInstructionVisitor : public SILInstructionVisitor<SILWalaInstructionVisitor, jobject> {
 public:
   SILWalaInstructionVisitor(const WALAIntegration &Wala, bool Print) : Print(Print), Wala(Wala) {}
-
+  
   void visitSILModule(SILModule *M);
   void visitSILFunction(SILFunction *F);
   void visitSILBasicBlock(SILBasicBlock *BB);
@@ -23,62 +23,151 @@ public:
     llvm::outs() << "Not handled instruction: \n" << *I << "\n";
     return nullptr;
   }
+  
+/*******************************************************************************/
+/*                      Allocation and Deallocation                            */
+/*******************************************************************************/
 
-  jobject visitApplyInst(ApplyInst *AI);
-  jobject visitAllocBoxInst(AllocBoxInst *ABI);
-  jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
-  jobject visitIntegerLiteralInst(IntegerLiteralInst *ILI);
-  jobject visitStringLiteralInst(StringLiteralInst *SLI);
-  jobject visitConstStringLiteralInst(ConstStringLiteralInst *CSLI);
-  jobject visitWitnessMethodInst(WitnessMethodInst *WMI);
-  jobject visitProjectBoxInst(ProjectBoxInst *PBI);
-  jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
-  jobject visitDebugValueInst(DebugValueInst *DBI);
-  jobject visitDebugValueAddrInst(DebugValueAddrInst *DVAI);
-  jobject visitMetatypeInst(MetatypeInst *MI);
-  jobject visitValueMetatypeInst(ValueMetatypeInst *VMI);
-  jobject visitFunctionRefInst(FunctionRefInst *FRI);
-  jobject visitLoadInst(LoadInst *LI);
-  jobject visitLoadBorrowInst(LoadBorrowInst *LBI);
-  jobject visitBeginBorrowInst(BeginBorrowInst *BBI);
-  jobject visitEndBorrowInst(EndBorrowInst *EBI);
-  jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
-  jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
-  jobject visitStoreInst(StoreInst *SI);
-  jobject visitBeginAccessInst(BeginAccessInst *BAI);
-  jobject visitEndAccessInst(EndAccessInst *EAI);
-  jobject visitAssignInst(AssignInst *AI);
-  jobject visitCopyAddrInst(CopyAddrInst *CAI);
-  jobject visitDestroyAddrInst(DestroyAddrInst *DAI);
-  jobject visitAllocStackInst(AllocStackInst *ASI);
-  jobject visitDeallocStackInst(DeallocStackInst *DSI);
-  jobject visitReturnInst(ReturnInst *RI);
-  jobject visitBranchInst(BranchInst *BI);
-  jobject visitCondBranchInst(CondBranchInst *CBI);
-  jobject visitSelectValueInst(SelectValueInst *SVI);
-  jobject visitSwitchValueInst(SwitchValueInst *SVI);
-  jobject visitSwitchEnumInst(SwitchEnumInst *SWI);
-  jobject visitEnumInst(EnumInst *EI);
-  jobject visitUncheckedEnumDataInst(UncheckedEnumDataInst *UED);
-  jobject visitSelectEnumInst(SelectEnumInst *SEI);
-  jobject visitUnreachableInst(UnreachableInst *UI);
-  jobject visitCopyValueInst(CopyValueInst *CVI);
-  jobject visitTupleInst(TupleInst *TI);
-  jobject visitDestroyValueInst(DestroyValueInst *DVI);
-  jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
-  jobject visitGlobalAddrInst(GlobalAddrInst *GAI);
-  jobject visitTryApplyInst(TryApplyInst *TAI);
-  jobject visitBeginApplyInst(BeginApplyInst *BAI);
-  jobject visitFloatLiteralInst(FloatLiteralInst *FLI);
-  jobject visitPartialApplyInst(PartialApplyInst *PAI);
-  jobject visitThrowInst(ThrowInst *TI);
-  jobject visitStructInst(StructInst *SI);
-  jobject visitRefElementAddrInst(RefElementAddrInst *REAI);
-  jobject visitBuiltinInst(BuiltinInst *BI);
-  jobject visitEndUnpairedAccessInst(EndUnpairedAccessInst *EAI);
-  jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
-  jobject visitAddressToPointerInst(AddressToPointerInst *API);
-  jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
+jobject visitAllocStackInst(AllocStackInst *ASI);
+jobject visitAllocBoxInst(AllocBoxInst *ABI);
+jobject visitDeallocStackInst(DeallocStackInst *DSI);
+jobject visitDeallocBoxInst(DeallocBoxInst *DBI);
+jobject visitDeallocRefInst(DeallocRefInst *DRI);
+jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
+jobject visitProjectBoxInst(ProjectBoxInst *PBI);
+jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
+
+/*******************************************************************************/
+/*                        Debug Information                                    */
+/*******************************************************************************/
+
+jobject visitDebugValueInst(DebugValueInst *DBI);
+jobject visitDebugValueAddrInst(DebugValueAddrInst *DVAI);
+
+/*******************************************************************************/
+/*                        Accessing Memory                                     */
+/*******************************************************************************/
+
+jobject visitLoadInst(LoadInst *LI);
+jobject visitStoreInst(StoreInst *SI);
+jobject visitBeginBorrowInst(BeginBorrowInst *BBI);
+jobject visitLoadBorrowInst(LoadBorrowInst *LBI);
+jobject visitEndBorrowInst(EndBorrowInst *EBI);
+jobject visitAssignInst(AssignInst *AI);
+jobject visitCopyAddrInst(CopyAddrInst *CAI);
+jobject visitDestroyAddrInst(DestroyAddrInst *DAI);
+jobject visitIndexAddrInst(IndexAddrInst *IAI);
+jobject visitTailAddrInst(TailAddrInst *TAI);
+jobject visitBeginAccessInst(BeginAccessInst *BAI);
+jobject visitEndAccessInst(EndAccessInst *EAI);
+
+/*******************************************************************************/
+/*                        Reference Counting                                   */
+/*******************************************************************************/
+
+/*******************************************************************************/
+/*                         Literals                                            */
+/*******************************************************************************/
+
+jobject visitFunctionRefInst(FunctionRefInst *FRI);
+jobject visitGlobalAddrInst(GlobalAddrInst *GAI);
+jobject visitIntegerLiteralInst(IntegerLiteralInst *ILI);
+jobject visitFloatLiteralInst(FloatLiteralInst *FLI);
+jobject visitStringLiteralInst(StringLiteralInst *SLI);
+jobject visitConstStringLiteralInst(ConstStringLiteralInst *CSLI);
+
+/*******************************************************************************/
+/*                         Dynamic Dispatch                                    */
+/*******************************************************************************/
+
+jobject visitWitnessMethodInst(WitnessMethodInst *WMI);
+jobject visitClassMethodInst(ClassMethodInst *CMI);
+
+/*******************************************************************************/
+/*                         Function Application                                */
+/*******************************************************************************/
+
+jobject visitApplyInst(ApplyInst *AI);
+jobject visitBeginApplyInst(BeginApplyInst *BAI);
+jobject visitPartialApplyInst(PartialApplyInst *PAI);
+jobject visitBuiltinInst(BuiltinInst *BI);
+
+/*******************************************************************************/
+/*                          Metatypes                                          */
+/*******************************************************************************/
+
+jobject visitMetatypeInst(MetatypeInst *MI);
+jobject visitValueMetatypeInst(ValueMetatypeInst *VMI);
+
+/*******************************************************************************/
+/*                          Aggregate Types                                    */
+/*******************************************************************************/
+
+jobject visitCopyValueInst(CopyValueInst *CVI);
+jobject visitDestroyValueInst(DestroyValueInst *DVI);
+jobject visitTupleInst(TupleInst *TI);
+jobject visitStructInst(StructInst *SI);
+jobject visitRefElementAddrInst(RefElementAddrInst *REAI);
+
+/*******************************************************************************/
+/*                          Enums                                              */
+/*******************************************************************************/
+
+jobject visitEnumInst(EnumInst *EI);
+jobject visitUncheckedEnumDataInst(UncheckedEnumDataInst *UED);
+jobject visitSelectEnumInst(SelectEnumInst *SEI);
+
+/*******************************************************************************/
+/*                          Protocol and Protocol Composition Types            */
+/*******************************************************************************/
+
+jobject visitInitExistentialAddrInst(InitExistentialAddrInst *IEAI);
+jobject visitDeinitExistentialAddrInst(DeinitExistentialAddrInst *DEAI);
+jobject visitInitExistentialValueInst(InitExistentialValueInst *IEVI);
+jobject visitDeinitExistentialValueInst(DeinitExistentialValueInst *DEVI);
+jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
+jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
+
+/*******************************************************************************/
+/*                          Blocks                                             */
+/*******************************************************************************/
+
+/*******************************************************************************/
+/*                          Unchecked Conversions                              */
+/*******************************************************************************/
+
+//TODO - MOVE THIS
+jobject visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI);
+
+jobject visitUpcastInst(UpcastInst *UI);
+jobject visitAddressToPointerInst(AddressToPointerInst *ATPI);
+jobject visitUncheckedRefCastInst(UncheckedRefCastInst *URCI);
+jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
+jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
+jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
+
+/*******************************************************************************/
+/*                          Checked Conversions                                */
+/*******************************************************************************/
+
+/*******************************************************************************/
+/*                          Runtime Failures                                   */
+/*******************************************************************************/
+
+/*******************************************************************************/
+/*                           Terminators                                       */
+/*******************************************************************************/
+
+jobject visitUnreachableInst(UnreachableInst *UI);
+jobject visitReturnInst(ReturnInst *RI);
+jobject visitThrowInst(ThrowInst *TI);
+jobject visitBranchInst(BranchInst *BI);
+jobject visitCondBranchInst(CondBranchInst *CBI);
+jobject visitSwitchValueInst(SwitchValueInst *SVI);
+jobject visitSelectValueInst(SelectValueInst *SVI);
+jobject visitSwitchEnumInst(SwitchEnumInst *SWI);
+jobject visitTryApplyInst(TryApplyInst *TAI);
+
 
 private:
   void updateInstrSourceInfo(SILInstruction *I);
