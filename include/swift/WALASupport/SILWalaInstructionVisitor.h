@@ -29,6 +29,7 @@ public:
 /*******************************************************************************/
 
 jobject visitAllocStackInst(AllocStackInst *ASI);
+jobject visitAllocRefInst(AllocRefInst *ARI);
 jobject visitAllocBoxInst(AllocBoxInst *ABI);
 jobject visitDeallocStackInst(DeallocStackInst *DSI);
 jobject visitDeallocBoxInst(DeallocBoxInst *DBI);

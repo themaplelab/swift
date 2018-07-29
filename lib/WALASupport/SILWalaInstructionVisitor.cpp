@@ -287,23 +287,32 @@ jobject SILWalaInstructionVisitor::visitAllocStackInst(AllocStackInst *ASI) {
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
-// jobject SILWalaInstructionVisitor::visitAllocRefInst(AllocRefInst *ARI) {
+jobject SILWalaInstructionVisitor::visitAllocRefInst(AllocRefInst *ARI) {
 
-//     ArrayRef<SILType> Types = ARI->getTailAllocatedTypes();
-//     ArrayRef<Operand> Operands = ARI->getTailAllocatedCounts();
+  string RefType = ARI->getType().getAsString();
 
-//     for (unsigned Idx = 0, NumTypes = Types.size(); Idx < NumTypes; ++Idx) {
-//         string OperandTypeName = Types[Idx].getString();
-//         SILValue OperandValue = Operands[Idx].get();
+  if (Print) {
+    llvm::outs() << "\t [TYPE]: " << RefType << "\n";
+  }
 
-//         if (Print) {
-//           llvm::outs() << "\t [OPERAND]: " << OperandValue.getOpaqueValue() << " [TYPE]: " << OperandTypeName << "\n";
-//         }
-//         SymbolTable.insert(static_cast<ValueBase *>(ARI), OperandTypeName);
-//     }
+  SymbolTable.insert(static_cast<ValueBase *>(ARI), RefType);
 
+  ArrayRef<SILType> Types = ARI->getTailAllocatedTypes();
+  ArrayRef<Operand> Operands = ARI->getTailAllocatedCounts();
 
-// }
+  for (unsigned Idx = 0, NumTypes = Types.size(); Idx < NumTypes; ++Idx) {
+    string OperandTypeName = Types[Idx].getAsString();
+    SILValue OperandValue = Operands[Idx].get();
+
+    if (Print) {
+      llvm::outs() << "\t [OPERAND]: " << OperandValue.getOpaqueValue() << " [TYPE]: " << OperandTypeName << "\n";
+    }
+
+    SymbolTable.insert(static_cast<ValueBase *>(OperandValue.getOpaqueValue()), OperandTypeName);
+  }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
 
 jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
   SILDebugVariable Info = ABI->getVarInfo();
