@@ -1482,7 +1482,6 @@ jobject SILWalaInstructionVisitor::visitUncheckedOwnershipConversionInst(Uncheck
   if (Print) {
     llvm::outs() << "\t [CONVERTED ADDR]: " << ConversionOperand.getOpaqueValue() << "\n";
     llvm::outs() << "\t [CONVERTED NODE]: " << ConversionNode << "\n";
-    
   }
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(UOCI), ConversionNode));
