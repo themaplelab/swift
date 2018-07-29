@@ -32,6 +32,7 @@ public:
   jobject visitAllocBoxInst(AllocBoxInst *ABI);
   jobject visitDeallocStackInst(DeallocStackInst *DSI);
   jobject visitDeallocBoxInst(DeallocBoxInst *DBI);
+  jobject visitDeallocRefInst(DeallocRefInst *DRI);
   jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
   jobject visitProjectBoxInst(ProjectBoxInst *PBI);
   jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
