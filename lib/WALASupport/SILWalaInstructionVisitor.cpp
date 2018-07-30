@@ -1503,6 +1503,26 @@ jobject SILWalaInstructionVisitor::visitAddressToPointerInst(AddressToPointerIns
   return RawPointerNode;
 }
 
+jobject SILWalaInstructionVisitor::visitUncheckedRefCastInst(UncheckedRefCastInst *URCI) {
+
+  SILValue ConvertedValue = URCI->getConverted();
+  string CovertedType = URCI->getType().getAsString();
+
+  jobject UncheckedRefCastNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << UncheckedRefCastNode << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UncheckedRefCastNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(URCI), CastedNode));
+
+  return CastedNode;
+}
+
 jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
   // Cast the instr to access methods
 
