@@ -1510,16 +1510,18 @@ jobject SILWalaInstructionVisitor::visitAddressToPointerInst(AddressToPointerIns
   SILValue ConvertedValue = ATPI->getConverted();
   string CovertedType = ATPI->getType().getAsString();
 
-  jobject RawPointerNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
 
   if (Print) {
     llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
-    llvm::outs() << "\t [CONVERTED NODE]: " << RawPointerNode << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << ConvertedNode << "\n";
   }
 
-  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(ATPI), RawPointerNode));
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject RawPointerCastNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
 
-  return RawPointerNode;
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(ATPI), RawPointerCastNode));
+  return RawPointerCastNode;
 }
 
 jobject SILWalaInstructionVisitor::visitUncheckedRefCastInst(UncheckedRefCastInst *URCI) {
