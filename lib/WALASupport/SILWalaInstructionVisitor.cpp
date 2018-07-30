@@ -589,6 +589,20 @@ jobject SILWalaInstructionVisitor::visitCopyAddrInst(CopyAddrInst *CAI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitDestroyAddrInst(DestroyAddrInst *DAI) {
+
+    SILValue DestroyAddr = DAI->getOperand();
+
+  if (Print) {
+      llvm::outs() << "\t [ADDR TO DESTROY]: " << DestroyAddr.getOpaqueValue() << "\n";
+  }
+
+  findAndRemoveCAstNode(DestroyAddr.getOpaqueValue());
+  SymbolTable.remove(DestroyAddr.getOpaqueValue());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 jobject SILWalaInstructionVisitor::visitIndexAddrInst(IndexAddrInst *IAI) {
   SILValue base = IAI->getBase();
   SILValue idx = IAI->getIndex();

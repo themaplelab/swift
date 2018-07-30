@@ -56,6 +56,7 @@ public:
   jobject visitEndBorrowInst(EndBorrowInst *EBI);
   jobject visitAssignInst(AssignInst *AI);
   jobject visitCopyAddrInst(CopyAddrInst *CAI);
+  jobject visitDestroyAddrInst(DestroyAddrInst *DAI);
   jobject visitIndexAddrInst(IndexAddrInst *IAI);
   jobject visitBeginAccessInst(BeginAccessInst *BAI);
   jobject visitEndAccessInst(EndAccessInst *EAI);
