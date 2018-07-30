@@ -340,6 +340,17 @@ jobject SILWalaInstructionVisitor::visitDeallocBoxInst(DeallocBoxInst *DBI) {
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitDeallocRefInst(DeallocRefInst *DRI) {
+    for (auto &OP : DRI->getAllOperands()) {
+    if (Print) {
+      llvm::outs() << "\t [OPERAND]: " << OP.get() << "\n";
+      llvm::outs() << "\t [REF]: " << OP.get().getOpaqueValue() << "\n";
+    }
+    SymbolTable.remove(OP.get().getOpaqueValue());
+  }
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 jobject SILWalaInstructionVisitor::visitProjectBoxInst(ProjectBoxInst *PBI) {
   if (SymbolTable.has(PBI->getOperand().getOpaqueValue())) {
     // this is a variable
