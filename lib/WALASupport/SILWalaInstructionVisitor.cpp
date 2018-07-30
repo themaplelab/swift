@@ -384,7 +384,7 @@ jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessI
     llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
   }
 
-  jobject Node = findAndRemoveCAstNode(BufferValue.getOpaqueValue());
+  findAndRemoveCAstNode(BufferValue.getOpaqueValue());
 
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
@@ -837,6 +837,29 @@ jobject SILWalaInstructionVisitor::visitStringLiteralInst(StringLiteralInst *SLI
 /*******************************************************************************/
 /*                               DYNAMIC DISPATCH                              */
 /*******************************************************************************/
+
+jobject SILWalaInstructionVisitor::visitClassMethodInst(ClassMethodInst *CMI) {
+  SILValue ClassOperand = CMI->getOperand();
+  SILDeclRef MemberFunc = CMI->getMember();
+
+  string MemberFuncName = Demangle::demangleSymbolAsString(MemberFunc.mangle());
+
+  if (Print) {
+    llvm::outs() << "\t [CLASS]: " << CMI->getMember().getDecl()->getInterfaceType().getString() << "\n";
+    llvm::outs() << "\t [MEMBER]: " << MemberFuncName << "\n";
+  }
+
+  jobject ClassNode = findAndRemoveCAstNode(ClassOperand.getOpaqueValue());
+
+  jobject MemberNameNode = Wala->makeConstant(MemberFuncName.c_str());  
+  jobject FuncNode = Wala->makeNode(CAstWrapper::FUNCTION_EXPR, MemberNameNode);
+
+  jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ClassNode, FuncNode );
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CMI), Node));
+
+  return Node;
+}
 
 jobject SILWalaInstructionVisitor::visitWitnessMethodInst(WitnessMethodInst *WMI) {
 
