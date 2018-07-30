@@ -1544,6 +1544,23 @@ jobject SILWalaInstructionVisitor::visitUncheckedRefCastInst(UncheckedRefCastIns
   return CastedNode;
 }
 
+jobject SILWalaInstructionVisitor::visitPointerToAddressInst(PointerToAddressInst *PTAI) {
+
+  SILValue ConvertedValue = PTAI->getConverted();
+  string CovertedType = PTAI->getType().getAsString();
+
+  jobject AddressNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << AddressNode << "\n";
+  }
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(PTAI), AddressNode));
+
+  return AddressNode;
+}
+
 jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
   // Cast the instr to access methods
 

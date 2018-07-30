@@ -144,6 +144,7 @@ public:
 
   jobject visitUpcastInst(UpcastInst *UI);
   jobject visitAddressToPointerInst(AddressToPointerInst *ATPI);
+  jobject visitPointerToAddressInst(PointerToAddressInst *PTAI);
   jobject visitUncheckedRefCastInst(UncheckedRefCastInst *URCI);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
