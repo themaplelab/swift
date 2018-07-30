@@ -615,7 +615,7 @@ jobject SILWalaInstructionVisitor::visitTailAddrInst(TailAddrInst *TAI) {
   jobject BaseNode = findAndRemoveCAstNode(BaseVale.getOpaqueValue());
   jobject IndexNode = findAndRemoveCAstNode(IndexValue.getOpaqueValue());
 
-  jobject Node = Wala->makeNode(CAstWrapper::ARRAY_REF, BaseNode , IndexNode);
+  jobject Node = Wala->makeNode(CAstWrapper::ARRAY_REF, BaseNode, IndexNode);
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TAI), Node));
   return Node;
