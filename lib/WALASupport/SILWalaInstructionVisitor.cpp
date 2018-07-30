@@ -1416,7 +1416,7 @@ jobject SILWalaInstructionVisitor::visitUpcastInst(UpcastInst *UI) {
   }
 
   jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
-  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UpcastNode, ConvertedTypeNode );
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UpcastNode, ConvertedTypeNode);
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(UI), CastedNode));
 
