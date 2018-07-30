@@ -1434,7 +1434,7 @@ jobject SILWalaInstructionVisitor::visitUncheckedRefCastInst(UncheckedRefCastIns
   }
 
   jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
-  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UncheckedRefCastNode, ConvertedTypeNode );
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UncheckedRefCastNode, ConvertedTypeNode);
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(URCI), CastedNode));
 
