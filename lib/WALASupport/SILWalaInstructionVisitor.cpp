@@ -626,6 +626,26 @@ jobject SILWalaInstructionVisitor::visitIndexAddrInst(IndexAddrInst *IAI) {
   return Wala->makeNode(CAstWrapper::EMPTY); 
 }
 
+jobject SILWalaInstructionVisitor::visitTailAddrInst(TailAddrInst *TAI) {
+  SILValue BaseVale = TAI->getBase();
+  SILValue IndexValue = TAI->getIndex();
+  SILType  ResultType = TAI->getTailType();
+
+  if(Print){
+    llvm::outs() << "\t [BASE ADDR]" << BaseVale.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [INDEX ADDR]" << IndexValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [RESULT TYPE]" << ResultType.getAsString() << "\n";
+  }
+
+  jobject BaseNode = findAndRemoveCAstNode(BaseVale.getOpaqueValue());
+  jobject IndexNode = findAndRemoveCAstNode(IndexValue.getOpaqueValue());
+
+  jobject Node = Wala->makeNode(CAstWrapper::ARRAY_REF, BaseNode, IndexNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TAI), Node));
+  return Node;
+}
+
 jobject SILWalaInstructionVisitor::visitBeginAccessInst(BeginAccessInst *BAI) {
   if (Print) {
     llvm::outs() << "\t [OPERAND ADDR]:" << (BAI->getSource()).getOpaqueValue() << "\n";
