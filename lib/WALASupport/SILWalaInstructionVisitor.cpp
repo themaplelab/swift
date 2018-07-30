@@ -1014,6 +1014,20 @@ jobject SILWalaInstructionVisitor::visitCopyValueInst(CopyValueInst *CVI) {
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitDestroyValueInst(DestroyValueInst *DVI) {
+
+  SILValue DestroyValue = DVI->getOperand();
+
+  if (Print) {
+      llvm::outs() << "\t [VALUE TO DESTROY]: " << DestroyValue.getOpaqueValue() << "\n";
+  }
+
+  findAndRemoveCAstNode(DestroyValue.getOpaqueValue());
+  SymbolTable.remove(DestroyValue.getOpaqueValue());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 jobject SILWalaInstructionVisitor::visitTupleInst(TupleInst *TI) {
 
   list<jobject> Properties;

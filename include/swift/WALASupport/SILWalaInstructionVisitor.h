@@ -104,6 +104,7 @@ public:
   /*******************************************************************************/
 
   jobject visitCopyValueInst(CopyValueInst *CVI);
+  jobject visitDestroyValueInst(DestroyValueInst *DVI);
   jobject visitTupleInst(TupleInst *TI);
   jobject visitTupleExtractInst(TupleExtractInst *TEI);
   jobject visitStructInst(StructInst *SI);
