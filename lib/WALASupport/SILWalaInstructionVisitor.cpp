@@ -1544,6 +1544,32 @@ jobject SILWalaInstructionVisitor::visitUncheckedRefCastInst(UncheckedRefCastIns
   return CastedNode;
 }
 
+jobject SILWalaInstructionVisitor::visitPointerToAddressInst(PointerToAddressInst *PTAI) {
+  // Getting the value to be converted
+  SILValue ValueToBeConverted = PTAI->getConverted();
+  // Now getting the type of address to be converted into
+  string TypeToBeConvertedInto = PTAI->getType().getAsString();
+  
+  // Conversion means it is a "CAST" instruction. CAST type node in Wala takes two other nodes.
+  // One is a node corresponding to the value to be converted
+  // Another is a node corresponding to the type to be converted into
+  
+  // Firstly finding the node corresponding to the value to be converted
+  jobject ToBeConvertedNode = findAndRemoveCAstNode(ValueToBeConverted.getOpaqueValue());
+  // Then creating the node corresponding to the type to be converted into
+  jobject TypeNode = Wala->makeConstant(TypeToBeConvertedInto.c_str());
+  // Then creating a new node of CAST type with these two nodes
+  jobject ConversionNode = Wala->makeNode(CAstWrapper::CAST, ToBeConvertedNode, TypeNode);
+  // Finally inserting into the NodeMap for future reference
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(PTAI), ConversionNode));
+
+  if (Print) {
+    llvm::outs() << "\t" << ValueToBeConverted.getOpaqueValue() << " [TO BE CONVERTED INTO]: " << TypeToBeConvertedInto << " [TYPE ADDRESS] " << "\n";
+  }
+
+  return ConversionNode;
+}
+
 jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
   // Cast the instr to access methods
 
