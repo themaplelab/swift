@@ -359,6 +359,19 @@ jobject SILWalaInstructionVisitor::visitProjectBoxInst(ProjectBoxInst *PBI) {
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitAllocValueBufferInst(AllocValueBufferInst *AVBI) {
+  SILValue ValueBuffer = AVBI->getOperand();
+  string ValueTypeName = AVBI->getValueType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "\t [VALUE BUFFER]: " << ValueBuffer.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [VALUE TYPE]: " << ValueTypeName << "\n";
+  }
+
+  SymbolTable.insert(static_cast<ValueBase *>(ValueBuffer.getOpaqueValue()), ValueTypeName);
+  return  Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 jobject SILWalaInstructionVisitor::visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI) {
 
   SILValue SourceValue = BUI->getSource();
