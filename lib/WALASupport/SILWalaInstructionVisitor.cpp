@@ -308,6 +308,44 @@ jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitAllocRefInst(AllocRefInst *ARI) {
+  string RefTypeName = ARI->getType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "\t [VAR TYPE]: " << RefTypeName << "\n";
+  }
+
+  SymbolTable.insert(static_cast<ValueBase *>(ARI), RefTypeName);
+
+  ArrayRef<SILType> Types = ARI->getTailAllocatedTypes();
+  ArrayRef<Operand> Counts = ARI->getTailAllocatedCounts();
+
+  for (unsigned Idx = 0, NumTypes = Types.size(); Idx < NumTypes; ++Idx) {
+    SILValue OperandValue = Counts[Idx].get();
+    string OperandTypeName = Types[Idx].getAsString();
+
+    if (Print) {
+      llvm::outs() << "\t [OPERAND]: " << OperandValue.getOpaqueValue() << " [TYPE]: " << OperandTypeName << "\n";
+    }
+
+    SymbolTable.insert(static_cast<ValueBase *>(OperandValue.getOpaqueValue()), OperandTypeName);
+  }
+  return  Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitAllocValueBufferInst(AllocValueBufferInst *AVBI) {
+  SILValue ValueBuffer = AVBI->getOperand();
+  string ValueTypeName = AVBI->getValueType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "\t [VALUE BUFFER]: " << ValueBuffer.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [VALUE TYPE]: " << ValueTypeName << "\n";
+  }
+
+  SymbolTable.insert(static_cast<ValueBase *>(ValueBuffer.getOpaqueValue()), ValueTypeName);
+  return  Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 jobject SILWalaInstructionVisitor::visitAllocGlobalInst(AllocGlobalInst *AGI) {
   SILGlobalVariable *Var = AGI->getReferencedGlobal();
   StringRef Name = Var->getName();
@@ -320,12 +358,12 @@ jobject SILWalaInstructionVisitor::visitAllocGlobalInst(AllocGlobalInst *AGI) {
 }
 
 jobject SILWalaInstructionVisitor::visitDeallocStackInst(DeallocStackInst *DSI) {
-  if (Print) {
     for (auto &OP : DSI->getAllOperands()) {
-      llvm::outs() << "\t [OPERAND]: " << OP.get() << "\n";
-      llvm::outs() << "\t [ADDR]: " << OP.get().getOpaqueValue() << "\n";
+      if (Print) {
+        llvm::outs() << "\t [OPERAND]: " << OP.get() << "\n";
+        llvm::outs() << "\t [ADDR]: " << OP.get().getOpaqueValue() << "\n";
+      }
     }
-  }
   return  Wala->makeNode(CAstWrapper::EMPTY);
 }
 
@@ -341,7 +379,7 @@ jobject SILWalaInstructionVisitor::visitDeallocBoxInst(DeallocBoxInst *DBI) {
 }
 
 jobject SILWalaInstructionVisitor::visitDeallocRefInst(DeallocRefInst *DRI) {
-    for (auto &OP : DRI->getAllOperands()) {
+  for (auto &OP : DRI->getAllOperands()) {
     if (Print) {
       llvm::outs() << "\t [OPERAND]: " << OP.get() << "\n";
       llvm::outs() << "\t [REF]: " << OP.get().getOpaqueValue() << "\n";
@@ -555,6 +593,23 @@ jobject SILWalaInstructionVisitor::visitEndBorrowInst(EndBorrowInst *EBI) {
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitStoreBorrowInst(StoreBorrowInst *SBI) {
+  SILValue SourceBorrowed = SBI->getSrc();
+  SILValue DestBorrowed = SBI->getDest();
+
+  if (Print) {
+    llvm::outs() << "\t [SOURCE BORROWED ADDR]: " << SourceBorrowed.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [DEST BORROWED ADDR]: " << DestBorrowed.getOpaqueValue() << "\n";
+  }
+
+  jobject Dest = findAndRemoveCAstNode(SourceBorrowed.getOpaqueValue());
+  jobject Source = findAndRemoveCAstNode(DestBorrowed.getOpaqueValue());
+
+  jobject Node = Wala->makeNode(CAstWrapper::ASSIGN, Dest, Source);
+  NodeMap.insert(std::make_pair(SBI, Node));
+  return Node;
+}
+
 
 jobject SILWalaInstructionVisitor::visitAssignInst(AssignInst *AI) {
 
@@ -668,6 +723,8 @@ jobject SILWalaInstructionVisitor::visitEndAccessInst(EndAccessInst *EAI) {
   }
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
+
+
 
 /*******************************************************************************/
 /*                              REFERENCE COUNTING                             */

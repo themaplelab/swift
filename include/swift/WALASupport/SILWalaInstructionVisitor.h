@@ -29,7 +29,9 @@ public:
   /*******************************************************************************/
 
   jobject visitAllocStackInst(AllocStackInst *ASI);
+  jobject visitAllocRefInst(AllocRefInst *ARI);
   jobject visitAllocBoxInst(AllocBoxInst *ABI);
+  jobject visitAllocValueBufferInst(AllocValueBufferInst *AVBI);
   jobject visitDeallocStackInst(DeallocStackInst *DSI);
   jobject visitDeallocBoxInst(DeallocBoxInst *DBI);
   jobject visitDeallocRefInst(DeallocRefInst *DRI);
@@ -54,6 +56,7 @@ public:
   jobject visitBeginBorrowInst(BeginBorrowInst *BBI);
   jobject visitLoadBorrowInst(LoadBorrowInst *LBI);
   jobject visitEndBorrowInst(EndBorrowInst *EBI);
+  jobject visitStoreBorrowInst(StoreBorrowInst *SBI);
   jobject visitAssignInst(AssignInst *AI);
   jobject visitCopyAddrInst(CopyAddrInst *CAI);
   jobject visitDestroyAddrInst(DestroyAddrInst *DAI);
