@@ -570,6 +570,26 @@ jobject SILWalaInstructionVisitor::visitAssignInst(AssignInst *AI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitMarkUninitializedInst(MarkUninitializedInst *MUI) {
+  // This instruction just marks the uninitialized memory locations
+  // So from the perspective of Wala no operations is going on here
+  // We would just return an empty node here
+  SILValue AddressToBeMarked = MUI->getOperand();
+  string KindOfMark("");
+  switch(MUI->getKind()){
+    case 0: { KindOfMark = "Var"; } break;
+    case 1: { KindOfMark = "RootSelf"; } break;
+    case 2: { KindOfMark = "CrossModuleRootSelf"; } break;
+    case 3: { KindOfMark = "DerivedSelf"; } break;
+    case 4: { KindOfMark = "DerivedSelfOnly"; } break;
+    case 5: { KindOfMark = "DelegatingSelf"; } break;
+  }
+  if (Print) {
+    llvm::outs() << "\t [MARK]: " << AddressToBeMarked.getOpaqueValue() << " AS " << KindOfMark << "\n";
+  }
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 jobject SILWalaInstructionVisitor::visitCopyAddrInst(CopyAddrInst *CAI) {
 
   SILValue Source = CAI->getSrc();
