@@ -570,6 +570,23 @@ jobject SILWalaInstructionVisitor::visitAssignInst(AssignInst *AI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitStoreBorrowInst(StoreBorrowInst *SBI) {
+  SILValue SourceBorrowed = SBI->getSrc();
+  SILValue DestBorrowed = SBI->getDest();
+
+  if (Print) {
+    llvm::outs() << "\t [SOURCE BORROWED ADDR]: " << SourceBorrowed.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [DEST BORROWED ADDR]: " << DestBorrowed.getOpaqueValue() << "\n";
+  }
+
+  jobject Dest = findAndRemoveCAstNode(SourceBorrowed.getOpaqueValue());
+  jobject Source = findAndRemoveCAstNode(DestBorrowed.getOpaqueValue());
+
+  jobject Node = Wala->makeNode(CAstWrapper::ASSIGN, Dest, Source);
+  NodeMap.insert(std::make_pair(SBI, Node));
+  return Node;
+}
+
 jobject SILWalaInstructionVisitor::visitMarkUninitializedInst(MarkUninitializedInst *MUI) {
   // This instruction just marks the uninitialized memory locations
   // So from the perspective of Wala no operations is going on here
