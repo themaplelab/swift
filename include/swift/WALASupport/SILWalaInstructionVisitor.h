@@ -30,6 +30,7 @@ public:
 
   jobject visitAllocStackInst(AllocStackInst *ASI);
   jobject visitAllocBoxInst(AllocBoxInst *ABI);
+  jobject visitAllocRefInst(AllocRefInst *ARI);
   jobject visitDeallocStackInst(DeallocStackInst *DSI);
   jobject visitDeallocBoxInst(DeallocBoxInst *DBI);
   jobject visitDeallocRefInst(DeallocRefInst *DRI);
