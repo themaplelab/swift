@@ -389,6 +389,35 @@ jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessI
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitDeallocValueBufferInst(DeallocValueBufferInst *DVBI) {
+  SILValue BufferValue = DVBI->getOperand();
+  string ValueTypeName = DVBI->getValueType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [VALUE TYPE]: " << ValueTypeName << "\n";
+  }
+
+  SymbolTable.remove(BufferValue.getOpaqueValue());
+  return  Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitProjectValueBufferInst(ProjectValueBufferInst *PVBI) {
+  SILValue BufferValue = PVBI->getOperand();
+  string ValueTypeName = PVBI->getValueType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [VALUE TYPE]: " << ValueTypeName << "\n";
+  }
+
+  if (SymbolTable.has(BufferValue.getOpaqueValue())) {
+    SymbolTable.duplicate(static_cast<ValueBase *>(PVBI), SymbolTable.get(BufferValue.getOpaqueValue()).c_str());
+  }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 /*******************************************************************************/
 /*                        DEBUG INFROMATION                                    */
 /*******************************************************************************/

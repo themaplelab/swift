@@ -37,6 +37,8 @@ public:
   jobject visitProjectBoxInst(ProjectBoxInst *PBI);
   jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
   jobject visitEndUnpairedAccessInst(EndUnpairedAccessInst *EUAI);
+  jobject visitProjectValueBufferInst(ProjectValueBufferInst *PVBI);
+  jobject visitDeallocValueBufferInst(DeallocValueBufferInst *DVBI);
 
   /*******************************************************************************/
   /*                        Debug Information                                    */
