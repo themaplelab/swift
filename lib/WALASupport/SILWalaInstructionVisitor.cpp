@@ -378,7 +378,10 @@ jobject SILWalaInstructionVisitor::visitDeallocRefInst(DeallocRefInst *DRI) {
 
 jobject SILWalaInstructionVisitor::visitProjectBoxInst(ProjectBoxInst *PBI) {
   if (SymbolTable.has(PBI->getOperand().getOpaqueValue())) {
-    // this is a variable
+    // This is a variable
+    // NOTE: Apple documentation states: This instruction has undefined behavior if the box is not currently allocated
+    //       (link: https://github.com/apple/swift/blob/master/docs/SIL.rst#project_box) so there is no need to allocate
+    //       it if it is not currently in the Symbol Table
     SymbolTable.duplicate(static_cast<ValueBase *>(PBI), SymbolTable.get(PBI->getOperand().getOpaqueValue()).c_str());
   }
   return Wala->makeNode(CAstWrapper::EMPTY);
@@ -423,6 +426,38 @@ jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessI
   }
 
   findAndRemoveCAstNode(BufferValue.getOpaqueValue());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitDeallocValueBufferInst(DeallocValueBufferInst *DVBI) {
+  SILValue BufferValue = DVBI->getOperand();
+  string ValueTypeName = DVBI->getValueType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [VALUE TYPE]: " << ValueTypeName << "\n";
+  }
+
+  SymbolTable.remove(BufferValue.getOpaqueValue());
+  return  Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitProjectValueBufferInst(ProjectValueBufferInst *PVBI) {
+  SILValue BufferValue = PVBI->getOperand();
+  string ValueTypeName = PVBI->getValueType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [VALUE TYPE]: " << ValueTypeName << "\n";
+  }
+
+  // NOTE: Apple documentation states: This instruction has undefined behavior if the value buffer is not currently allocated
+  //       (link: https://github.com/apple/swift/blob/master/docs/SIL.rst#project-value-buffer) so there is no need to allocate
+  //       it if it is not currently in the Symbol Table
+  if (SymbolTable.has(BufferValue.getOpaqueValue())) {
+    SymbolTable.duplicate(static_cast<ValueBase *>(PVBI), SymbolTable.get(BufferValue.getOpaqueValue()).c_str());
+  }
 
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
@@ -1578,6 +1613,9 @@ jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExisten
     llvm::outs() << "\t [OPERAND]: " << PEBI->getOperand() << "\n";
     llvm::outs() << "\t [OPERAND ADDR]: " << PEBI->getOperand().getOpaqueValue() << "\n";
   }
+  // NOTE: Apple documentation states: This instruction has undefined behavior if the box is not currently allocated
+  //       (link: https://github.com/apple/swift/blob/master/docs/SIL.rst#project-existential-box so there is no need to allocate
+  //       it if it is not currently in the Symbol Table
   if (SymbolTable.has(PEBI->getOperand().getOpaqueValue())) {
     SymbolTable.duplicate(static_cast<ValueBase *>(PEBI), SymbolTable.get(PEBI->getOperand().getOpaqueValue()).c_str());
   }

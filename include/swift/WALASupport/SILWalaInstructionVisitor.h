@@ -39,6 +39,8 @@ public:
   jobject visitAllocValueBufferInst(AllocValueBufferInst *AVBI);
   jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
   jobject visitEndUnpairedAccessInst(EndUnpairedAccessInst *EUAI);
+  jobject visitProjectValueBufferInst(ProjectValueBufferInst *PVBI);
+  jobject visitDeallocValueBufferInst(DeallocValueBufferInst *DVBI);
 
   /*******************************************************************************/
   /*                        Debug Information                                    */
