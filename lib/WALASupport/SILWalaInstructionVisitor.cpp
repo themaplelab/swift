@@ -590,6 +590,17 @@ jobject SILWalaInstructionVisitor::visitMarkUninitializedInst(MarkUninitializedI
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitMarkFunctionEscapeInst(MarkFunctionEscapeInst *MFEI){
+  for(Operand &MFEOperand : MFEI->getAllOperands()){
+    unsigned OperandNumber = MFEOperand.getOperandNumber();
+    SILValue OperandValue = MFEOperand.get();
+    if (Print) {
+      llvm::outs() << "\t [OPERAND NO]: " << OperandNumber << " [VALUE]: " << OperandValue.getOpaqueValue() << "\n";
+    }
+  }
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 jobject SILWalaInstructionVisitor::visitCopyAddrInst(CopyAddrInst *CAI) {
 
   SILValue Source = CAI->getSrc();
