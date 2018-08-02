@@ -28,6 +28,8 @@ public:
   /*                      Allocation and Deallocation                            */
   /*******************************************************************************/
 
+  jobject visitMarkFunctionEscapeInst(MarkFunctionEscapeInst *MFEI);
+
   jobject visitAllocStackInst(AllocStackInst *ASI);
   jobject visitAllocBoxInst(AllocBoxInst *ABI);
   jobject visitDeallocStackInst(DeallocStackInst *DSI);
@@ -37,6 +39,8 @@ public:
   jobject visitProjectBoxInst(ProjectBoxInst *PBI);
   jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
   jobject visitEndUnpairedAccessInst(EndUnpairedAccessInst *EUAI);
+  jobject visitDeallocValueBufferInst(DeallocValueBufferInst *DVBI);
+  jobject visitProjectValueBufferInst(ProjectValueBufferInst *PVBI);
 
   /*******************************************************************************/
   /*                        Debug Information                                    */
@@ -111,6 +115,7 @@ public:
   jobject visitDestroyValueInst(DestroyValueInst *DVI);
   jobject visitTupleInst(TupleInst *TI);
   jobject visitTupleExtractInst(TupleExtractInst *TEI);
+  jobject visitTupleElementAddrInst(TupleElementAddrInst *TEAI);
   jobject visitStructInst(StructInst *SI);
   jobject visitStructExtractInst(StructExtractInst *SEI);
   jobject visitStructElementAddrInst(StructElementAddrInst *SEAI);
@@ -132,6 +137,8 @@ public:
   jobject visitDeinitExistentialAddrInst(DeinitExistentialAddrInst *DEAI);
   jobject visitInitExistentialValueInst(InitExistentialValueInst *IEVI);
   jobject visitDeinitExistentialValueInst(DeinitExistentialValueInst *DEVI);
+  jobject visitOpenExistentialAddrInst(OpenExistentialAddrInst *OEAI);
+  jobject visitInitExistentialRefInst(InitExistentialRefInst *IERI);
   jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
   jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
 
@@ -172,6 +179,7 @@ public:
   jobject visitSwitchValueInst(SwitchValueInst *SVI);
   jobject visitSelectValueInst(SelectValueInst *SVI);
   jobject visitSwitchEnumInst(SwitchEnumInst *SWI);
+  jobject visitCheckedCastAddrBranchInst(CheckedCastAddrBranchInst *CI);
   jobject visitTryApplyInst(TryApplyInst *TAI);
 
 private:

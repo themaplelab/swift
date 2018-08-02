@@ -116,6 +116,20 @@ void SILWalaInstructionVisitor::visitSILFunction(SILFunction *F) {
   }
 }
 
+
+jobject SILWalaInstructionVisitor::visitMarkFunctionEscapeInst(MarkFunctionEscapeInst *MFEI){
+  for(Operand &MFEOperand : MFEI->getAllOperands()){
+    unsigned OperandNumber = MFEOperand.getOperandNumber();
+    SILValue OperandValue = MFEOperand.get();
+    if (Print) {
+      llvm::outs() << "\t [OPERAND NO]: " << OperandNumber << " [VALUE]: " << OperandValue.getOpaqueValue() << "\n";
+      llvm::outs() << "\t [OPERAND NODE]: " << findAndRemoveCAstNode(OperandValue.getOpaqueValue()) << "\n";
+    }
+  }
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+
 void SILWalaInstructionVisitor::visitModule(SILModule *M) {
   ModuleInfo = std::make_shared<WALAWalker::ModuleInfo>(M->getSwiftModule()->getModuleFilename());
   if (ModuleInfo->sourcefile.empty()) {
@@ -385,6 +399,35 @@ jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessI
   }
 
   findAndRemoveCAstNode(BufferValue.getOpaqueValue());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitDeallocValueBufferInst(DeallocValueBufferInst *DVBI) {
+  SILValue BufferValue = DVBI->getOperand();
+  string ValueTypeName = DVBI->getValueType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [VALUE TYPE]: " << ValueTypeName << "\n";
+  }
+
+  SymbolTable.remove(BufferValue.getOpaqueValue());
+  return  Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitProjectValueBufferInst(ProjectValueBufferInst *PVBI) {
+  SILValue BufferValue = PVBI->getOperand();
+  string ValueTypeName = PVBI->getValueType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [VALUE TYPE]: " << ValueTypeName << "\n";
+  }
+
+  if (SymbolTable.has(BufferValue.getOpaqueValue())) {
+    SymbolTable.duplicate(static_cast<ValueBase *>(PVBI), SymbolTable.get(BufferValue.getOpaqueValue()).c_str());
+  }
 
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
@@ -1179,6 +1222,39 @@ jobject SILWalaInstructionVisitor::visitTupleExtractInst(TupleExtractInst *TEI) 
   return TupleExtractNode;
 }
 
+jobject SILWalaInstructionVisitor::visitTupleElementAddrInst(TupleElementAddrInst *TEAI) {
+  SILValue TupleTypeOperand = TEAI->getOperand();
+  jobject TupleTypeNode = findAndRemoveCAstNode(TupleTypeOperand.getOpaqueValue());
+
+  const TupleTypeElt &Element = TEAI->getTupleType()->getElement(TEAI->getFieldNo());
+
+  jobject FieldNode = Wala->makeNode(CAstWrapper::EMPTY);
+  if(Element.hasName()){
+    string FieldName = Element.getName().str();
+    FieldNode = Wala->makeConstant(FieldName.c_str());
+  }
+  else{
+    string FieldTypeName = Element.getType().getString();
+    FieldNode = Wala->makeConstant(FieldTypeName.c_str());
+  }
+
+  jobject TupleElementAddrNode = Wala->makeNode(CAstWrapper::OBJECT_REF, TupleTypeNode, FieldNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TEAI), TupleElementAddrNode));
+  
+  if (Print) {
+    llvm::outs() << "\t [OPERAND ADDR]: " << TupleTypeOperand.getOpaqueValue() << "\n";
+    if(Element.hasName()){
+      llvm::outs() << "\t [TUPLE FIELD NAME]: " << Element.getName().str() << "\n";
+    }
+    else{
+      llvm::outs() << "\t [TUPLE FIELD TYPE NAME]: " << Element.getType().getString() << "\n";
+    }
+  }
+
+  return TupleElementAddrNode;
+}
+
 jobject SILWalaInstructionVisitor::visitStructInst(StructInst *SI) {
 
   list<jobject> Fields;
@@ -1467,6 +1543,36 @@ jobject SILWalaInstructionVisitor::visitDeinitExistentialValueInst(DeinitExisten
 
   findAndRemoveCAstNode(DEVI->getOperand().getOpaqueValue());
   SymbolTable.remove(DEVI->getOperand().getOpaqueValue());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitOpenExistentialAddrInst(OpenExistentialAddrInst *OEAI) {
+  SILValue ExistentialOperand = OEAI->getOperand();
+  SILType ExistentialType = OEAI->getType();
+
+  if (Print) {
+    llvm::outs() << "\t [OPERAND]: " << ExistentialOperand.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [TYPE] " << ExistentialType.getAsString() << "\n";
+  }
+
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitInitExistentialRefInst(InitExistentialRefInst *IERI) {
+  if (Print) {
+    llvm::outs() << "IEVI " << IERI << "\n";
+    llvm::outs() << "Operand " << IERI->getOperand() << "\n";
+    llvm::outs() << "ConcreteType " << IERI->getFormalConcreteType() << "\n";
+  }
+
+   if (SymbolTable.has(IERI->getOperand().getOpaqueValue())) {
+    auto name = "ExistentialRef of " + 
+      SymbolTable.get(IERI->getOperand().getOpaqueValue()) + " -> " + 
+      IERI->getFormalConcreteType().getString();
+    SymbolTable.insert(static_cast<ValueBase *>(IERI), name);
+  }
 
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
@@ -1915,6 +2021,49 @@ jobject SILWalaInstructionVisitor::visitSwitchEnumInst(SwitchEnumInst *SWI) {
   NodeMap.insert(std::make_pair(SWI, SwitchNode));
 
   return SwitchNode;
+}
+
+jobject SILWalaInstructionVisitor::visitCheckedCastAddrBranchInst(CheckedCastAddrBranchInst *CI) {
+
+  SILValue SrcValue = CI->getSrc();
+  SILValue DestValue = CI->getDest();
+
+  if (Print) {
+    llvm::outs() << "\t [CONVERT]: " << CI->getSourceType().getString() << " " << SrcValue.getOpaqueValue();
+    llvm::outs() << " [TO]: " << CI->getTargetType().getString() << " " << DestValue.getOpaqueValue() << "\n";
+  }
+
+  // 1. Cast statement
+  jobject SrcNode = findAndRemoveCAstNode(SrcValue.getOpaqueValue());
+  jobject DestNode = findAndRemoveCAstNode(DestValue.getOpaqueValue());
+
+  jobject ConversionNode = Wala->makeNode(CAstWrapper::CAST, SrcNode, DestNode);
+
+  // 2. Success block
+  SILBasicBlock *SuccessBlock = CI->getSuccessBB();
+
+  if (Print) {
+     llvm::outs() << "\t [SUCCESS BASIC BLOCK]: " << SuccessBlock << "\n";
+  }
+
+  jobject SuccessBlockNode = Wala->makeConstant(BasicBlockLabeller::label(SuccessBlock).c_str());
+  jobject SuccessGoToNode = Wala->makeNode(CAstWrapper::GOTO, SuccessBlockNode);
+
+  // 3. False block
+  SILBasicBlock *FailureBlock = CI->getFailureBB();
+
+  if (Print) {
+     llvm::outs() << "\t [FAILIURE BASIC BLOCK]: " << FailureBlock << "\n";
+  }
+
+  jobject FailureBlockNode = Wala->makeConstant(BasicBlockLabeller::label(FailureBlock).c_str());
+  jobject FailureGoToNode = Wala->makeNode(CAstWrapper::GOTO, FailureBlockNode);
+
+  // 4. Assemble them into an if-stmt node
+  jobject StmtNode = Wala->makeNode(CAstWrapper::IF_STMT, ConversionNode, SuccessGoToNode, FailureGoToNode);
+
+  NodeMap.insert(std::make_pair(CI, StmtNode));
+  return StmtNode;
 }
 
 jobject SILWalaInstructionVisitor::visitTryApplyInst(TryApplyInst *TAI) {
