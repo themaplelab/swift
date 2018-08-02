@@ -1293,6 +1293,38 @@ jobject SILWalaInstructionVisitor::visitStructExtractInst(StructExtractInst *SEI
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitTupleElementAddrInst(TupleElementAddrInst *TEAI) {
+  SILValue TupleTypeOperand = TEAI->getOperand();
+  jobject TupleTypeNode = findAndRemoveCAstNode(TupleTypeOperand.getOpaqueValue());
+
+  const TupleTypeElt &Element = TEAI->getTupleType()->getElement(TEAI->getFieldNo());
+
+  jobject FieldNode = Wala->makeNode(CAstWrapper::EMPTY);
+  if(Element.hasName()){
+    string FieldName = Element.getName().str();
+    FieldNode = Wala->makeConstant(FieldName.c_str());
+  }
+  else{
+    string FieldTypeName = Element.getType().getString();
+    FieldNode = Wala->makeConstant(FieldTypeName.c_str());
+  }
+
+  jobject TupleElementAddrNode = Wala->makeNode(CAstWrapper::OBJECT_REF, TupleTypeNode, FieldNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TEAI), TupleElementAddrNode));
+  
+  if (Print) {
+    llvm::outs() << "\t [OPERAND ADDR]: " << TupleTypeOperand.getOpaqueValue() << "\n";
+    if(Element.hasName()){
+      llvm::outs() << "\t [TUPLE FIELD NAME]: " << Element.getName().str() << "\n";
+    }
+    else{
+      llvm::outs() << "\t [TUPLE FIELD TYPE NAME]: " << Element.getType().getString() << "\n";
+    }
+  }
+
+  return TupleElementAddrNode;
+}
 
 jobject SILWalaInstructionVisitor::visitStructElementAddrInst(StructElementAddrInst *SEAI) {
 
