@@ -1917,6 +1917,49 @@ jobject SILWalaInstructionVisitor::visitSwitchEnumInst(SwitchEnumInst *SWI) {
   return SwitchNode;
 }
 
+jobject SILWalaInstructionVisitor::visitCheckedCastAddrBranchInst(CheckedCastAddrBranchInst *CI) {
+
+  SILValue SrcValue = CI->getSrc();
+  SILValue DestValue = CI->getDest();
+
+  if (Print) {
+    llvm::outs() << "\t [CONVERT]: " << CI->getSourceType().getString() << " " << SrcValue.getOpaqueValue();
+    llvm::outs() << " [TO]: " << CI->getTargetType().getString() << " " << DestValue.getOpaqueValue() << "\n";
+  }
+
+  // 1. Cast statement
+  jobject SrcNode = findAndRemoveCAstNode(SrcValue.getOpaqueValue());
+  jobject DestNode = findAndRemoveCAstNode(DestValue.getOpaqueValue());
+
+  jobject ConversionNode = Wala->makeNode(CAstWrapper::CAST, SrcNode, DestNode);
+
+  // 2. Success block
+  SILBasicBlock *SuccessBlock = CI->getSuccessBB();
+
+  if (Print) {
+     llvm::outs() << "\t [SUCCESS BASIC BLOCK]: " << SuccessBlock << "\n";
+  }
+
+  jobject SuccessBlockNode = Wala->makeConstant(BasicBlockLabeller::label(SuccessBlock).c_str());
+  jobject SuccessGoToNode = Wala->makeNode(CAstWrapper::GOTO, SuccessBlockNode);
+
+  // 3. False block
+  SILBasicBlock *FailureBlock = CI->getFailureBB();
+
+  if (Print) {
+     llvm::outs() << "\t [FAILIURE BASIC BLOCK]: " << FailureBlock << "\n";
+  }
+
+  jobject FailureBlockNode = Wala->makeConstant(BasicBlockLabeller::label(FailureBlock).c_str());
+  jobject FailureGoToNode = Wala->makeNode(CAstWrapper::GOTO, FailureBlockNode);
+
+  // 4. Assemble them into an if-stmt node
+  jobject StmtNode = Wala->makeNode(CAstWrapper::IF_STMT, ConversionNode, SuccessGoToNode, FailureGoToNode);
+
+  NodeMap.insert(std::make_pair(CI, StmtNode));
+  return StmtNode;
+}
+
 jobject SILWalaInstructionVisitor::visitTryApplyInst(TryApplyInst *TAI) {
   auto Call = visitApplySite(ApplySite(TAI));
   jobject TryFunc = Wala->makeNode(CAstWrapper::TRY, Call);
