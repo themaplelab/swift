@@ -355,7 +355,7 @@ jobject SILWalaInstructionVisitor::visitProjectBoxInst(ProjectBoxInst *PBI) {
   if (SymbolTable.has(PBI->getOperand().getOpaqueValue())) {
     // This is a variable
     // NOTE: Apple documentation states: This instruction has undefined behavior if the value buffer is not currently allocated
-    //       (link: https://github.com/apple/swift/blob/master/docs/SIL.rst#project-value-buffer) so there is no nees to allocate
+    //       (link: https://github.com/apple/swift/blob/master/docs/SIL.rst#project_box) so there is no need to allocate
     //       it if it is not currently in the Symbol Table
     SymbolTable.duplicate(static_cast<ValueBase *>(PBI), SymbolTable.get(PBI->getOperand().getOpaqueValue()).c_str());
   }
@@ -415,7 +415,7 @@ jobject SILWalaInstructionVisitor::visitProjectValueBufferInst(ProjectValueBuffe
   }
 
   // NOTE: Apple documentation states: This instruction has undefined behavior if the value buffer is not currently allocated
-  //       (link: https://github.com/apple/swift/blob/master/docs/SIL.rst#project-value-buffer) so there is no nees to allocate
+  //       (link: https://github.com/apple/swift/blob/master/docs/SIL.rst#project-value-buffer) so there is no need to allocate
   //       it if it is not currently in the Symbol Table
   if (SymbolTable.has(BufferValue.getOpaqueValue())) {
     SymbolTable.duplicate(static_cast<ValueBase *>(PVBI), SymbolTable.get(BufferValue.getOpaqueValue()).c_str());
@@ -1527,7 +1527,7 @@ jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExisten
     llvm::outs() << "\t [OPERAND ADDR]: " << PEBI->getOperand().getOpaqueValue() << "\n";
   }
   // NOTE: Apple documentation states: This instruction has undefined behavior if the value buffer is not currently allocated
-  //       (link: https://github.com/apple/swift/blob/master/docs/SIL.rst#project-value-buffer) so there is no nees to allocate
+  //       (link: https://github.com/apple/swift/blob/master/docs/SIL.rst#project-existential-box so there is no need to allocate
   //       it if it is not currently in the Symbol Table
   if (SymbolTable.has(PEBI->getOperand().getOpaqueValue())) {
     SymbolTable.duplicate(static_cast<ValueBase *>(PEBI), SymbolTable.get(PEBI->getOperand().getOpaqueValue()).c_str());
