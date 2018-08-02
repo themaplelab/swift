@@ -111,6 +111,7 @@ public:
   jobject visitDestroyValueInst(DestroyValueInst *DVI);
   jobject visitTupleInst(TupleInst *TI);
   jobject visitTupleExtractInst(TupleExtractInst *TEI);
+  jobject visitTupleElementAddrInst(TupleElementAddrInst *TEAI);
   jobject visitStructInst(StructInst *SI);
   jobject visitStructExtractInst(StructExtractInst *SEI);
   jobject visitStructElementAddrInst(StructElementAddrInst *SEAI);
