@@ -1918,7 +1918,6 @@ jobject SILWalaInstructionVisitor::visitSwitchEnumInst(SwitchEnumInst *SWI) {
 }
 
 jobject SILWalaInstructionVisitor::visitCheckedCastAddrBranchInst(CheckedCastAddrBranchInst *CI) {
-
   SILValue SrcValue = CI->getSrc();
   SILValue DestValue = CI->getDest();
 
