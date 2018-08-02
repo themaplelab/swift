@@ -308,6 +308,31 @@ jobject SILWalaInstructionVisitor::visitAllocBoxInst(AllocBoxInst *ABI) {
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitAllocRefInst(AllocRefInst *ARI) {
+  string RefTypeName = ARI->getType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "\t [VAR TYPE]: " << RefTypeName << "\n";
+  }
+
+  SymbolTable.insert(static_cast<ValueBase *>(ARI), RefTypeName);
+
+  ArrayRef<SILType> Types = ARI->getTailAllocatedTypes();
+  ArrayRef<Operand> Counts = ARI->getTailAllocatedCounts();
+
+  for (unsigned Idx = 0, NumTypes = Types.size(); Idx < NumTypes; ++Idx) {
+    SILValue OperandValue = Counts[Idx].get();
+    string OperandTypeName = Types[Idx].getAsString();
+
+    if (Print) {
+      llvm::outs() << "\t [OPERAND]: " << OperandValue.getOpaqueValue() << " [TYPE]: " << OperandTypeName << "\n";
+    }
+
+    SymbolTable.insert(static_cast<ValueBase *>(OperandValue.getOpaqueValue()), OperandTypeName);
+  }
+  return  Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 jobject SILWalaInstructionVisitor::visitAllocGlobalInst(AllocGlobalInst *AGI) {
   SILGlobalVariable *Var = AGI->getReferencedGlobal();
   StringRef Name = Var->getName();
