@@ -61,6 +61,7 @@ public:
   jobject visitAssignInst(AssignInst *AI);
   jobject visitStoreBorrowInst(StoreBorrowInst *SBI);
   jobject visitMarkUninitializedInst(MarkUninitializedInst *MUI);
+  jobject visitMarkFunctionEscapeInst(MarkFunctionEscapeInst *MFEI);
   jobject visitCopyAddrInst(CopyAddrInst *CAI);
   jobject visitDestroyAddrInst(DestroyAddrInst *DAI);
   jobject visitIndexAddrInst(IndexAddrInst *IAI);
