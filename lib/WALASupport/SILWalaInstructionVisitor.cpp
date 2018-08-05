@@ -2070,7 +2070,6 @@ jobject SILWalaInstructionVisitor::visitSwitchEnumAddrInst(SwitchEnumAddrInst *S
     }
 
     if (SEAI->hasDefault()) {
-
       SILBasicBlock *DestinationBlock = SEAI->getDefaultBB();
 
       string ElementNameString = "DEFAULT";
