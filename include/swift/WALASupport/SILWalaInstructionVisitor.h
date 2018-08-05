@@ -178,6 +178,7 @@ public:
   jobject visitSwitchValueInst(SwitchValueInst *SVI);
   jobject visitSelectValueInst(SelectValueInst *SVI);
   jobject visitSwitchEnumInst(SwitchEnumInst *SWI);
+  jobject visitSwitchEnumAddrInst(SwitchEnumAddrInst *SEAI);
   jobject visitCheckedCastAddrBranchInst(CheckedCastAddrBranchInst *CI);
   jobject visitTryApplyInst(TryApplyInst *TAI);
 
