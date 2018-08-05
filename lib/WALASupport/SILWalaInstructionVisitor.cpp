@@ -1474,6 +1474,29 @@ jobject SILWalaInstructionVisitor::visitUncheckedEnumDataInst(UncheckedEnumDataI
   return UncheckedEnumData;
 }
 
+jobject SILWalaInstructionVisitor::visitInitEnumDataAddrInst(InitEnumDataAddrInst *UDAI) {
+
+  SILValue EnumletOperand = UDAI->getOperand();
+
+  EnumElementDecl *EnumElement = UDAI->getElement();
+  EnumDecl *EnumParent = EnumElement->getParentEnum();
+
+  string EnumletName = EnumElement->getName().str();
+  string EnumName = EnumParent->getNameStr().str();
+
+  string CaseName = EnumName + "." + EnumletName;
+
+  if (Print) {
+    llvm::outs() << "\t [OPERAND ADDR]: " << EnumletOperand.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [ENUM]: " << EnumName  << "\n";
+    llvm::outs() << "\t [ENUMLET]: " << CaseName  << "\n";
+  }
+
+  jobject CaseNameNode = Wala->makeConstant(EnumletName.c_str());
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(UDAI), CaseNameNode));
+  return CaseNameNode;
+}
+
 jobject SILWalaInstructionVisitor::visitSelectEnumInst(SelectEnumInst *SEI) {
 
   list<jobject> Children;
