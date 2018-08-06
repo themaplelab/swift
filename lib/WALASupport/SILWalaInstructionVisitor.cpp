@@ -2053,6 +2053,58 @@ jobject SILWalaInstructionVisitor::visitSwitchEnumInst(SwitchEnumInst *SWI) {
   return SwitchNode;
 }
 
+jobject SILWalaInstructionVisitor::visitSwitchEnumAddrInst(SwitchEnumAddrInst *SEAI) {
+  SILValue ConditionOperand = SEAI->getOperand();
+
+  jobject CondNode = findAndRemoveCAstNode(ConditionOperand.getOpaqueValue());
+
+  list<jobject> Children;
+
+  for (unsigned i = 0, e = SEAI->getNumCases(); i < e; ++i) {
+      EnumElementDecl *Element;
+      SILBasicBlock *DestinationBlock;
+
+      std::tie(Element, DestinationBlock) = SEAI->getCase(i);
+
+      string ElementNameString = Element->getNameStr();
+      jobject ElementNameNode = Wala->makeConstant(ElementNameString.c_str());
+
+      if (Print) {
+         llvm::outs() << "\t [BASIC BLOCK]: " << DestinationBlock << "\n";
+      }
+
+      jobject BlockLabelNodeName = Wala->makeConstant(BasicBlockLabeller::label(DestinationBlock).c_str());
+      jobject GotoNode = Wala->makeNode(CAstWrapper::GOTO, BlockLabelNodeName);
+
+      Children.push_back(ElementNameNode);
+      Children.push_back(GotoNode);
+    }
+
+    if (SEAI->hasDefault()) {
+      SILBasicBlock *DestinationBlock = SEAI->getDefaultBB();
+
+      string ElementNameString = "DEFAULT";
+      jobject ElementNameNode = Wala->makeConstant(ElementNameString.c_str());
+
+      if (Print) {
+         llvm::outs() << "\t [DEFAULT BASIC BLOCK]: " << DestinationBlock << "\n";
+      }
+
+      jobject BlockLabelNodeName = Wala->makeConstant(BasicBlockLabeller::label(DestinationBlock).c_str());
+      jobject GotoNode = Wala->makeNode(CAstWrapper::GOTO, BlockLabelNodeName);
+
+      Children.push_back(ElementNameNode);
+      Children.push_back(GotoNode);
+    }
+
+    jobject EnumNode = Wala->makeNode(CAstWrapper::BLOCK_STMT,  Wala->makeArray(&Children));
+    jobject SwitchEnumAddrNode = Wala->makeNode(CAstWrapper::SWITCH, CondNode, EnumNode);
+
+    NodeMap.insert(std::make_pair(SEAI, SwitchEnumAddrNode));
+
+    return SwitchEnumAddrNode;
+}
+
 jobject SILWalaInstructionVisitor::visitCheckedCastAddrBranchInst(CheckedCastAddrBranchInst *CI) {
   SILValue SrcValue = CI->getSrc();
   SILValue DestValue = CI->getDest();
