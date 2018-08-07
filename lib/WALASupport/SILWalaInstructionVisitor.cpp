@@ -1631,6 +1631,24 @@ jobject SILWalaInstructionVisitor::visitDeinitExistentialValueInst(DeinitExisten
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitInitExistentialMetatypeInst(InitExistentialMetatypeInst *IEMI) {
+  if (Print) {
+    llvm::outs() << "[IEMI]: " << IEMI << "\n";
+    llvm::outs() << "[OPERAND]: " << IEMI->getOperand() << "\n";
+    llvm::outs() << "[EX-TYPE]: " << IEMI->getType() << "\n";
+  }
+
+  if (SymbolTable.has(IEMI->getOperand().getOpaqueValue())) {
+    auto name = "ExistentialMetatype of " + 
+      SymbolTable.get(IEMI->getOperand().getOpaqueValue()) + " -> " + 
+      IEMI->getType().getAsString();
+    SymbolTable.insert(static_cast<ValueBase *>(IEMI), name);
+  }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+
 jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
     if (Print) {
       llvm::outs() << "\t [AEBI]: " << AEBI << "\n";
