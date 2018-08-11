@@ -1648,6 +1648,22 @@ jobject SILWalaInstructionVisitor::visitInitExistentialMetatypeInst(InitExistent
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitOpenExistentialMetatypeInst(OpenExistentialMetatypeInst *OEMI) {
+  jobject operandNode = findAndRemoveCAstNode(OEMI->getOperand().getOpaqueValue());
+  string openedType = OEMI->getType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "[OPERAND]: " << OEMI->getOperand() << "\n";
+    llvm::outs() << "[EXISTENTIAL TYPE]: " << openedType << "\n";
+  }
+
+  jobject openedTypeNode = Wala->makeConstant(openedType.c_str());
+  jobject castNode = Wala->makeNode(CAstWrapper::CAST, operandNode, openedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(OEMI), castNode));
+
+  return castNode;
+}
 
 jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
     if (Print) {
