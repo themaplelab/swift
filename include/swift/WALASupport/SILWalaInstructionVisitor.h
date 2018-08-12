@@ -37,8 +37,6 @@ public:
   jobject visitAllocGlobalInst(AllocGlobalInst *AGI);
   jobject visitProjectBoxInst(ProjectBoxInst *PBI);
   jobject visitAllocValueBufferInst(AllocValueBufferInst *AVBI);
-  jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
-  jobject visitEndUnpairedAccessInst(EndUnpairedAccessInst *EUAI);
   jobject visitProjectValueBufferInst(ProjectValueBufferInst *PVBI);
   jobject visitDeallocValueBufferInst(DeallocValueBufferInst *DVBI);
 
@@ -68,6 +66,8 @@ public:
   jobject visitTailAddrInst(TailAddrInst *TAI);
   jobject visitBeginAccessInst(BeginAccessInst *BAI);
   jobject visitEndAccessInst(EndAccessInst *EAI);
+  jobject visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI);
+  jobject visitEndUnpairedAccessInst(EndUnpairedAccessInst *EUAI);
 
   /*******************************************************************************/
   /*                        Reference Counting                                   */

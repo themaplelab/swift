@@ -400,36 +400,6 @@ jobject SILWalaInstructionVisitor::visitAllocValueBufferInst(AllocValueBufferIns
   return  Wala->makeNode(CAstWrapper::EMPTY);
 }
 
-jobject SILWalaInstructionVisitor::visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI) {
-
-  SILValue SourceValue = BUI->getSource();
-  SILValue BufferValue = BUI->getBuffer();
-
-  if (Print) {
-    llvm::outs() << "\t [OPERAND]: " << SourceValue.getOpaqueValue() << "\n";
-    llvm::outs() << "\t [BUFFER]: " << SourceValue.getOpaqueValue() << "\n";
-  }
-
-  jobject SourceNode = findAndRemoveCAstNode(SourceValue.getOpaqueValue());
-
-  NodeMap.insert(std::make_pair(BufferValue.getOpaqueValue(), SourceNode));
-
-  return Wala->makeNode(CAstWrapper::EMPTY);
-}
-
-jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessInst *EUAI) {
-  SILValue BufferValue = EUAI->getBuffer();
-
-  if (Print) {
-    llvm::outs() << "\t [BUFFER]: " << BufferValue << "\n";
-    llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
-  }
-
-  findAndRemoveCAstNode(BufferValue.getOpaqueValue());
-
-  return Wala->makeNode(CAstWrapper::EMPTY);
-}
-
 jobject SILWalaInstructionVisitor::visitDeallocValueBufferInst(DeallocValueBufferInst *DVBI) {
   SILValue BufferValue = DVBI->getOperand();
   string ValueTypeName = DVBI->getValueType().getAsString();
@@ -787,6 +757,36 @@ jobject SILWalaInstructionVisitor::visitEndAccessInst(EndAccessInst *EAI) {
     }
     NodeMap.erase(key);
   }
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitBeginUnpairedAccessInst(BeginUnpairedAccessInst *BUI) {
+
+  SILValue SourceValue = BUI->getSource();
+  SILValue BufferValue = BUI->getBuffer();
+
+  if (Print) {
+    llvm::outs() << "\t [OPERAND]: " << SourceValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [BUFFER]: " << SourceValue.getOpaqueValue() << "\n";
+  }
+
+  jobject SourceNode = findAndRemoveCAstNode(SourceValue.getOpaqueValue());
+
+  NodeMap.insert(std::make_pair(BufferValue.getOpaqueValue(), SourceNode));
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessInst *EUAI) {
+  SILValue BufferValue = EUAI->getBuffer();
+
+  if (Print) {
+    llvm::outs() << "\t [BUFFER]: " << BufferValue << "\n";
+    llvm::outs() << "\t [BUFFER ADDR]: " << BufferValue.getOpaqueValue() << "\n";
+  }
+
+  findAndRemoveCAstNode(BufferValue.getOpaqueValue());
+
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
