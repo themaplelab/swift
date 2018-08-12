@@ -1661,6 +1661,18 @@ jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExisten
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitDeallocExistentialBoxInst(DeallocExistentialBoxInst *DEBI) {
+  if (Print) {
+    llvm::outs() << "\t [OPERAND]: " << DEBI->getOperand() << "\n";
+  }
+
+  findAndRemoveCAstNode(DEBI->getOperand().getOpaqueValue());
+  SymbolTable.remove(DEBI->getOperand().getOpaqueValue());
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+
 /*******************************************************************************/
 /*                        BLOCKS                                               */
 /*******************************************************************************/

@@ -142,6 +142,7 @@ public:
   jobject visitDeinitExistentialValueInst(DeinitExistentialValueInst *DEVI);
   jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
   jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
+  jobject visitDeallocExistentialBoxInst(DeallocExistentialBoxInst *DEBI);
 
   /*******************************************************************************/
   /*                          Blocks                                             */
