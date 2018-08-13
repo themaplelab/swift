@@ -1575,9 +1575,9 @@ jobject SILWalaInstructionVisitor::visitSelectEnumInst(SelectEnumInst *SEI) {
 
 jobject SILWalaInstructionVisitor::visitInitExistentialAddrInst(InitExistentialAddrInst *IEAI) {
   if (Print) {
-    llvm::outs() << "IEAI " << IEAI << "\n";
-    llvm::outs() << "Operand: " << IEAI->getOperand() << "\n";
-    llvm::outs() << "FormalConcreteType: " << IEAI->getFormalConcreteType() << "\n";
+    llvm::outs() << "[IEAI] " << IEAI << "\n";
+    llvm::outs() << "[OPERAND]: " << IEAI->getOperand() << "\n";
+    llvm::outs() << "[FormalConcreteType]: " << IEAI->getFormalConcreteType() << "\n";
   }
 
   if (SymbolTable.has(IEAI->getOperand().getOpaqueValue())) {
@@ -1592,9 +1592,9 @@ jobject SILWalaInstructionVisitor::visitInitExistentialAddrInst(InitExistentialA
 
 jobject SILWalaInstructionVisitor::visitInitExistentialValueInst(InitExistentialValueInst *IEVI) {
   if (Print) {
-    llvm::outs() << "IEVI " << IEVI << "\n";
-    llvm::outs() << "Operand " << IEVI->getOperand() << "\n";
-    llvm::outs() << "ConcreteType " << IEVI->getFormalConcreteType() << "\n";
+    llvm::outs() << "[IEVI]: " << IEVI << "\n";
+    llvm::outs() << "[OPERAND]: " << IEVI->getOperand() << "\n";
+    llvm::outs() << "[ConcreteType]: " << IEVI->getFormalConcreteType() << "\n";
   }
 
    if (SymbolTable.has(IEVI->getOperand().getOpaqueValue())) {
@@ -1621,8 +1621,8 @@ jobject SILWalaInstructionVisitor::visitDeinitExistentialAddrInst(DeinitExistent
 
 jobject SILWalaInstructionVisitor::visitDeinitExistentialValueInst(DeinitExistentialValueInst *DEVI) {
   if (Print) {
-    llvm::outs() << "DEVI " << DEVI << "\n";
-    llvm::outs() << "Operand " << DEVI->getOperand() << "\n";
+    llvm::outs() << "[DEVI]: " << DEVI << "\n";
+    llvm::outs() << "[Operand]: " << DEVI->getOperand() << "\n";
   }
 
   findAndRemoveCAstNode(DEVI->getOperand().getOpaqueValue());
@@ -1630,6 +1630,24 @@ jobject SILWalaInstructionVisitor::visitDeinitExistentialValueInst(DeinitExisten
 
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
+
+jobject SILWalaInstructionVisitor::visitInitExistentialMetatypeInst(InitExistentialMetatypeInst *IEMI) {
+  if (Print) {
+    llvm::outs() << "[IEMI]: " << IEMI << "\n";
+    llvm::outs() << "[OPERAND]: " << IEMI->getOperand() << "\n";
+    llvm::outs() << "[EX-TYPE]: " << IEMI->getType() << "\n";
+  }
+
+  if (SymbolTable.has(IEMI->getOperand().getOpaqueValue())) {
+    auto name = "ExistentialMetatype of " + 
+      SymbolTable.get(IEMI->getOperand().getOpaqueValue()) + " -> " + 
+      IEMI->getType().getAsString();
+    SymbolTable.insert(static_cast<ValueBase *>(IEMI), name);
+  }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 
 jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
     if (Print) {
