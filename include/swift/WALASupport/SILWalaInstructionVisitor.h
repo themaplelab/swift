@@ -141,6 +141,7 @@ public:
   jobject visitInitExistentialValueInst(InitExistentialValueInst *IEVI);
   jobject visitDeinitExistentialValueInst(DeinitExistentialValueInst *DEVI);
   jobject visitInitExistentialMetatypeInst(InitExistentialMetatypeInst *IEMI);
+  jobject visitOpenExistentialMetatypeInst(OpenExistentialMetatypeInst *OEMI);
   jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
   jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
   jobject visitDeallocExistentialBoxInst(DeallocExistentialBoxInst *DEBI);
