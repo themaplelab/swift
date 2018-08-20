@@ -1695,6 +1695,23 @@ jobject SILWalaInstructionVisitor::visitProjectExistentialBoxInst(ProjectExisten
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitOpenExistentialBoxInst(OpenExistentialBoxInst *OEBI) {
+  jobject operandNode = findAndRemoveCAstNode(OEBI->getOperand().getOpaqueValue());
+  string openedType = OEBI->getType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "[OPERAND]: " << OEBI->getOperand() << "\n";
+    llvm::outs() << "[EXISTENTIAL TYPE]: " << openedType << "\n";
+  }
+
+  jobject openedTypeNode = Wala->makeConstant(openedType.c_str());
+  jobject castNode = Wala->makeNode(CAstWrapper::CAST, operandNode, openedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(OEBI), castNode));
+
+  return castNode;
+}
+
 jobject SILWalaInstructionVisitor::visitDeallocExistentialBoxInst(DeallocExistentialBoxInst *DEBI) {
   if (Print) {
     llvm::outs() << "\t [OPERAND]: " << DEBI->getOperand() << "\n";
