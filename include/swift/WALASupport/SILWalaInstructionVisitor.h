@@ -145,6 +145,7 @@ public:
   jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
   jobject visitProjectExistentialBoxInst(ProjectExistentialBoxInst *PEBI);
   jobject visitOpenExistentialBoxInst(OpenExistentialBoxInst *OEBI);
+  jobject visitOpenExistentialBoxValueInst(OpenExistentialBoxValueInst *OEBVI);
   jobject visitDeallocExistentialBoxInst(DeallocExistentialBoxInst *DEBI);
 
   /*******************************************************************************/
