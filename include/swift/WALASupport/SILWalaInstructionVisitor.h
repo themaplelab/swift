@@ -140,6 +140,8 @@ public:
   jobject visitDeinitExistentialAddrInst(DeinitExistentialAddrInst *DEAI);
   jobject visitInitExistentialValueInst(InitExistentialValueInst *IEVI);
   jobject visitDeinitExistentialValueInst(DeinitExistentialValueInst *DEVI);
+  jobject visitOpenExistentialAddrInst(OpenExistentialAddrInst *OEAI);
+  jobject visitOpenExistentialValueInst(OpenExistentialValueInst *OEVI);
   jobject visitInitExistentialMetatypeInst(InitExistentialMetatypeInst *IEMI);
   jobject visitOpenExistentialMetatypeInst(OpenExistentialMetatypeInst *OEMI);
   jobject visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI);
