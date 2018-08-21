@@ -1842,6 +1842,25 @@ jobject SILWalaInstructionVisitor::visitUncheckedRefCastInst(UncheckedRefCastIns
   return CastedNode;
 }
 
+jobject SILWalaInstructionVisitor::visitRefToRawPointerInst(RefToRawPointerInst *CI) {
+  SILValue ConvertedValue = CI->getConverted();
+  string CovertedType = CI->getType().getAsString();
+
+  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [RefToRawPointerInst]: " << static_cast<ValueBase *>(CI) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << ConvertedNode << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CI), CastedNode));
+  return CastedNode;
+}
+
 jobject SILWalaInstructionVisitor::visitPointerToAddressInst(PointerToAddressInst *PTAI) {
   // Getting the value to be converted
   SILValue ValueToBeConverted = PTAI->getConverted();
