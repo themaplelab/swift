@@ -794,6 +794,28 @@ jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessI
 /*                              REFERENCE COUNTING                             */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitMarkDependenceInst(MarkDependenceInst *MDI) {
+
+  SILValue DependentValue = MDI->getValue();
+  SILValue BaseValue = MDI->getBase();
+
+  if (Print) {
+    llvm::outs() << "\t [MarkDependence]: " << static_cast<ValueBase *>(MDI) << "\n";
+    llvm::outs() << "\t [VALUE]: " << DependentValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t validity depends on" << "\n";
+    llvm::outs() << "\t [BASE]: " << BaseValue.getOpaqueValue() << "\n";
+  }
+
+  jobject DependentNode = findAndRemoveCAstNode(DependentValue.getOpaqueValue());
+  jobject BaseNode = findAndRemoveCAstNode(BaseValue.getOpaqueValue());
+
+  jobject Node = Wala->makeNode(CAstWrapper::PRIMITIVE, BaseNode, DependentNode );
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(MDI), Node));
+
+  return Node;
+}
+
 /*******************************************************************************/
 /*                                  LITERALS                                   */
 /*******************************************************************************/
