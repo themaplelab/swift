@@ -129,6 +129,7 @@ public:
 
   jobject visitEnumInst(EnumInst *EI);
   jobject visitUncheckedEnumDataInst(UncheckedEnumDataInst *UED);
+  jobject visitInjectEnumAddrInst(InjectEnumAddrInst *IUAI);
   jobject visitUncheckedTakeEnumDataAddrInst(UncheckedTakeEnumDataAddrInst *UDAI);
   jobject visitSelectEnumInst(SelectEnumInst *SEI);
 
