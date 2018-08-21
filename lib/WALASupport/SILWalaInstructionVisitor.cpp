@@ -794,6 +794,25 @@ jobject SILWalaInstructionVisitor::visitEndUnpairedAccessInst(EndUnpairedAccessI
 /*                              REFERENCE COUNTING                             */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitStrongUnpinInst(StrongUnpinInst *SUI) {
+
+  SILValue UnpinOperand = SUI->getOperand();
+
+  llvm::outs() << "\t [VALUE]: " << UnpinOperand.getOpaqueValue() << "\n";
+  llvm::outs() << "\t [NODE]: " << findAndRemoveCAstNode(UnpinOperand.getOpaqueValue()) << "\n";
+
+  if (NodeMap.find(UnpinOperand) != NodeMap.end()) {
+    if (Print) {
+      llvm::outs() << "\t pinned value found in NodeMap, remove from NodeMap\n";
+    }
+    NodeMap.erase(UnpinOperand);
+  } else {
+    SymbolTable.remove(UnpinOperand.getOpaqueValue());
+  }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 /*******************************************************************************/
 /*                                  LITERALS                                   */
 /*******************************************************************************/
