@@ -164,6 +164,7 @@ public:
   jobject visitUncheckedRefCastInst(UncheckedRefCastInst *URCI);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
+  jobject visitPointerToThinFunctionInst(PointerToThinFunctionInst *CI);
   jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
   jobject visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI);
 
