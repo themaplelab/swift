@@ -89,6 +89,7 @@ public:
   /*******************************************************************************/
 
   jobject visitClassMethodInst(ClassMethodInst *CMI);
+  jobject visitObjCMethodInst(ObjCMethodInst *AMI);
   jobject visitWitnessMethodInst(WitnessMethodInst *WMI);
 
   /*******************************************************************************/
