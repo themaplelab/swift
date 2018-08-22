@@ -124,6 +124,7 @@ public:
   jobject visitStructExtractInst(StructExtractInst *SEI);
   jobject visitStructElementAddrInst(StructElementAddrInst *SEAI);
   jobject visitRefElementAddrInst(RefElementAddrInst *REAI);
+  jobject visitRefTailAddrInst(RefTailAddrInst *RTAI);
 
   /*******************************************************************************/
   /*                          Enums                                              */

@@ -1447,6 +1447,31 @@ jobject SILWalaInstructionVisitor::visitRefElementAddrInst(RefElementAddrInst *R
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitRefTailAddrInst(RefTailAddrInst *RTAI) {
+  SILValue ElementOperand = RTAI->getOperand();
+
+  ClassDecl *ClassElement = RTAI->getClassDecl();
+  SILType  ResultType = RTAI->getTailType();
+  
+  jobject ElementNode = findAndRemoveCAstNode(ElementOperand.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [RefTailAddrInst]: " << static_cast<ValueBase *>(RTAI) << "\n";
+    llvm::outs() << "\t [OPERAND]: " << ElementOperand << "\n";
+    llvm::outs() << "\t [OPERAND ADDR]: " << ElementOperand.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [CLASS]: " << ClassElement->getDeclaredType().getString() << "\n";
+    llvm::outs() << "\t [RESULT TYPE]: " << ResultType.getAsString() << "\n";
+  }
+
+  jobject ResultTypeNameNode = Wala->makeConstant(ResultType.getAsString().c_str());
+
+  auto Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ElementNode , ResultTypeNameNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(RTAI), Node));
+
+  return Node;
+}
+
 /*******************************************************************************/
 /*                                    ENUMS                                    */
 /*******************************************************************************/
