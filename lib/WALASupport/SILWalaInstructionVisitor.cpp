@@ -1975,6 +1975,22 @@ jobject SILWalaInstructionVisitor::visitUncheckedOwnershipConversionInst(Uncheck
 /*                   RUNTIME FAILURES                                          */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitCondFailInst(CondFailInst *FI) {
+
+  SILValue CondOperand = FI->getOperand();
+
+  if (Print) {
+    llvm::outs() << "\t [OPERAND]: " << CondOperand << "\n";
+    llvm::outs() << "\t [OPERAND ADDR]: " << CondOperand.getOpaqueValue() << "\n";
+  }
+
+  jobject Node = Wala->makeNode(CAstWrapper::ASSERT, findAndRemoveCAstNode(CondOperand.getOpaqueValue()));
+
+  NodeMap.insert(std::make_pair(FI, Node));
+
+  return Node;
+}
+
 /*******************************************************************************/
 /*                      TERMINATORS                                            */
 /*******************************************************************************/
