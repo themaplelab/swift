@@ -189,6 +189,7 @@ public:
   jobject visitUnreachableInst(UnreachableInst *UI);
   jobject visitReturnInst(ReturnInst *RI);
   jobject visitThrowInst(ThrowInst *TI);
+  jobject visitUnwindInst(UnwindInst *UI);
   jobject visitBranchInst(BranchInst *BI);
   jobject visitCondBranchInst(CondBranchInst *CBI);
   jobject visitSwitchValueInst(SwitchValueInst *SVI);

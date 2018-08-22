@@ -2118,6 +2118,12 @@ jobject SILWalaInstructionVisitor::visitThrowInst(ThrowInst *TI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitUnwindInst(UnwindInst *UI) {
+  jobject Node = Wala->makeNode(CAstWrapper::UNWIND);
+  NodeMap.insert(std::make_pair(UI, Node));
+  return Node;
+}
+
 jobject SILWalaInstructionVisitor::visitBranchInst(BranchInst *BI) {
   // This is an unconditional branch
   jobject GotoNode = Wala->makeNode(CAstWrapper::EMPTY);
