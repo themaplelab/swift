@@ -2118,6 +2118,40 @@ jobject SILWalaInstructionVisitor::visitThrowInst(ThrowInst *TI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitYieldInst(YieldInst *YI) {
+  SILBasicBlock *ResumeBB = YI->getResumeBB();
+  SILBasicBlock *UnwindBB = YI->getUnwindBB();
+
+  if (Print) {
+    llvm::outs() << "\t [RESUME BB]: " << ResumeBB << "\n";
+    llvm::outs() << "\t [UNWIND BB]: " << UnwindBB << "\n";
+  }
+
+  list<jobject> yieldValues;
+
+  for (const auto &value : YI->getYieldedValues()) {
+    if (Print) {
+      llvm::outs() << "\t [YIELD VALUE]: " << value << "\n";
+    }
+    jobject child = findAndRemoveCAstNode(value);
+    if (child != nullptr) {
+      yieldValues.push_back(child);
+    }
+  }
+
+  jobject ResumeLabelNode = Wala->makeConstant(BasicBlockLabeller::label(ResumeBB).c_str());
+  jobject ResumeGotoNode = Wala->makeNode(CAstWrapper::GOTO, ResumeLabelNode);
+
+  jobject UnwindLabelNode = Wala->makeConstant(BasicBlockLabeller::label(UnwindBB).c_str());
+  jobject UnwindGotoNode = Wala->makeNode(CAstWrapper::GOTO, UnwindLabelNode); 
+
+  jobject Node = Wala->makeNode(CAstWrapper::YIELD_STMT, Wala->makeArray(&yieldValues), ResumeGotoNode, UnwindGotoNode);
+
+  NodeMap.insert(std::make_pair(YI, Node));
+
+  return Node;
+}
+
 jobject SILWalaInstructionVisitor::visitUnwindInst(UnwindInst *UI) {
   jobject Node = Wala->makeNode(CAstWrapper::UNWIND);
   NodeMap.insert(std::make_pair(UI, Node));
