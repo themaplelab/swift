@@ -2113,7 +2113,7 @@ jobject SILWalaInstructionVisitor::visitThrowInst(ThrowInst *TI) {
     } else {
       Node = Wala->makeNode(CAstWrapper::THROW, V);
     }
-    NodeMap.insert(std::make_pair(TV, Node));
+    NodeMap.insert(std::make_pair(TI, Node));
   }
   return Node;
 }
