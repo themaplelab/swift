@@ -2078,8 +2078,25 @@ jobject SILWalaInstructionVisitor::visitThinFunctionToPointerInst(ThinFunctionTo
    }
  
    NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TFPI), FunctionPointerNode));
- 
    return FunctionPointerNode;
+}
+
+jobject SILWalaInstructionVisitor::visitPointerToThinFunctionInst(PointerToThinFunctionInst *CI) {
+  SILValue ConvertedValue = CI->getConverted();
+  string CovertedType = CI->getType().getAsString();
+
+  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [PointerToThinFunctionInst]: " << static_cast<ValueBase *>(CI) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CI), CastedNode));
+  return CastedNode;
 }
 
 jobject SILWalaInstructionVisitor::visitConvertFunctionInst(ConvertFunctionInst *CFI) {
