@@ -1532,6 +1532,21 @@ jobject SILWalaInstructionVisitor::visitUncheckedEnumDataInst(UncheckedEnumDataI
   return UncheckedEnumData;
 }
 
+jobject SILWalaInstructionVisitor::visitInjectEnumAddrInst(InjectEnumAddrInst *IUAI) {
+
+  // This instruction can be ignored for us.
+  // Swift uses 2 pass initialization to initialize a data case but we can ignore this becuase in 
+  // visitInitEnumDataAddrInst we create the enum as an object_literal and it is fully initialized
+
+  if (Print) {
+    llvm::outs() << "\t [OPERAND]: " << IUAI->getOperand() << "\n";
+    llvm::outs() << "\t [ELEMNT]: " << IUAI->getElement()->getNameStr() << "\n";
+    llvm::outs() << "\t [OPERAND ADDR]: " << IUAI->getOperand().getOpaqueValue() << "\n";
+  }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+ }
+
 jobject SILWalaInstructionVisitor::visitInitEnumDataAddrInst(InitEnumDataAddrInst *UDAI) {
 
   list<jobject> Properties;
