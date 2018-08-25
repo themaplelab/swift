@@ -998,7 +998,7 @@ jobject SILWalaInstructionVisitor::visitObjCMethodInst(ObjCMethodInst *AMI) {
   jobject MemberNameNode = Wala->makeConstant(MemberFuncName.c_str());  
   jobject FuncNode = Wala->makeNode(CAstWrapper::FUNCTION_EXPR, MemberNameNode);
 
-  jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, InterfaceNode, FuncNode );
+  jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, InterfaceNode, FuncNode);
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(AMI), Node));
 
