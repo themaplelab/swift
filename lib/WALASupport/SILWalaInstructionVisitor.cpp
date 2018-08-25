@@ -1025,6 +1025,29 @@ jobject SILWalaInstructionVisitor::visitClassMethodInst(ClassMethodInst *CMI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitObjCMethodInst(ObjCMethodInst *AMI) {
+  SILValue InterfaceOperand = AMI->getOperand();
+  SILDeclRef MemberFunc = AMI->getMember();
+
+  string MemberFuncName = Demangle::demangleSymbolAsString(MemberFunc.mangle());
+
+  if (Print) {
+    llvm::outs() << "\t [INTERFACE]: " << AMI->getMember().getDecl()->getInterfaceType().getString() << "\n";
+    llvm::outs() << "\t [OBJC MEMBER]: " << MemberFuncName << "\n";
+  }
+
+  jobject InterfaceNode = findAndRemoveCAstNode(InterfaceOperand.getOpaqueValue());
+
+  jobject MemberNameNode = Wala->makeConstant(MemberFuncName.c_str());  
+  jobject FuncNode = Wala->makeNode(CAstWrapper::FUNCTION_EXPR, MemberNameNode);
+
+  jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, InterfaceNode, FuncNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(AMI), Node));
+
+  return Node;
+}
+
 jobject SILWalaInstructionVisitor::visitWitnessMethodInst(WitnessMethodInst *WMI) {
 
   ProtocolDecl *Protocol = WMI->getLookupProtocol();
