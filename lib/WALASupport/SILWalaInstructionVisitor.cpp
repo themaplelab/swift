@@ -1980,6 +1980,26 @@ jobject SILWalaInstructionVisitor::visitUncheckedRefCastInst(UncheckedRefCastIns
   return CastedNode;
 }
 
+jobject SILWalaInstructionVisitor::visitUncheckedAddrCastInst(UncheckedAddrCastInst *UACI) {
+  SILValue ConvertedValue = UACI->getConverted();
+  string CovertedType = UACI->getType().getAsString();
+
+  jobject UncheckedAddrCastNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [UncheckedAddrCastInst]: " << static_cast<ValueBase *>(UACI) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << UncheckedAddrCastNode << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UncheckedAddrCastNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(UACI), CastedNode));
+
+  return CastedNode;
+}
+
 jobject SILWalaInstructionVisitor::visitRawPointerToRefInst(RawPointerToRefInst *CI) {
 
   SILValue ValueToBeConverted = CI->getConverted();

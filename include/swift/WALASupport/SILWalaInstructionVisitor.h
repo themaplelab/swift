@@ -168,6 +168,8 @@ public:
   jobject visitAddressToPointerInst(AddressToPointerInst *ATPI);
   jobject visitPointerToAddressInst(PointerToAddressInst *PTAI);
   jobject visitUncheckedRefCastInst(UncheckedRefCastInst *URCI);
+  jobject visitUncheckedAddrCastInst(UncheckedAddrCastInst *UACI);
+  jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitRawPointerToRefInst(RawPointerToRefInst *CI);
   jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
