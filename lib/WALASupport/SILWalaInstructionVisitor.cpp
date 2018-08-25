@@ -2118,6 +2118,25 @@ jobject SILWalaInstructionVisitor::visitUncheckedOwnershipConversionInst(Uncheck
 /*                   CHECKED CONVERSIONS                                       */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitUnconditionalCheckedCastAddrInst(UnconditionalCheckedCastAddrInst *CI) {
+  SILValue SrcValue = CI->getSrc();
+  SILValue DestValue = CI->getDest();
+
+  if (Print) {
+    llvm::outs() << "\t [UnconditionalCheckedCastAddrInst]: " << CI << "\n";
+    llvm::outs() << "\t [CONVERT]: " << CI->getSourceType().getString() << " " << SrcValue.getOpaqueValue();
+    llvm::outs() << " [TO]: " << CI->getTargetType().getString() << " " << DestValue.getOpaqueValue() << "\n";
+  }
+
+  jobject SrcNode = findAndRemoveCAstNode(SrcValue.getOpaqueValue());
+  jobject ConvertedTypeNode = Wala->makeConstant(CI->getTargetType().getString().c_str());
+
+  jobject ConversionNode = Wala->makeNode(CAstWrapper::CAST, SrcNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(DestValue.getOpaqueValue(), ConversionNode));
+  return ConversionNode;
+} 
+
 /*******************************************************************************/
 /*                   RUNTIME FAILURES                                          */
 /*******************************************************************************/
