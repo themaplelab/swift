@@ -73,6 +73,8 @@ public:
   /*                        Reference Counting                                   */
   /*******************************************************************************/
 
+  jobject visitMarkDependenceInst(MarkDependenceInst *MDI);
+
   /*******************************************************************************/
   /*                         Literals                                            */
   /*******************************************************************************/
@@ -89,6 +91,7 @@ public:
   /*******************************************************************************/
 
   jobject visitClassMethodInst(ClassMethodInst *CMI);
+  jobject visitObjCMethodInst(ObjCMethodInst *AMI);
   jobject visitWitnessMethodInst(WitnessMethodInst *WMI);
 
   /*******************************************************************************/
@@ -122,6 +125,7 @@ public:
   jobject visitStructExtractInst(StructExtractInst *SEI);
   jobject visitStructElementAddrInst(StructElementAddrInst *SEAI);
   jobject visitRefElementAddrInst(RefElementAddrInst *REAI);
+  jobject visitRefTailAddrInst(RefTailAddrInst *RTAI);
 
   /*******************************************************************************/
   /*                          Enums                                              */
@@ -129,6 +133,8 @@ public:
 
   jobject visitEnumInst(EnumInst *EI);
   jobject visitUncheckedEnumDataInst(UncheckedEnumDataInst *UED);
+  jobject visitInjectEnumAddrInst(InjectEnumAddrInst *IUAI);
+  jobject visitInitEnumDataAddrInst(InitEnumDataAddrInst *UDAI);
   jobject visitUncheckedTakeEnumDataAddrInst(UncheckedTakeEnumDataAddrInst *UDAI);
   jobject visitSelectEnumInst(SelectEnumInst *SEI);
 
@@ -163,8 +169,12 @@ public:
   jobject visitPointerToAddressInst(PointerToAddressInst *PTAI);
   jobject visitUncheckedRefCastInst(UncheckedRefCastInst *URCI);
   jobject visitRefToRawPointerInst(RefToRawPointerInst *CI);
+  jobject visitUncheckedAddrCastInst(UncheckedAddrCastInst *UACI);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
+  jobject visitRawPointerToRefInst(RawPointerToRefInst *CI);
   jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
+  jobject visitPointerToThinFunctionInst(PointerToThinFunctionInst *CI);
+  jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
   jobject visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI);
 
@@ -172,9 +182,13 @@ public:
   /*                          Checked Conversions                                */
   /*******************************************************************************/
 
+  jobject visitUnconditionalCheckedCastAddrInst(UnconditionalCheckedCastAddrInst *CI);
+
   /*******************************************************************************/
   /*                          Runtime Failures                                   */
   /*******************************************************************************/
+
+  jobject visitCondFailInst(CondFailInst *FI);
 
   /*******************************************************************************/
   /*                           Terminators                                       */
@@ -183,12 +197,15 @@ public:
   jobject visitUnreachableInst(UnreachableInst *UI);
   jobject visitReturnInst(ReturnInst *RI);
   jobject visitThrowInst(ThrowInst *TI);
+  jobject visitYieldInst(YieldInst *YI);
+  jobject visitUnwindInst(UnwindInst *UI);
   jobject visitBranchInst(BranchInst *BI);
   jobject visitCondBranchInst(CondBranchInst *CBI);
   jobject visitSwitchValueInst(SwitchValueInst *SVI);
   jobject visitSelectValueInst(SelectValueInst *SVI);
   jobject visitSwitchEnumInst(SwitchEnumInst *SWI);
   jobject visitSwitchEnumAddrInst(SwitchEnumAddrInst *SEAI);
+  jobject visitCheckedCastBranchInst(CheckedCastBranchInst *CI);
   jobject visitCheckedCastAddrBranchInst(CheckedCastAddrBranchInst *CI);
   jobject visitTryApplyInst(TryApplyInst *TAI);
 
