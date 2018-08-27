@@ -1838,6 +1838,41 @@ jobject SILWalaInstructionVisitor::visitOpenExistentialMetatypeInst(OpenExistent
   return castNode;
 }
 
+jobject SILWalaInstructionVisitor::visitInitExistentialRefInst(InitExistentialRefInst *IERI) {
+  if (Print) {
+    llvm::outs() << "[IERI]: " << IERI << "\n";
+    llvm::outs() << "[OPERAND]: " << IERI->getOperand() << "\n";
+    llvm::outs() << "[ConcreteType]: " << IERI->getFormalConcreteType() << "\n";
+  }
+
+   if (SymbolTable.has(IERI->getOperand().getOpaqueValue())) {
+    auto name = "ExistentialRef of " + 
+      SymbolTable.get(IERI->getOperand().getOpaqueValue()) + " -> " + 
+      IERI->getFormalConcreteType().getString();
+    SymbolTable.insert(static_cast<ValueBase *>(IERI), name);
+  }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+
+jobject SILWalaInstructionVisitor::visitOpenExistentialRefInst(OpenExistentialRefInst *OERI) {
+  jobject operandNode = findAndRemoveCAstNode(OERI->getOperand().getOpaqueValue());
+  string openedType = OERI->getType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "[OPERAND]: " << OERI->getOperand() << "\n";
+    llvm::outs() << "[EXISTENTIAL TYPE]: " << openedType << "\n";
+  }
+
+  jobject openedTypeNode = Wala->makeConstant(openedType.c_str());
+  jobject castNode = Wala->makeNode(CAstWrapper::CAST, operandNode, openedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(OERI), castNode));
+
+  return castNode;
+}
+
 jobject SILWalaInstructionVisitor::visitAllocExistentialBoxInst(AllocExistentialBoxInst *AEBI) {    
     if (Print) {
       llvm::outs() << "\t [AEBI]: " << AEBI << "\n";
