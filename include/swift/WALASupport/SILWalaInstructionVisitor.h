@@ -73,6 +73,7 @@ public:
   /*                        Reference Counting                                   */
   /*******************************************************************************/
 
+  jobject visitStrongUnpinInst(StrongUnpinInst *SUI);
   jobject visitMarkDependenceInst(MarkDependenceInst *MDI);
 
   /*******************************************************************************/
@@ -172,7 +173,6 @@ public:
   jobject visitUncheckedRefCastInst(UncheckedRefCastInst *URCI);
   jobject visitRefToRawPointerInst(RefToRawPointerInst *CI);
   jobject visitUncheckedAddrCastInst(UncheckedAddrCastInst *UACI);
-  jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitRawPointerToRefInst(RawPointerToRefInst *CI);
   jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
   jobject visitPointerToThinFunctionInst(PointerToThinFunctionInst *CI);
