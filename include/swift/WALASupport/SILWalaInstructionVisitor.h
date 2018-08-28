@@ -74,6 +74,7 @@ public:
   /*******************************************************************************/
 
   jobject visitStrongUnpinInst(StrongUnpinInst *SUI);
+  jobject visitEndLifetimeInst(EndLifetimeInst *ELI);
   jobject visitMarkDependenceInst(MarkDependenceInst *MDI);
 
   /*******************************************************************************/

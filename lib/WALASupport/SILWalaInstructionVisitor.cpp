@@ -815,6 +815,21 @@ jobject SILWalaInstructionVisitor::visitStrongUnpinInst(StrongUnpinInst *SUI) {
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
+jobject SILWalaInstructionVisitor::visitEndLifetimeInst(EndLifetimeInst *ELI) {
+  SILValue EndLifetimeOperand = ELI->getOperand();
+  if (Print) {
+    llvm::outs() << "\t [VALUE]: " << EndLifetimeOperand.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [NODE]: " << findAndRemoveCAstNode(EndLifetimeOperand.getOpaqueValue()) << "\n";
+  }
+  if (NodeMap.find(EndLifetimeOperand) != NodeMap.end()) {
+    NodeMap.erase(EndLifetimeOperand);
+  } else {
+    SymbolTable.remove(EndLifetimeOperand.getOpaqueValue());
+  }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
 jobject SILWalaInstructionVisitor::visitMarkDependenceInst(MarkDependenceInst *MDI) {
 
   SILValue DependentValue = MDI->getValue();
