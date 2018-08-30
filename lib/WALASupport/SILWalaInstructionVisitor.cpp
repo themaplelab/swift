@@ -821,6 +821,7 @@ jobject SILWalaInstructionVisitor::visitEndLifetimeInst(EndLifetimeInst *ELI) {
     llvm::outs() << "\t [VALUE]: " << EndLifetimeOperand.getOpaqueValue() << "\n";
     llvm::outs() << "\t [NODE]: " << findAndRemoveCAstNode(EndLifetimeOperand.getOpaqueValue()) << "\n";
   }
+
   if (NodeMap.find(EndLifetimeOperand) != NodeMap.end()) {
     NodeMap.erase(EndLifetimeOperand);
   } else {
