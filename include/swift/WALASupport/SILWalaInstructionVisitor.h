@@ -178,6 +178,7 @@ public:
   jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
   jobject visitPointerToThinFunctionInst(PointerToThinFunctionInst *CI);
   jobject visitClassifyBridgeObjectInst(ClassifyBridgeObjectInst *CBOI);
+  jobject visitUnmanagedToRefInst(UnmanagedToRefInst *CI);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
   jobject visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI);
