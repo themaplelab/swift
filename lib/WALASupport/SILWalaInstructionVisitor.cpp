@@ -2176,6 +2176,24 @@ jobject SILWalaInstructionVisitor::visitPointerToThinFunctionInst(PointerToThinF
   return CastedNode;
 }
 
+jobject SILWalaInstructionVisitor::visitBridgeObjectToRefInst(BridgeObjectToRefInst *I) {
+  SILValue ConvertedValue = I->getConverted();
+  string CovertedType = I->getType().getAsString();
+
+  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [BridgeObjectToRefInst]: " << static_cast<ValueBase *>(I) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(I), CastedNode));
+  return CastedNode;
+}
+
 jobject SILWalaInstructionVisitor::visitConvertFunctionInst(ConvertFunctionInst *CFI) {
 
   SILValue ConvertedValue = CFI->getConverted();
