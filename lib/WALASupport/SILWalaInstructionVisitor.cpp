@@ -1249,7 +1249,7 @@ jobject SILWalaInstructionVisitor::visitMetatypeInst(MetatypeInst *MI) {
 
 jobject SILWalaInstructionVisitor::visitValueMetatypeInst(ValueMetatypeInst *VMI) {
 
-  auto ValueMetatypeOperand = VMI->getOperand();
+  SILValue ValueMetatypeOperand = VMI->getOperand();
 
   if (Print) {
     llvm::outs() << "\t [METATYPE]: " << VMI->getType().getAsString() << "\n";
@@ -1267,7 +1267,14 @@ jobject SILWalaInstructionVisitor::visitValueMetatypeInst(ValueMetatypeInst *VMI
 /*******************************************************************************/
 
 jobject SILWalaInstructionVisitor::visitCopyValueInst(CopyValueInst *CVI) {
-  llvm::outs() << "\t [OPERAND]:" << CVI->getOperand() << "\n";
+
+  SILValue CopyOperand = CVI->getOperand();
+
+  if (Print) {
+    llvm::outs() << "\t [CopyValueInst]: " << static_cast<ValueBase *>(CVI) << "\n";
+    llvm::outs() << "\t [OPERAND ADDR]: " << CopyOperand.getOpaqueValue() << "\n";
+  }
+
   jobject Node = findAndRemoveCAstNode(CVI->getOperand().getOpaqueValue());
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CVI), Node));
