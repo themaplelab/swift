@@ -172,15 +172,17 @@ public:
   jobject visitAddressToPointerInst(AddressToPointerInst *ATPI);
   jobject visitPointerToAddressInst(PointerToAddressInst *PTAI);
   jobject visitUncheckedRefCastInst(UncheckedRefCastInst *URCI);
-  jobject visitRefToRawPointerInst(RefToRawPointerInst *CI);
   jobject visitUncheckedAddrCastInst(UncheckedAddrCastInst *UACI);
+  jobject visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI);
+  jobject visitRefToRawPointerInst(RefToRawPointerInst *CI);
   jobject visitRawPointerToRefInst(RawPointerToRefInst *CI);
+  jobject visitUnmanagedToRefInst(UnmanagedToRefInst *CI);
+  jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
   jobject visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI);
   jobject visitPointerToThinFunctionInst(PointerToThinFunctionInst *CI);
+  jobject visitClassifyBridgeObjectInst(ClassifyBridgeObjectInst *CBOI);
   jobject visitBridgeObjectToRefInst(BridgeObjectToRefInst *I);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
-  jobject visitConvertFunctionInst(ConvertFunctionInst *CFI);
-  jobject visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI);
 
   /*******************************************************************************/
   /*                          Checked Conversions                                */
