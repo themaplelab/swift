@@ -1981,6 +1981,7 @@ jobject SILWalaInstructionVisitor::visitDeallocExistentialBoxInst(DeallocExisten
 /*******************************************************************************/
 
 jobject SILWalaInstructionVisitor::visitUpcastInst(UpcastInst *UI) {
+
   SILValue ConvertedValue = UI->getConverted();
   string CovertedType = UI->getType().getAsString();
 
@@ -2018,86 +2019,6 @@ jobject SILWalaInstructionVisitor::visitAddressToPointerInst(AddressToPointerIns
   return RawPointerCastNode;
 }
 
-jobject SILWalaInstructionVisitor::visitUncheckedRefCastInst(UncheckedRefCastInst *URCI) {
-
-  SILValue ConvertedValue = URCI->getConverted();
-  string CovertedType = URCI->getType().getAsString();
-
-  jobject UncheckedRefCastNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
-
-  if (Print) {
-    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
-    llvm::outs() << "\t [CONVERTED NODE]: " << UncheckedRefCastNode << "\n";
-  }
-
-  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
-  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UncheckedRefCastNode, ConvertedTypeNode);
-
-  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(URCI), CastedNode));
-
-  return CastedNode;
-}
-
-jobject SILWalaInstructionVisitor::visitRefToRawPointerInst(RefToRawPointerInst *CI) {
-  SILValue ConvertedValue = CI->getConverted();
-  string CovertedType = CI->getType().getAsString();
-
-  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
-
-  if (Print) {
-    llvm::outs() << "\t [RefToRawPointerInst]: " << static_cast<ValueBase *>(CI) << "\n";
-    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
-    llvm::outs() << "\t [CONVERTED NODE]: " << ConvertedNode << "\n";
-  }
-
-  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
-  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
-
-  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CI), CastedNode));
-  return CastedNode;
-}
-
-jobject SILWalaInstructionVisitor::visitUncheckedAddrCastInst(UncheckedAddrCastInst *UACI) {
-  SILValue ConvertedValue = UACI->getConverted();
-  string CovertedType = UACI->getType().getAsString();
-
-  jobject UncheckedAddrCastNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
-
-  if (Print) {
-    llvm::outs() << "\t [UncheckedAddrCastInst]: " << static_cast<ValueBase *>(UACI) << "\n";
-    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
-    llvm::outs() << "\t [CONVERTED NODE]: " << UncheckedAddrCastNode << "\n";
-  }
-
-  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
-  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UncheckedAddrCastNode, ConvertedTypeNode);
-
-  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(UACI), CastedNode));
-
-  return CastedNode;
-}
-
-jobject SILWalaInstructionVisitor::visitRawPointerToRefInst(RawPointerToRefInst *CI) {
-
-  SILValue ValueToBeConverted = CI->getConverted();
-  string TypeToBeConvertedInto = CI->getType().getAsString();
-
-  if (Print) {
-    llvm::outs() << "\t [RawPointerToRef]: " << static_cast<ValueBase *>(CI) << "\n";
-    llvm::outs() << "\t " << ValueToBeConverted.getOpaqueValue() << " [TO BE CONVERTED INTO]: " << TypeToBeConvertedInto << "\n";
-  }
-  
-  jobject ToBeConvertedNode = findAndRemoveCAstNode(ValueToBeConverted.getOpaqueValue());
-
-  jobject TypeNode = Wala->makeConstant(TypeToBeConvertedInto.c_str());
-
-  jobject ConversionNode = Wala->makeNode(CAstWrapper::CAST, ToBeConvertedNode, TypeNode);
-
-  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CI), ConversionNode));
-
-  return ConversionNode;
-}
-
 jobject SILWalaInstructionVisitor::visitPointerToAddressInst(PointerToAddressInst *PTAI) {
   // Getting the value to be converted
   SILValue ValueToBeConverted = PTAI->getConverted();
@@ -2124,22 +2045,135 @@ jobject SILWalaInstructionVisitor::visitPointerToAddressInst(PointerToAddressIns
   return ConversionNode;
 }
 
-jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
-  // Cast the instr to access methods
+jobject SILWalaInstructionVisitor::visitUncheckedRefCastInst(UncheckedRefCastInst *URCI) {
 
-  SILValue CalleeValue = TTFI->getCallee();
-  string CovertedType = TTFI->getType().getAsString();
+  SILValue ConvertedValue = URCI->getConverted();
+  string CovertedType = URCI->getType().getAsString();
 
-  jobject FuncRefNode = findAndRemoveCAstNode(CalleeValue.getOpaqueValue());
+  jobject UncheckedRefCastNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
 
   if (Print) {
-    llvm::outs() << "\t [CALLEE ADDR]: " << CalleeValue.getOpaqueValue()  << " [TO]: " << CovertedType << "\n";
-    llvm::outs() << "\t [CALLEE NODE]: " << FuncRefNode << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << UncheckedRefCastNode << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UncheckedRefCastNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(URCI), CastedNode));
+
+  return CastedNode;
+}
+
+jobject SILWalaInstructionVisitor::visitUncheckedAddrCastInst(UncheckedAddrCastInst *UACI) {
+  SILValue ConvertedValue = UACI->getConverted();
+  string CovertedType = UACI->getType().getAsString();
+
+  jobject UncheckedAddrCastNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [UncheckedAddrCastInst]: " << static_cast<ValueBase *>(UACI) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << UncheckedAddrCastNode << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UncheckedAddrCastNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(UACI), CastedNode));
+
+  return CastedNode;
+}
+
+jobject SILWalaInstructionVisitor::visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI) {
+
+  SILValue ConversionOperand = UOCI->getOperand();
+  string ConversionType = UOCI->getType().getAsString();
+
+  jobject ConversionNode = findAndRemoveCAstNode(ConversionOperand.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConversionOperand.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << ConversionNode << "\n";
+  }
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(UOCI), ConversionNode));
+  return ConversionNode;
+}
+
+jobject SILWalaInstructionVisitor::visitRefToRawPointerInst(RefToRawPointerInst *CI) {
+  SILValue ConvertedValue = CI->getConverted();
+  string CovertedType = CI->getType().getAsString();
+
+  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [RefToRawPointerInst]: " << static_cast<ValueBase *>(CI) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << ConvertedNode << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CI), CastedNode));
+  return CastedNode;
+}
+
+jobject SILWalaInstructionVisitor::visitRawPointerToRefInst(RawPointerToRefInst *CI) {
+
+  SILValue ValueToBeConverted = CI->getConverted();
+  string TypeToBeConvertedInto = CI->getType().getAsString();
+
+  if (Print) {
+    llvm::outs() << "\t [RawPointerToRef]: " << static_cast<ValueBase *>(CI) << "\n";
+    llvm::outs() << "\t " << ValueToBeConverted.getOpaqueValue() << " [TO BE CONVERTED INTO]: " << TypeToBeConvertedInto << "\n";
   }
   
-  // cast in CASt
-  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TTFI), FuncRefNode));
-  return FuncRefNode;
+  jobject ToBeConvertedNode = findAndRemoveCAstNode(ValueToBeConverted.getOpaqueValue());
+
+  jobject TypeNode = Wala->makeConstant(TypeToBeConvertedInto.c_str());
+
+  jobject ConversionNode = Wala->makeNode(CAstWrapper::CAST, ToBeConvertedNode, TypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CI), ConversionNode));
+
+  return ConversionNode;
+}
+
+jobject SILWalaInstructionVisitor::visitUnmanagedToRefInst(UnmanagedToRefInst *CI) {
+
+  SILValue ConvertedValue = CI->getConverted();
+  string CovertedType = CI->getType().getAsString();
+
+  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [UnmanagedToRefInst]: " << static_cast<ValueBase *>(CI) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CI), CastedNode));
+  return CastedNode;
+}
+
+jobject SILWalaInstructionVisitor::visitConvertFunctionInst(ConvertFunctionInst *CFI) {
+
+  SILValue ConvertedValue = CFI->getConverted();
+  string CovertedType = CFI->getType().getAsString();
+
+  jobject ConvertedFunctionNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue()  << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << ConvertedFunctionNode << "\n";
+  }
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CFI), ConvertedFunctionNode));
+  return ConvertedFunctionNode;
 }
 
 jobject SILWalaInstructionVisitor::visitThinFunctionToPointerInst(ThinFunctionToPointerInst *TFPI) {
@@ -2159,6 +2193,7 @@ jobject SILWalaInstructionVisitor::visitThinFunctionToPointerInst(ThinFunctionTo
 }
 
 jobject SILWalaInstructionVisitor::visitPointerToThinFunctionInst(PointerToThinFunctionInst *CI) {
+
   SILValue ConvertedValue = CI->getConverted();
   string CovertedType = CI->getType().getAsString();
 
@@ -2176,50 +2211,41 @@ jobject SILWalaInstructionVisitor::visitPointerToThinFunctionInst(PointerToThinF
   return CastedNode;
 }
 
-jobject SILWalaInstructionVisitor::visitClassifyBridgeObjectInst(ClassifyBridgeObjectInst *CBOI) {
-  SILValue BridgeObjectOperand = CBOI->getOperand();
+jobject SILWalaInstructionVisitor::visitBridgeObjectToRefInst(BridgeObjectToRefInst *I) {
+
+  SILValue ConvertedValue = I->getConverted();
+  string CovertedType = I->getType().getAsString();
+
+  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
 
   if (Print) {
-    llvm::outs() << "\t [ClassifyBridgeObjectInst]: " << static_cast<ValueBase *>(CBOI) << "\n";
-    llvm::outs() << "\t [OPERAND ADDR]: " << BridgeObjectOperand.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [BridgeObjectToRefInst]: " << static_cast<ValueBase *>(I) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
   }
 
-  jobject BridgeObjectNode = findAndRemoveCAstNode(BridgeObjectOperand.getOpaqueValue());
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
 
-  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CBOI), BridgeObjectNode));
-  return BridgeObjectNode;
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(I), CastedNode));
+  return CastedNode;
 }
 
-jobject SILWalaInstructionVisitor::visitConvertFunctionInst(ConvertFunctionInst *CFI) {
+jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
+  // Cast the instr to access methods
 
-  SILValue ConvertedValue = CFI->getConverted();
-  string CovertedType = CFI->getType().getAsString();
+  SILValue CalleeValue = TTFI->getCallee();
+  string CovertedType = TTFI->getType().getAsString();
 
-  jobject ConvertedFunctionNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
-
-  if (Print) {
-    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue()  << " [TO]: " << CovertedType << "\n";
-    llvm::outs() << "\t [CONVERTED NODE]: " << ConvertedFunctionNode << "\n";
-  }
-
-  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CFI), ConvertedFunctionNode));
-  return ConvertedFunctionNode;
-}
-
-jobject SILWalaInstructionVisitor::visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI) {
-
-  SILValue ConversionOperand = UOCI->getOperand();
-  string ConversionType = UOCI->getType().getAsString();
-
-  jobject ConversionNode = findAndRemoveCAstNode(ConversionOperand.getOpaqueValue());
+  jobject FuncRefNode = findAndRemoveCAstNode(CalleeValue.getOpaqueValue());
 
   if (Print) {
-    llvm::outs() << "\t [CONVERTED ADDR]: " << ConversionOperand.getOpaqueValue() << "\n";
-    llvm::outs() << "\t [CONVERTED NODE]: " << ConversionNode << "\n";
+    llvm::outs() << "\t [CALLEE ADDR]: " << CalleeValue.getOpaqueValue()  << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CALLEE NODE]: " << FuncRefNode << "\n";
   }
-
-  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(UOCI), ConversionNode));
-  return ConversionNode;
+  
+  // cast in CASt
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TTFI), FuncRefNode));
+  return FuncRefNode;
 }
 
 /*******************************************************************************/
