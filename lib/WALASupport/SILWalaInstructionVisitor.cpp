@@ -2176,6 +2176,20 @@ jobject SILWalaInstructionVisitor::visitPointerToThinFunctionInst(PointerToThinF
   return CastedNode;
 }
 
+jobject SILWalaInstructionVisitor::visitClassifyBridgeObjectInst(ClassifyBridgeObjectInst *CBOI) {
+  SILValue BridgeObjectOperand = CBOI->getOperand();
+
+  if (Print) {
+    llvm::outs() << "\t [ClassifyBridgeObjectInst]: " << static_cast<ValueBase *>(CBOI) << "\n";
+    llvm::outs() << "\t [OPERAND ADDR]: " << BridgeObjectOperand.getOpaqueValue() << "\n";
+  }
+
+  jobject BridgeObjectNode = findAndRemoveCAstNode(BridgeObjectOperand.getOpaqueValue());
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CBOI), BridgeObjectNode));
+  return BridgeObjectNode;
+}
+
 jobject SILWalaInstructionVisitor::visitUnmanagedToRefInst(UnmanagedToRefInst *CI) {
 
   SILValue ConvertedValue = CI->getConverted();
