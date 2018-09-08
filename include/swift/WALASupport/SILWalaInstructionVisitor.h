@@ -185,6 +185,7 @@ public:
   jobject visitClassifyBridgeObjectInst(ClassifyBridgeObjectInst *CBOI);
   jobject visitBridgeObjectToRefInst(BridgeObjectToRefInst *I);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
+  jobject visitThickToObjCMetatypeInst(ThickToObjCMetatypeInst *TTOMI);
 
   /*******************************************************************************/
   /*                          Checked Conversions                                */

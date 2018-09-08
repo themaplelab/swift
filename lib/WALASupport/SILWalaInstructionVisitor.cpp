@@ -2305,6 +2305,26 @@ jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunct
   return FuncRefNode;
 }
 
+
+jobject SILWalaInstructionVisitor::visitThickToObjCMetatypeInst(ThickToObjCMetatypeInst *TTOCI) {
+
+  SILValue ConvertedValue = TTOCI->getConverted();
+  string CovertedType = TTOCI->getType().getAsString();
+
+  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [ThickToObjCMetatypeInst]: " << static_cast<ValueBase *>(TTOCI) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(TTOCI), CastedNode));
+  return CastedNode;
+}
+
 /*******************************************************************************/
 /*                   CHECKED CONVERSIONS                                       */
 /*******************************************************************************/
