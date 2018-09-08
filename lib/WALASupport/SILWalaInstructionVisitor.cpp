@@ -2352,7 +2352,7 @@ jobject SILWalaInstructionVisitor::visitObjCExistentialMetatypeToObjectInst(ObjC
   jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
 
   if (Print) {
-    llvm::outs() << "\t [ObjCToThickMetatypeInst]: " << static_cast<ValueBase *>(CI) << "\n";
+    llvm::outs() << "\t [ObjCExistentialMetatypeToObjectInst]: " << static_cast<ValueBase *>(CI) << "\n";
     llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
   }
 
