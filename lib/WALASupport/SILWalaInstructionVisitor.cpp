@@ -831,8 +831,18 @@ jobject SILWalaInstructionVisitor::visitEndLifetimeInst(EndLifetimeInst *ELI) {
   return Wala->makeNode(CAstWrapper::EMPTY);
 }
 
-jobject SILWalaInstructionVisitor::visitMarkDependenceInst(MarkDependenceInst *MDI) {
+jobject SILWalaInstructionVisitor::visitFixLifetimeInst(FixLifetimeInst *FLI) {
+  SILValue FixedOperand = FLI->getOperand();
 
+  if (Print) {
+    llvm::outs() << "\t [OPERAND]: " << FixedOperand.getOpaqueValue() << "\n";
+  }
+
+  return Wala->makeNode(CAstWrapper::EMPTY);
+}
+
+jobject SILWalaInstructionVisitor::visitMarkDependenceInst(MarkDependenceInst *MDI) {
+f
   SILValue DependentValue = MDI->getValue();
   SILValue BaseValue = MDI->getBase();
 
@@ -2434,7 +2444,7 @@ jobject SILWalaInstructionVisitor::visitYieldInst(YieldInst *YI) {
   jobject UnwindLabelNode = Wala->makeConstant(BasicBlockLabeller::label(UnwindBB).c_str());
   jobject UnwindGotoNode = Wala->makeNode(CAstWrapper::GOTO, UnwindLabelNode); 
 
-  jobject Node = Wala->makeNode(CAstWrapper::YIELD_STMT, Wala->makeArray(&yieldValues), ResumeGotoNode, UnwindGotoNode);
+  jobject Node = Wala->makeNode(CAstWrapper::EMPTY);
 
   NodeMap.insert(std::make_pair(YI, Node));
 

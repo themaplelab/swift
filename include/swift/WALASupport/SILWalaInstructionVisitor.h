@@ -75,6 +75,7 @@ public:
 
   jobject visitStrongUnpinInst(StrongUnpinInst *SUI);
   jobject visitEndLifetimeInst(EndLifetimeInst *ELI);
+  jobject visitFixLifetimeInst(FixLifetimeInst *FLI);
   jobject visitMarkDependenceInst(MarkDependenceInst *MDI);
   jobject visitStrongPinInst(StrongPinInst *SPI);
 
