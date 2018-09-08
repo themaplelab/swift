@@ -186,6 +186,7 @@ public:
   jobject visitBridgeObjectToRefInst(BridgeObjectToRefInst *I);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitThickToObjCMetatypeInst(ThickToObjCMetatypeInst *TTOMI);
+  jobject visitObjCToThickMetatypeInst(ObjCToThickMetatypeInst *OTTMI);
 
   /*******************************************************************************/
   /*                          Checked Conversions                                */

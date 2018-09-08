@@ -2325,6 +2325,25 @@ jobject SILWalaInstructionVisitor::visitThickToObjCMetatypeInst(ThickToObjCMetat
   return CastedNode;
 }
 
+jobject SILWalaInstructionVisitor::visitObjCToThickMetatypeInst(ObjCToThickMetatypeInst *OTTMI) {
+
+  SILValue ConvertedValue = OTTMI->getConverted();
+  string CovertedType = OTTMI->getType().getAsString();
+
+  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [ObjCToThickMetatypeInst]: " << static_cast<ValueBase *>(OTTMI) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(OTTMI), CastedNode));
+  return CastedNode;
+}
+
 /*******************************************************************************/
 /*                   CHECKED CONVERSIONS                                       */
 /*******************************************************************************/
