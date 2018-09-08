@@ -187,6 +187,7 @@ public:
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitThickToObjCMetatypeInst(ThickToObjCMetatypeInst *TTOMI);
   jobject visitObjCToThickMetatypeInst(ObjCToThickMetatypeInst *OTTMI);
+  jobject visitObjCExistentialMetatypeToObjectInst(ObjCExistentialMetatypeToObjectInst *CI);
 
   /*******************************************************************************/
   /*                          Checked Conversions                                */
