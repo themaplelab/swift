@@ -1064,6 +1064,31 @@ jobject SILWalaInstructionVisitor::visitObjCMethodInst(ObjCMethodInst *AMI) {
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitSuperMethodInst(SuperMethodInst *SMI) {
+
+  SILValue ClassOperand = SMI->getOperand();
+  SILDeclRef MemberFunc = SMI->getMember();
+
+  string MemberFuncName = Demangle::demangleSymbolAsString(MemberFunc.mangle());
+
+  if (Print) {
+    llvm::outs() << "\t [SuperMethodInst]: " << static_cast<ValueBase *>(SMI) << "\n";
+    llvm::outs() << "\t [SUPER CLASS]: " << SMI->getMember().getDecl()->getInterfaceType().getString() << "\n";
+    llvm::outs() << "\t [MEMBER]: " << MemberFuncName << "\n";
+  }
+
+  jobject ClassNode = findAndRemoveCAstNode(ClassOperand.getOpaqueValue());
+
+  jobject MemberNameNode = Wala->makeConstant(MemberFuncName.c_str());  
+  jobject FuncNode = Wala->makeNode(CAstWrapper::FUNCTION_EXPR, MemberNameNode);
+
+  jobject Node = Wala->makeNode(CAstWrapper::OBJECT_REF, ClassNode, FuncNode );
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(SMI), Node));
+
+  return Node;
+}
+
 jobject SILWalaInstructionVisitor::visitWitnessMethodInst(WitnessMethodInst *WMI) {
 
   ProtocolDecl *Protocol = WMI->getLookupProtocol();
@@ -2209,6 +2234,20 @@ jobject SILWalaInstructionVisitor::visitPointerToThinFunctionInst(PointerToThinF
 
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CI), CastedNode));
   return CastedNode;
+}
+
+jobject SILWalaInstructionVisitor::visitClassifyBridgeObjectInst(ClassifyBridgeObjectInst *CBOI) {
+  SILValue BridgeObjectOperand = CBOI->getOperand();
+
+  if (Print) {
+    llvm::outs() << "\t [ClassifyBridgeObjectInst]: " << static_cast<ValueBase *>(CBOI) << "\n";
+    llvm::outs() << "\t [OPERAND ADDR]: " << BridgeObjectOperand.getOpaqueValue() << "\n";
+  }
+
+  jobject BridgeObjectNode = findAndRemoveCAstNode(BridgeObjectOperand.getOpaqueValue());
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CBOI), BridgeObjectNode));
+  return BridgeObjectNode;
 }
 
 jobject SILWalaInstructionVisitor::visitBridgeObjectToRefInst(BridgeObjectToRefInst *I) {
