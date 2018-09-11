@@ -120,6 +120,7 @@ public:
   /*                          Aggregate Types                                    */
   /*******************************************************************************/
 
+  jobject visitUnmanagedRetainValueInst(UnmanagedRetainValueInst *URVI);
   jobject visitCopyValueInst(CopyValueInst *CVI);
   jobject visitDestroyValueInst(DestroyValueInst *DVI);
   jobject visitTupleInst(TupleInst *TI);

@@ -1309,6 +1309,22 @@ jobject SILWalaInstructionVisitor::visitValueMetatypeInst(ValueMetatypeInst *VMI
 /*                                AGGREGATE TYPES                              */
 /*******************************************************************************/
 
+jobject SILWalaInstructionVisitor::visitUnmanagedRetainValueInst(UnmanagedRetainValueInst *URVI) {
+  SILValue UnmanagedValue = URVI->getOperand();
+  jobject UnmanagedNode = findAndRemoveCAstNode(UnmanagedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [UnmanagedRetainValueInst]: " << URVI << "\n";
+    llvm::outs() << "\t [OPERAND ADDR]: " << UnmanagedValue.getOpaqueValue() << "\n";
+    llvm::outs() << "\t [OPERAND NODE]: " << UnmanagedNode << "\n";
+  }
+
+  jobject Node = Wala->makeNode(CAstWrapper::PRIMITIVE, UnmanagedNode);
+
+  NodeMap.insert(std::make_pair(URVI, Node));
+  return Node;
+}
+
 jobject SILWalaInstructionVisitor::visitCopyValueInst(CopyValueInst *CVI) {
 
   SILValue CopyOperand = CVI->getOperand();
@@ -2492,8 +2508,9 @@ jobject SILWalaInstructionVisitor::visitYieldInst(YieldInst *YI) {
   jobject UnwindLabelNode = Wala->makeConstant(BasicBlockLabeller::label(UnwindBB).c_str());
   jobject UnwindGotoNode = Wala->makeNode(CAstWrapper::GOTO, UnwindLabelNode); 
 
-  jobject Node = Wala->makeNode(CAstWrapper::YIELD_STMT, Wala->makeArray(&yieldValues), ResumeGotoNode, UnwindGotoNode);
-
+  //jobject Node = Wala->makeNode(CAstWrapper::YIELD_STMT, Wala->makeArray(&yieldValues), ResumeGotoNode, UnwindGotoNode);
+  jobject Node = Wala->makeNode(CAstWrapper::EMPTY);
+  
   NodeMap.insert(std::make_pair(YI, Node));
 
   return Node;
