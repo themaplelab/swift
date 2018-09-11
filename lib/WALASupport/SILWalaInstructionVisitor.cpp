@@ -853,6 +853,24 @@ jobject SILWalaInstructionVisitor::visitMarkDependenceInst(MarkDependenceInst *M
   return Node;
 }
 
+jobject SILWalaInstructionVisitor::visitStrongPinInst(StrongPinInst *SPI) {
+
+  SILValue PinOperand = SPI->getOperand();
+
+  if (Print) {
+    llvm::outs() << "\t [StrongPinInst]: " << static_cast<ValueBase *>(SPI) << "\n";
+    llvm::outs() << "\t [OPERAND ADDR]: " << PinOperand.getOpaqueValue() << "\n";
+  }
+
+  jobject PinNode = findAndRemoveCAstNode(PinOperand.getOpaqueValue());
+
+  jobject Node = Wala->makeNode(CAstWrapper::PRIMITIVE, PinNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(SPI), Node));
+
+  return Node;
+}
+
 /*******************************************************************************/
 /*                                  LITERALS                                   */
 /*******************************************************************************/
