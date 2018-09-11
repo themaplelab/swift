@@ -94,6 +94,7 @@ public:
 
   jobject visitClassMethodInst(ClassMethodInst *CMI);
   jobject visitObjCMethodInst(ObjCMethodInst *AMI);
+  jobject visitSuperMethodInst(SuperMethodInst *SMI);
   jobject visitWitnessMethodInst(WitnessMethodInst *WMI);
 
   /*******************************************************************************/
