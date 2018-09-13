@@ -115,6 +115,7 @@ public:
 
   jobject visitMetatypeInst(MetatypeInst *MI);
   jobject visitValueMetatypeInst(ValueMetatypeInst *VMI);
+  jobject visitExistentialMetatypeInst(ExistentialMetatypeInst *EMI);
 
   /*******************************************************************************/
   /*                          Aggregate Types                                    */
