@@ -1296,6 +1296,7 @@ jobject SILWalaInstructionVisitor::visitValueMetatypeInst(ValueMetatypeInst *VMI
 
   if (Print) {
     llvm::outs() << "\t [METATYPE]: " << VMI->getType().getAsString() << "\n";
+    llvm::outs() << "\t [METATYPE ADDR]: " << ValueMetatypeOperand.getOpaqueValue() << "\n";
   }
 
   jobject TypeNode = findAndRemoveCAstNode(ValueMetatypeOperand.getOpaqueValue());
@@ -1303,7 +1304,23 @@ jobject SILWalaInstructionVisitor::visitValueMetatypeInst(ValueMetatypeInst *VMI
   NodeMap.insert(std::make_pair(static_cast<ValueBase *>(VMI), TypeNode));
   
   return TypeNode;
-}                     
+}      
+
+jobject SILWalaInstructionVisitor::visitExistentialMetatypeInst(ExistentialMetatypeInst *EMI) {
+
+    SILValue MetatypeOperand = EMI->getOperand();
+
+  if (Print) {
+    llvm::outs() << "\t [METATYPE]: " << EMI->getType().getAsString() << "\n";
+    llvm::outs() << "\t [METATYPE ADDR]: " << MetatypeOperand.getOpaqueValue() << "\n";
+  }
+
+  jobject MetatypeNode = findAndRemoveCAstNode(MetatypeOperand.getOpaqueValue());
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(EMI), MetatypeNode));
+  
+  return MetatypeNode;
+}               
 
 /*******************************************************************************/
 /*                                AGGREGATE TYPES                              */
