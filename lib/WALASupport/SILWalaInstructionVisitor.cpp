@@ -2108,6 +2108,26 @@ jobject SILWalaInstructionVisitor::visitUncheckedRefCastInst(UncheckedRefCastIns
   return CastedNode;
 }
 
+jobject SILWalaInstructionVisitor::visitUncheckedRefCastAddrInst(UncheckedRefCastAddrInst *URCAI) {
+
+  SILValue SrcValue = URCAI->getSrc();
+  SILValue DestValue = URCAI->getDest();
+
+  if (Print) {
+    llvm::outs() << "\t [UncheckedRefCastAddrInst]: " << URCAI << "\n";
+    llvm::outs() << "\t [CONVERT]: " << URCAI->getSourceType().getString() << " " << SrcValue.getOpaqueValue();
+    llvm::outs() << " [TO]: " << URCAI->getTargetType().getString() << " " << DestValue.getOpaqueValue() << "\n";
+  }
+
+  jobject SrcNode = findAndRemoveCAstNode(SrcValue.getOpaqueValue());
+  jobject ConvertedTypeNode = Wala->makeConstant(URCAI->getTargetType().getString().c_str());
+
+  jobject ConversionNode = Wala->makeNode(CAstWrapper::CAST, SrcNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(DestValue.getOpaqueValue(), ConversionNode));
+  return ConversionNode;
+}
+
 jobject SILWalaInstructionVisitor::visitUncheckedAddrCastInst(UncheckedAddrCastInst *UACI) {
   SILValue ConvertedValue = UACI->getConverted();
   string ConvertedType = UACI->getType().getAsString();
