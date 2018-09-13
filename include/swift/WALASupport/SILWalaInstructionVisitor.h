@@ -175,6 +175,7 @@ public:
   jobject visitPointerToAddressInst(PointerToAddressInst *PTAI);
   jobject visitUncheckedRefCastInst(UncheckedRefCastInst *URCI);
   jobject visitUncheckedAddrCastInst(UncheckedAddrCastInst *UACI);
+  jobject visitUncheckedTrivialBitCastInst(UncheckedTrivialBitCastInst *BI);
   jobject visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI);
   jobject visitRefToRawPointerInst(RefToRawPointerInst *CI);
   jobject visitRawPointerToRefInst(RawPointerToRefInst *CI);

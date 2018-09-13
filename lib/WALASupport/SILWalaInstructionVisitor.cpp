@@ -2128,6 +2128,26 @@ jobject SILWalaInstructionVisitor::visitUncheckedAddrCastInst(UncheckedAddrCastI
   return CastedNode;
 }
 
+jobject SILWalaInstructionVisitor::visitUncheckedTrivialBitCastInst(UncheckedTrivialBitCastInst *BI) {
+  SILValue ConvertedValue = BI->getConverted();
+  string CovertedType = BI->getType().getAsString();
+
+  jobject UncheckedAddrCastNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [UncheckedAddrCastInst]: " << static_cast<ValueBase *>(BI) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+    llvm::outs() << "\t [CONVERTED NODE]: " << UncheckedAddrCastNode << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, UncheckedAddrCastNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(BI), CastedNode));
+
+  return CastedNode;  
+}
+
 jobject SILWalaInstructionVisitor::visitUncheckedOwnershipConversionInst(UncheckedOwnershipConversionInst *UOCI) {
 
   SILValue ConversionOperand = UOCI->getOperand();
