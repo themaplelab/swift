@@ -2344,6 +2344,25 @@ jobject SILWalaInstructionVisitor::visitObjCToThickMetatypeInst(ObjCToThickMetat
   return CastedNode;
 }
 
+jobject SILWalaInstructionVisitor::visitObjCExistentialMetatypeToObjectInst(ObjCExistentialMetatypeToObjectInst *CI) {
+
+  SILValue ConvertedValue = CI->getConverted();
+  string CovertedType = CI->getType().getAsString();
+
+  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [ObjCExistentialMetatypeToObjectInst]: " << static_cast<ValueBase *>(CI) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(CI), CastedNode));
+  return CastedNode;
+}
+
 /*******************************************************************************/
 /*                   CHECKED CONVERSIONS                                       */
 /*******************************************************************************/
