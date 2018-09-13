@@ -184,6 +184,7 @@ public:
   jobject visitPointerToThinFunctionInst(PointerToThinFunctionInst *CI);
   jobject visitClassifyBridgeObjectInst(ClassifyBridgeObjectInst *CBOI);
   jobject visitBridgeObjectToRefInst(BridgeObjectToRefInst *I);
+  jobject visitBridgeObjectToWordInst(BridgeObjectToWordInst *RI);
   jobject visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI);
   jobject visitThickToObjCMetatypeInst(ThickToObjCMetatypeInst *TTOMI);
   jobject visitObjCToThickMetatypeInst(ObjCToThickMetatypeInst *OTTMI);

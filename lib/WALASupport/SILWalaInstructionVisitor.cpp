@@ -2287,6 +2287,25 @@ jobject SILWalaInstructionVisitor::visitBridgeObjectToRefInst(BridgeObjectToRefI
   return CastedNode;
 }
 
+jobject SILWalaInstructionVisitor::visitBridgeObjectToWordInst(BridgeObjectToWordInst *RI) {
+
+  SILValue ConvertedValue = RI->getConverted();
+  string CovertedType = RI->getType().getAsString();
+
+  jobject ConvertedNode = findAndRemoveCAstNode(ConvertedValue.getOpaqueValue());
+
+  if (Print) {
+    llvm::outs() << "\t [BridgeObjectToWordInst]: " << static_cast<ValueBase *>(RI) << "\n";
+    llvm::outs() << "\t [CONVERTED ADDR]: " << ConvertedValue.getOpaqueValue() << " [TO]: " << CovertedType << "\n";
+  }
+
+  jobject ConvertedTypeNode = Wala->makeConstant(CovertedType.c_str());
+  jobject CastedNode = Wala->makeNode(CAstWrapper::CAST, ConvertedNode, ConvertedTypeNode);
+
+  NodeMap.insert(std::make_pair(static_cast<ValueBase *>(RI), CastedNode));
+  return CastedNode;
+}
+
 jobject SILWalaInstructionVisitor::visitThinToThickFunctionInst(ThinToThickFunctionInst *TTFI) {
   // Cast the instr to access methods
 
