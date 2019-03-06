@@ -5,7 +5,7 @@ if(NOT SWIFT_HOST_VARIANT MATCHES "${SWIFT_DARWIN_EMBEDDED_VARIANTS}")
     EditingTest.cpp
     )
 
-  target_link_libraries(SourceKitSwiftLangTests
+  target_link_libraries(SourceKitSwiftLangTests PRIVATE
     SourceKitSwiftLang
     )
 

@@ -8,7 +8,7 @@ add_swift_host_tool(swift-remoteast-test
 
 set_target_properties(swift-remoteast-test PROPERTIES ENABLE_EXPORTS 1)
 if(HAVE_UNICODE_LIBEDIT)
-  target_link_libraries(swift-remoteast-test edit)
+	target_link_libraries(swift-remoteast-test PRIVATE edit)
 endif()
 
 # If building as part of clang, make sure the headers are installed.
@@ -32,8 +32,8 @@ endif()
 # Link those libraries
 add_library(jvm SHARED IMPORTED)
 set_property(TARGET jvm PROPERTY IMPORTED_LOCATION ${LIBJVM_PATH})
-target_link_libraries(swift-remoteast-test jvm)
+target_link_libraries(swift-remoteast-test PRIVATE jvm)
 
 add_library(cast SHARED IMPORTED)
 set_property(TARGET cast PROPERTY IMPORTED_LOCATION ${LIBCAST_PATH})
-target_link_libraries(swift-remoteast-test cast)
+target_link_libraries(swift-remoteast-test PRIVATE cast)

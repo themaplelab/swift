@@ -5,7 +5,7 @@ add_swift_unittest(SwiftASTTests
   VersionRangeLattice.cpp
 )
 
-target_link_libraries(SwiftASTTests
+target_link_libraries(SwiftASTTests PRIVATE
    swiftAST
    # FIXME: Circular dependencies.
    swiftParse

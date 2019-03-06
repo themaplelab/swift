@@ -29,7 +29,7 @@ set_property(TARGET swift APPEND_STRING PROPERTY
   LINK_FLAGS " ${LIBCAST_PATH} -L${LIBJVM_PATH} -ljvm -rpath ${LIBJVM_PATH}")
 
 if(HAVE_UNICODE_LIBEDIT)
-  target_link_libraries(swift edit)
+	target_link_libraries(swift PRIVATE edit)
 endif()
 
 swift_create_post_build_symlink(swift

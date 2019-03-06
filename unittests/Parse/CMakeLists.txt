@@ -5,7 +5,7 @@ add_swift_unittest(SwiftParseTests
   TokenizerTests.cpp
 )
 
-target_link_libraries(SwiftParseTests
+target_link_libraries(SwiftParseTests PRIVATE
     swiftSIL
     swiftClangImporter
     swiftParse

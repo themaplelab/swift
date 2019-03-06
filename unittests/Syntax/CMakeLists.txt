@@ -11,5 +11,5 @@ add_swift_unittest(SwiftSyntaxTests
   UnknownSyntaxTests.cpp
   )
 
-target_link_libraries(SwiftSyntaxTests
+target_link_libraries(SwiftSyntaxTests PRIVATE
   swiftSyntax)

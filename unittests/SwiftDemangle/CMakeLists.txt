@@ -6,7 +6,7 @@ if(TARGET swiftDemangle)
     PROPERTIES BUILD_WITH_INSTALL_RPATH On INSTALL_RPATH "${SWIFT_LIBRARY_OUTPUT_INTDIR}"
   )
   
-  target_link_libraries(SwiftDemangleTests
+  target_link_libraries(SwiftDemangleTests PRIVATE
     swiftDemangle
   )
 endif()
