@@ -17,25 +17,28 @@
 #ifndef SWIFT_AST_STMT_H
 #define SWIFT_AST_STMT_H
 
+#include "swift/AST/ASTNode.h"
 #include "swift/AST/Availability.h"
 #include "swift/AST/AvailabilitySpec.h"
-#include "swift/AST/ASTNode.h"
-#include "swift/AST/Expr.h"
 #include "swift/AST/IfConfigClause.h"
 #include "swift/AST/TypeAlignments.h"
 #include "swift/Basic/NullablePtr.h"
+#include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Support/TrailingObjects.h"
 
 namespace swift {
-  class ASTContext;
-  class ASTWalker;
-  class Decl;
-  class Expr;
-  class FuncDecl;
-  class Pattern;
-  class PatternBindingDecl;
-  class VarDecl;
-  
+
+class AnyPattern;
+class ASTContext;
+class ASTWalker;
+class Decl;
+class Expr;
+class FuncDecl;
+class Pattern;
+class PatternBindingDecl;
+class VarDecl;
+class CaseStmt;
+
 enum class StmtKind {
 #define STMT(ID, PARENT) ID,
 #define LAST_STMT(ID) Last_Stmt = ID,
@@ -84,6 +87,11 @@ protected:
     CaseCount : 32
   );
 
+  SWIFT_INLINE_BITFIELD_FULL(YieldStmt, Stmt, 32,
+    : NumPadBits,
+    NumYields : 32
+  );
+
   } Bits;
 
   /// Return the given value for the 'implicit' flag if present, or if None,
@@ -101,17 +109,17 @@ public:
 
   StmtKind getKind() const { return StmtKind(Bits.Stmt.Kind); }
 
-  /// \brief Retrieve the name of the given statement kind.
+  /// Retrieve the name of the given statement kind.
   ///
   /// This name should only be used for debugging dumps and other
   /// developer aids, and should never be part of a diagnostic or exposed
   /// to the user of the compiler in any way.
   static StringRef getKindName(StmtKind kind);
 
-  /// \brief Return the location of the start of the statement.
+  /// Return the location of the start of the statement.
   SourceLoc getStartLoc() const;
   
-  /// \brief Return the location of the end of the statement.
+  /// Return the location of the end of the statement.
   SourceLoc getEndLoc() const;
   
   SourceRange getSourceRange() const;
@@ -128,7 +136,7 @@ public:
   LLVM_ATTRIBUTE_DEPRECATED(
       void dump() const LLVM_ATTRIBUTE_USED,
       "only for use within the debugger");
-  void print(raw_ostream &OS, unsigned Indent = 0) const;
+  void dump(raw_ostream &OS, const ASTContext *Ctx = nullptr, unsigned Indent = 0) const;
 
   // Only allow allocation of Exprs using the allocator in ASTContext
   // or by doing a placement new.
@@ -209,7 +217,49 @@ public:
   
   static bool classof(const Stmt *S) { return S->getKind() == StmtKind::Return;}
 };
+
+/// YieldStmt - A yield statement.  The yield-values sequence is not optional,
+/// but the parentheses are.
+///    yield 42
+class YieldStmt final
+    : public Stmt, private llvm::TrailingObjects<YieldStmt, Expr*> {
+  friend TrailingObjects;
+
+  SourceLoc YieldLoc;
+  SourceLoc LPLoc;
+  SourceLoc RPLoc;
+
+  YieldStmt(SourceLoc yieldLoc, SourceLoc lpLoc, ArrayRef<Expr *> yields,
+            SourceLoc rpLoc, Optional<bool> implicit = None)
+    : Stmt(StmtKind::Yield, getDefaultImplicitFlag(implicit, yieldLoc)),
+      YieldLoc(yieldLoc), LPLoc(lpLoc), RPLoc(rpLoc) {
+    Bits.YieldStmt.NumYields = yields.size();
+    memcpy(getMutableYields().data(), yields.data(),
+           yields.size() * sizeof(Expr*));
+  }
+
+public:
+  static YieldStmt *create(const ASTContext &ctx, SourceLoc yieldLoc,
+                           SourceLoc lp, ArrayRef<Expr*> yields, SourceLoc rp,
+                           Optional<bool> implicit = None);
+
+  SourceLoc getYieldLoc() const { return YieldLoc; }
+  SourceLoc getLParenLoc() const { return LPLoc; }
+  SourceLoc getRParenLoc() const { return RPLoc; }
+
+  SourceLoc getStartLoc() const { return YieldLoc; }
+  SourceLoc getEndLoc() const;
+
+  ArrayRef<Expr*> getYields() const {
+    return {getTrailingObjects<Expr*>(), Bits.YieldStmt.NumYields};
+  }
+  MutableArrayRef<Expr*> getMutableYields() {
+    return {getTrailingObjects<Expr*>(), Bits.YieldStmt.NumYields};
+  }
   
+  static bool classof(const Stmt *S) { return S->getKind() == StmtKind::Yield; }
+};
+
 /// DeferStmt - A 'defer' statement.  This runs the substatement it contains
 /// when the enclosing scope is exited.
 ///
@@ -260,7 +310,7 @@ public:
 };
 
   
-/// \brief An expression that guards execution based on whether the run-time
+/// An expression that guards execution based on whether the run-time
 /// configuration supports a given API, e.g.,
 /// #available(OSX >= 10.9, iOS >= 7.0).
 class alignas(8) PoundAvailableInfo final :
@@ -814,17 +864,40 @@ public:
 
 /// A pattern and an optional guard expression used in a 'case' statement.
 class CaseLabelItem {
+  enum class Kind {
+    /// A normal pattern
+    Normal = 0,
+    /// `default`
+    Default,
+  };
+
   Pattern *CasePattern;
   SourceLoc WhereLoc;
-  llvm::PointerIntPair<Expr *, 1, bool> GuardExprAndIsDefault;
+  llvm::PointerIntPair<Expr *, 1, Kind> GuardExprAndKind;
+
+  CaseLabelItem(Kind kind, Pattern *casePattern, SourceLoc whereLoc,
+                Expr *guardExpr)
+    : CasePattern(casePattern), WhereLoc(whereLoc),
+      GuardExprAndKind(guardExpr, kind) {}
 
 public:
   CaseLabelItem(const CaseLabelItem &) = default;
 
-  CaseLabelItem(bool IsDefault, Pattern *CasePattern, SourceLoc WhereLoc,
-                Expr *GuardExpr)
-      : CasePattern(CasePattern), WhereLoc(WhereLoc),
-        GuardExprAndIsDefault(GuardExpr, IsDefault) {}
+  CaseLabelItem(Pattern *casePattern, SourceLoc whereLoc, Expr *guardExpr)
+    : CaseLabelItem(Kind::Normal, casePattern, whereLoc, guardExpr) {}
+  explicit CaseLabelItem(Pattern *casePattern)
+    : CaseLabelItem(casePattern, SourceLoc(), nullptr) {}
+
+  static CaseLabelItem getDefault(AnyPattern *pattern,
+                                  SourceLoc whereLoc,
+                                  Expr *guardExpr) {
+    assert(pattern);
+    return CaseLabelItem(Kind::Default, reinterpret_cast<Pattern *>(pattern),
+                         whereLoc, guardExpr);
+  }
+  static CaseLabelItem getDefault(AnyPattern *pattern) {
+    return getDefault(pattern, SourceLoc(), nullptr);
+  }
 
   SourceLoc getWhereLoc() const { return WhereLoc; }
 
@@ -838,14 +911,55 @@ public:
 
   /// Return the guard expression if present, or null if the case label has
   /// no guard.
-  Expr *getGuardExpr() { return GuardExprAndIsDefault.getPointer(); }
+  Expr *getGuardExpr() { return GuardExprAndKind.getPointer(); }
   const Expr *getGuardExpr() const {
-    return GuardExprAndIsDefault.getPointer();
+    return GuardExprAndKind.getPointer();
   }
-  void setGuardExpr(Expr *e) { GuardExprAndIsDefault.setPointer(e); }
+  void setGuardExpr(Expr *e) { GuardExprAndKind.setPointer(e); }
 
   /// Returns true if this is syntactically a 'default' label.
-  bool isDefault() const { return GuardExprAndIsDefault.getInt(); }
+  bool isDefault() const {
+    return GuardExprAndKind.getInt() == Kind::Default;
+  }
+};
+
+/// FallthroughStmt - The keyword "fallthrough".
+class FallthroughStmt : public Stmt {
+  SourceLoc Loc;
+  CaseStmt *FallthroughSource;
+  CaseStmt *FallthroughDest;
+
+public:
+  FallthroughStmt(SourceLoc Loc, Optional<bool> implicit = None)
+      : Stmt(StmtKind::Fallthrough, getDefaultImplicitFlag(implicit, Loc)),
+        Loc(Loc), FallthroughSource(nullptr), FallthroughDest(nullptr) {}
+
+  SourceLoc getLoc() const { return Loc; }
+
+  SourceRange getSourceRange() const { return Loc; }
+
+  /// Get the CaseStmt block from which the fallthrough transfers control.
+  /// Set during Sema. (May stay null if fallthrough is invalid.)
+  CaseStmt *getFallthroughSource() const { return FallthroughSource; }
+  void setFallthroughSource(CaseStmt *C) {
+    assert(!FallthroughSource && "fallthrough source already set?!");
+    FallthroughSource = C;
+  }
+
+  /// Get the CaseStmt block to which the fallthrough transfers control.
+  /// Set during Sema.
+  CaseStmt *getFallthroughDest() const {
+    assert(FallthroughDest && "fallthrough dest is not set until Sema");
+    return FallthroughDest;
+  }
+  void setFallthroughDest(CaseStmt *C) {
+    assert(!FallthroughDest && "fallthrough dest already set?!");
+    FallthroughDest = C;
+  }
+
+  static bool classof(const Stmt *S) {
+    return S->getKind() == StmtKind::Fallthrough;
+  }
 };
 
 /// A 'case' or 'default' block of a switch statement.  Only valid as the
@@ -861,42 +975,71 @@ public:
 ///   default:
 /// \endcode
 ///
-class CaseStmt final : public Stmt,
-    private llvm::TrailingObjects<CaseStmt, CaseLabelItem> {
+class CaseStmt final
+    : public Stmt,
+      private llvm::TrailingObjects<CaseStmt, FallthroughStmt *,
+                                    CaseLabelItem> {
   friend TrailingObjects;
 
+  SourceLoc UnknownAttrLoc;
   SourceLoc CaseLoc;
   SourceLoc ColonLoc;
 
-  llvm::PointerIntPair<Stmt *, 1, bool> BodyAndHasBoundDecls;
+  llvm::PointerIntPair<Stmt *, 1, bool> BodyAndHasFallthrough;
+
+  Optional<MutableArrayRef<VarDecl *>> CaseBodyVariables;
 
   CaseStmt(SourceLoc CaseLoc, ArrayRef<CaseLabelItem> CaseLabelItems,
-           bool HasBoundDecls, SourceLoc ColonLoc, Stmt *Body,
-           Optional<bool> Implicit);
+           SourceLoc UnknownAttrLoc, SourceLoc ColonLoc, Stmt *Body,
+           Optional<MutableArrayRef<VarDecl *>> CaseBodyVariables,
+           Optional<bool> Implicit,
+           NullablePtr<FallthroughStmt> fallthroughStmt);
 
 public:
-  static CaseStmt *create(ASTContext &C, SourceLoc CaseLoc,
-                          ArrayRef<CaseLabelItem> CaseLabelItems,
-                          bool HasBoundDecls, SourceLoc ColonLoc, Stmt *Body,
-                          Optional<bool> Implicit = None);
+  static CaseStmt *
+  create(ASTContext &C, SourceLoc CaseLoc,
+         ArrayRef<CaseLabelItem> CaseLabelItems, SourceLoc UnknownAttrLoc,
+         SourceLoc ColonLoc, Stmt *Body,
+         Optional<MutableArrayRef<VarDecl *>> CaseBodyVariables,
+         Optional<bool> Implicit = None,
+         NullablePtr<FallthroughStmt> fallthroughStmt = nullptr);
 
   ArrayRef<CaseLabelItem> getCaseLabelItems() const {
     return {getTrailingObjects<CaseLabelItem>(), Bits.CaseStmt.NumPatterns};
   }
+
   MutableArrayRef<CaseLabelItem> getMutableCaseLabelItems() {
     return {getTrailingObjects<CaseLabelItem>(), Bits.CaseStmt.NumPatterns};
   }
 
-  Stmt *getBody() const { return BodyAndHasBoundDecls.getPointer(); }
-  void setBody(Stmt *body) { BodyAndHasBoundDecls.setPointer(body); }
+  unsigned getNumCaseLabelItems() const { return Bits.CaseStmt.NumPatterns; }
+
+  NullablePtr<CaseStmt> getFallthroughDest() const {
+    return const_cast<CaseStmt &>(*this).getFallthroughDest();
+  }
+
+  NullablePtr<CaseStmt> getFallthroughDest() {
+    if (!hasFallthroughDest())
+      return nullptr;
+    return (*getTrailingObjects<FallthroughStmt *>())->getFallthroughDest();
+  }
+
+  bool hasFallthroughDest() const { return BodyAndHasFallthrough.getInt(); }
+
+  Stmt *getBody() const { return BodyAndHasFallthrough.getPointer(); }
+  void setBody(Stmt *body) { BodyAndHasFallthrough.setPointer(body); }
 
   /// True if the case block declares any patterns with local variable bindings.
-  bool hasBoundDecls() const { return BodyAndHasBoundDecls.getInt(); }
+  bool hasBoundDecls() const { return CaseBodyVariables.hasValue(); }
 
   /// Get the source location of the 'case' or 'default' of the first label.
   SourceLoc getLoc() const { return CaseLoc; }
 
-  SourceLoc getStartLoc() const { return getLoc(); }
+  SourceLoc getStartLoc() const {
+    if (UnknownAttrLoc.isValid())
+      return UnknownAttrLoc;
+    return getLoc();
+  }
   SourceLoc getEndLoc() const { return getBody()->getEndLoc(); }
   SourceRange getLabelItemsRange() const {
     return ColonLoc.isValid() ? SourceRange(getLoc(), ColonLoc) : getSourceRange();
@@ -904,7 +1047,58 @@ public:
 
   bool isDefault() { return getCaseLabelItems()[0].isDefault(); }
 
+  bool hasUnknownAttr() const {
+    // Note: This representation doesn't allow for synthesized @unknown cases.
+    // However, that's probably sensible; the purpose of @unknown is for
+    // diagnosing otherwise-non-exhaustive switches, and the user can't edit
+    // a synthesized case.
+    return UnknownAttrLoc.isValid();
+  }
+
+  /// Return an ArrayRef containing the case body variables of this CaseStmt.
+  ///
+  /// Asserts if case body variables was not explicitly initialized. In contexts
+  /// where one wants a non-asserting version, \see
+  /// getCaseBodyVariablesOrEmptyArray.
+  ArrayRef<VarDecl *> getCaseBodyVariables() const {
+    ArrayRef<VarDecl *> a = *CaseBodyVariables;
+    return a;
+  }
+
+  bool hasCaseBodyVariables() const { return CaseBodyVariables.hasValue(); }
+
+  /// Return an MutableArrayRef containing the case body variables of this
+  /// CaseStmt.
+  ///
+  /// Asserts if case body variables was not explicitly initialized. In contexts
+  /// where one wants a non-asserting version, \see
+  /// getCaseBodyVariablesOrEmptyArray.
+  MutableArrayRef<VarDecl *> getCaseBodyVariables() {
+    return *CaseBodyVariables;
+  }
+
+  ArrayRef<VarDecl *> getCaseBodyVariablesOrEmptyArray() const {
+    if (!CaseBodyVariables)
+      return ArrayRef<VarDecl *>();
+    ArrayRef<VarDecl *> a = *CaseBodyVariables;
+    return a;
+  }
+
+  MutableArrayRef<VarDecl *> getCaseBodyVariablesOrEmptyArray() {
+    if (!CaseBodyVariables)
+      return MutableArrayRef<VarDecl *>();
+    return *CaseBodyVariables;
+  }
+
   static bool classof(const Stmt *S) { return S->getKind() == StmtKind::Case; }
+
+  size_t numTrailingObjects(OverloadToken<CaseLabelItem>) const {
+    return getNumCaseLabelItems();
+  }
+
+  size_t numTrailingObjects(OverloadToken<FallthroughStmt *>) const {
+    return hasFallthroughDest() ? 1 : 0;
+  }
 };
 
 /// Switch statement.
@@ -955,8 +1149,8 @@ public:
   }
 
 private:
-  struct AsCaseStmtWithSkippingIfConfig {
-    AsCaseStmtWithSkippingIfConfig() {}
+  struct AsCaseStmtWithSkippingNonCaseStmts {
+    AsCaseStmtWithSkippingNonCaseStmts() {}
     Optional<CaseStmt*> operator()(const ASTNode &N) const {
       if (auto *CS = llvm::dyn_cast_or_null<CaseStmt>(N.dyn_cast<Stmt*>()))
         return CS;
@@ -966,11 +1160,11 @@ private:
 
 public:
   using AsCaseStmtRange = OptionalTransformRange<ArrayRef<ASTNode>,
-                                                AsCaseStmtWithSkippingIfConfig>;
+                            AsCaseStmtWithSkippingNonCaseStmts>;
   
   /// Get the list of case clauses.
   AsCaseStmtRange getCases() const {
-    return AsCaseStmtRange(getRawCases(), AsCaseStmtWithSkippingIfConfig());
+    return AsCaseStmtRange(getRawCases(), AsCaseStmtWithSkippingNonCaseStmts());
   }
   
   static bool classof(const Stmt *S) {
@@ -983,7 +1177,7 @@ class BreakStmt : public Stmt {
   SourceLoc Loc;
   Identifier TargetName; // Named target statement, if specified in the source.
   SourceLoc TargetLoc;
-  LabeledStmt *Target;  // Target stmt, wired up by Sema.
+  LabeledStmt *Target = nullptr;  // Target stmt, wired up by Sema.
 public:
   BreakStmt(SourceLoc Loc, Identifier TargetName, SourceLoc TargetLoc,
             Optional<bool> implicit = None)
@@ -1018,7 +1212,7 @@ class ContinueStmt : public Stmt {
   SourceLoc Loc;
   Identifier TargetName; // Named target statement, if specified in the source.
   SourceLoc TargetLoc;
-  LabeledStmt *Target;
+  LabeledStmt *Target = nullptr;
 
 public:
   ContinueStmt(SourceLoc Loc, Identifier TargetName, SourceLoc TargetLoc,
@@ -1046,37 +1240,6 @@ public:
 
   static bool classof(const Stmt *S) {
     return S->getKind() == StmtKind::Continue;
-  }
-};
-
-/// FallthroughStmt - The keyword "fallthrough".
-class FallthroughStmt : public Stmt {
-  SourceLoc Loc;
-  CaseStmt *FallthroughDest;
-  
-public:
-  FallthroughStmt(SourceLoc Loc, Optional<bool> implicit = None)
-    : Stmt(StmtKind::Fallthrough, getDefaultImplicitFlag(implicit, Loc)),
-      Loc(Loc), FallthroughDest(nullptr)
-  {}
-  
-  SourceLoc getLoc() const { return Loc; }
-  
-  SourceRange getSourceRange() const { return Loc; }
-  
-  /// Get the CaseStmt block to which the fallthrough transfers control.
-  /// Set during Sema.
-  CaseStmt *getFallthroughDest() const {
-    assert(FallthroughDest && "fallthrough dest is not set until Sema");
-    return FallthroughDest;
-  }
-  void setFallthroughDest(CaseStmt *C) {
-    assert(!FallthroughDest && "fallthrough dest already set?!");
-    FallthroughDest = C;
-  }
-  
-  static bool classof(const Stmt *S) {
-    return S->getKind() == StmtKind::Fallthrough;
   }
 };
 
@@ -1125,6 +1288,31 @@ public:
   
   static bool classof(const Stmt *S) {
     return S->getKind() == StmtKind::Throw;
+  }
+};
+
+/// PoundAssertStmt - Asserts that a condition is true, at compile time.
+class PoundAssertStmt : public Stmt {
+  SourceRange Range;
+  Expr *Condition;
+  StringRef Message;
+
+ public:
+  PoundAssertStmt(SourceRange Range, Expr *condition, StringRef message)
+      : Stmt(StmtKind::PoundAssert, /*Implicit=*/false),
+        Range(Range),
+        Condition(condition),
+        Message(message) {}
+
+  SourceRange getSourceRange() const { return Range; }
+
+  Expr *getCondition() const { return Condition; }
+  StringRef getMessage() const { return Message; }
+
+  void setCondition(Expr *condition) { Condition = condition; }
+
+  static bool classof(const Stmt *S) {
+    return S->getKind() == StmtKind::PoundAssert;
   }
 };
 

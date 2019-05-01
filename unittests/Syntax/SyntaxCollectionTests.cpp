@@ -14,7 +14,7 @@ FunctionCallArgumentSyntax getCannedArgument() {
   auto Colon = SyntaxFactory::makeColonToken({}, Trivia::spaces(1));
   auto SymbolicRef = SyntaxFactory::makeSymbolicReferenceExpr(Foo, llvm::None);
   auto Comma = SyntaxFactory::makeCommaToken({}, Trivia::spaces(1));
-  auto NoComma = RawTokenSyntax::missingToken(tok::comma, ",");
+  auto NoComma = RawSyntax::missing(tok::comma, ",");
 
   return SyntaxFactory::makeFunctionCallArgument(X, Colon, SymbolicRef, Comma);
 }
@@ -257,3 +257,20 @@ TEST(SyntaxCollectionTests, Iteration) {
   List.print(OS);
   ASSERT_EQ(OS.str().str(), IteratedOS.str().str());
 }
+
+TEST(SyntaxCollectionTests, Removing) {
+  auto Arg = getCannedArgument();
+  auto List = SyntaxFactory::makeBlankFunctionCallArgumentList()
+    .appending(Arg)
+    .appending(Arg.withLabel(SyntaxFactory::makeIdentifier("first", {}, {})))
+    .appending(Arg)
+    .removing(1);
+
+  ASSERT_EQ(List.size(), static_cast<size_t>(2));
+
+  SmallString<48> Scratch;
+  llvm::raw_svector_ostream OS(Scratch);
+  List.print(OS);
+  ASSERT_EQ(OS.str().str(), "x: foo, x: foo, ");
+}
+

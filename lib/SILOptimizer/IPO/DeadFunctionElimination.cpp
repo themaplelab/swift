@@ -30,24 +30,6 @@ STATISTIC(NumDeadFunc, "Number of dead functions eliminated");
 
 namespace {
 
-/// Returns true if a function should be SIL serialized or emitted by IRGen.
-static bool shouldBeSerializedOrEmitted(SILFunction *F) {
-  // global initializers are always emitted into the defining module and
-  // their bodies are never SIL serialized.
-  if (F->isGlobalInit())
-    return true;
-
-  // public_external functions are never SIL serialized or emitted by IRGen.
-  if (F->isAvailableExternally() && hasPublicVisibility(F->getLinkage()))
-    return false;
-
-  // [serialized] functions should always be SIL serialized.
-  if (F->isSerialized())
-    return true;
-
-  return false;
-}
-
 /// This is a base class for passes that are based on function liveness
 /// computations like e.g. dead function elimination.
 /// It provides a common logic for computing live (i.e. reachable) functions.
@@ -57,19 +39,15 @@ protected:
   /// Represents a function which is implementing a vtable or witness table
   /// method.
   struct FuncImpl {
-    FuncImpl(SILFunction *F, ClassDecl *Cl) : F(F) { Impl.Cl = Cl; }
-    FuncImpl(SILFunction *F, ProtocolConformance *C) : F(F) { Impl.Conf = C; }
+    FuncImpl(SILFunction *F, ClassDecl *Cl) : F(F), Impl(Cl) {}
+    FuncImpl(SILFunction *F, RootProtocolConformance *C) : F(F), Impl(C) {}
 
     /// The implementing function.
     SILFunction *F;
 
-    union {
-      /// In case of a vtable method.
-      ClassDecl *Cl;
-
-      /// In case of a witness method.
-      ProtocolConformance *Conf;
-    } Impl;
+    /// This is a class decl if we are tracking a class_method (i.e. a vtable
+    /// method) and a protocol conformance if we are tracking a witness_method.
+    PointerUnion<ClassDecl *, RootProtocolConformance*> Impl;
   };
 
   /// Stores which functions implement a vtable or witness table method.
@@ -97,7 +75,7 @@ protected:
     }
 
     /// Adds an implementation of the method in a specific conformance.
-    void addWitnessFunction(SILFunction *F, ProtocolConformance *Conf) {
+    void addWitnessFunction(SILFunction *F, RootProtocolConformance *Conf) {
       assert(isWitnessMethod);
       implementingFunctions.push_back(FuncImpl(F, Conf));
     }
@@ -124,24 +102,9 @@ protected:
     if (F->getRepresentation() == SILFunctionTypeRepresentation::ObjCMethod)
       return true;
 
-    // Functions that may be used externally cannot be removed.
-    if (isPossiblyUsedExternally(F->getLinkage(), Module->isWholeModule()))
-      return true;
-
-    // If function is marked as "keep-as-public", don't remove it.
-    // Change its linkage to public, so that other applications can refer to it.
-    // It is important that this transformation is done at the end of
-    // a pipeline, as it may break some optimizations.
-    if (F->isKeepAsPublic()) {
-      F->setLinkage(SILLinkage::Public);
-      DEBUG(llvm::dbgs() << "DFE: Preserve the specialization "
-                         << F->getName() << '\n');
-      return true;
-    }
-
-    // Do not consider public_external functions that do not need to be emitted
-    // into the client as anchors.
-    if (shouldBeSerializedOrEmitted(F))
+    // Global initializers are always emitted into the defining module and
+    // their bodies are never SIL serialized.
+    if (F->isGlobalInit())
       return true;
 
     return false;
@@ -179,7 +142,8 @@ protected:
   /// Marks all contained functions and witness tables of a witness table as
   /// alive.
   void makeAlive(SILWitnessTable *WT) {
-    DEBUG(llvm::dbgs() << "    scan witness table " << WT->getName() << '\n');
+    LLVM_DEBUG(llvm::dbgs() << "    scan witness table " << WT->getName()
+                            << '\n');
 
     AliveFunctionsAndTables.insert(WT);
     for (const SILWitnessTable::Entry &entry : WT->getEntries()) {
@@ -210,7 +174,6 @@ protected:
           break;
 
         case SILWitnessTable::Invalid:
-        case SILWitnessTable::MissingOptional:
         case SILWitnessTable::AssociatedType:
           break;
       }
@@ -224,56 +187,56 @@ protected:
 
   /// Marks the declarations referenced by a key path pattern as alive if they
   /// aren't yet.
-  void ensureKeyPathComponentsAreAlive(KeyPathPattern *KP) {
-    for (auto &component : KP->getComponents()) {
-      switch (component.getKind()) {
-      case KeyPathPatternComponent::Kind::SettableProperty:
-        ensureAlive(component.getComputedPropertySetter());
-        LLVM_FALLTHROUGH;
-      case KeyPathPatternComponent::Kind::GettableProperty: {
-        ensureAlive(component.getComputedPropertyGetter());
-        auto id = component.getComputedPropertyId();
-        switch (id.getKind()) {
-        case KeyPathPatternComponent::ComputedPropertyId::DeclRef: {
-          auto declRef = id.getDeclRef();
-          if (declRef.isForeign) {
-            // Nothing to do here: foreign functions aren't ours to be deleting.
-            // (And even if they were, they're ObjC-dispatched and thus anchored
-            // already: see isAnchorFunction)
+  void
+  ensureKeyPathComponentIsAlive(const KeyPathPatternComponent &component) {
+    switch (component.getKind()) {
+    case KeyPathPatternComponent::Kind::SettableProperty:
+      ensureAlive(component.getComputedPropertySetter());
+      LLVM_FALLTHROUGH;
+    case KeyPathPatternComponent::Kind::GettableProperty: {
+      ensureAlive(component.getComputedPropertyGetter());
+      auto id = component.getComputedPropertyId();
+      switch (id.getKind()) {
+      case KeyPathPatternComponent::ComputedPropertyId::DeclRef: {
+        auto declRef = id.getDeclRef();
+        if (declRef.isForeign) {
+          // Nothing to do here: foreign functions aren't ours to be deleting.
+          // (And even if they were, they're ObjC-dispatched and thus anchored
+          // already: see isAnchorFunction)
+        } else {
+          auto decl = cast<AbstractFunctionDecl>(declRef.getDecl());
+          if (auto clas = dyn_cast<ClassDecl>(decl->getDeclContext())) {
+            ensureAliveClassMethod(getMethodInfo(decl, /*witness*/ false),
+                                   dyn_cast<FuncDecl>(decl),
+                                   clas);
+          } else if (isa<ProtocolDecl>(decl->getDeclContext())) {
+            ensureAliveProtocolMethod(getMethodInfo(decl, /*witness*/ true));
           } else {
-            auto decl = cast<AbstractFunctionDecl>(declRef.getDecl());
-            if (auto clas = dyn_cast<ClassDecl>(decl->getDeclContext())) {
-              ensureAliveClassMethod(getMethodInfo(decl, /*witness*/ false),
-                                     dyn_cast<FuncDecl>(decl),
-                                     clas);
-            } else if (isa<ProtocolDecl>(decl->getDeclContext())) {
-              ensureAliveProtocolMethod(getMethodInfo(decl, /*witness*/ true));
-            } else {
-              llvm_unreachable("key path keyed by a non-class, non-protocol method");
-            }
+            llvm_unreachable("key path keyed by a non-class, non-protocol method");
           }
-          break;
         }
-        case KeyPathPatternComponent::ComputedPropertyId::Function:
-          ensureAlive(id.getFunction());
-          break;
-        case KeyPathPatternComponent::ComputedPropertyId::Property:
-          break;
-        }
-
-        if (auto equals = component.getComputedPropertyIndexEquals())
-          ensureAlive(equals);
-        if (auto hash = component.getComputedPropertyIndexHash())
-          ensureAlive(hash);
-
-        continue;
+        break;
       }
-      case KeyPathPatternComponent::Kind::StoredProperty:
-      case KeyPathPatternComponent::Kind::OptionalChain:
-      case KeyPathPatternComponent::Kind::OptionalForce:
-      case KeyPathPatternComponent::Kind::OptionalWrap:
-        continue;
+      case KeyPathPatternComponent::ComputedPropertyId::Function:
+        ensureAlive(id.getFunction());
+        break;
+      case KeyPathPatternComponent::ComputedPropertyId::Property:
+        break;
       }
+
+      if (auto equals = component.getSubscriptIndexEquals())
+        ensureAlive(equals);
+      if (auto hash = component.getSubscriptIndexHash())
+        ensureAlive(hash);
+
+      break;
+    }
+    case KeyPathPatternComponent::Kind::StoredProperty:
+    case KeyPathPatternComponent::Kind::OptionalChain:
+    case KeyPathPatternComponent::Kind::OptionalForce:
+    case KeyPathPatternComponent::Kind::OptionalWrap:
+    case KeyPathPatternComponent::Kind::TupleElement:
+      break;
     }
   }
 
@@ -292,18 +255,6 @@ protected:
     makeAlive(WT);
   }
 
-  /// Returns true if \a Derived is the same as \p Base or derived from it.
-  static bool isDerivedOrEqual(ClassDecl *Derived, ClassDecl *Base) {
-    for (;;) {
-      if (Derived == Base)
-        return true;
-      if (!Derived->hasSuperclass())
-        break;
-      Derived = Derived->getSuperclass()->getClassOrBoundGenericClass();
-    }
-    return false;
-  }
-
   /// Returns true if the implementation of method \p FD in class \p ImplCl
   /// may be called when the type of the class_method's operand is \p MethodCl.
   /// Both, \p MethodCl and \p ImplCl, may by null if not known or if it's a
@@ -314,7 +265,7 @@ protected:
       return true;
 
     // All implementations of derived classes may be called.
-    if (isDerivedOrEqual(ImplCl, MethodCl))
+    if (MethodCl->isSuperclassOf(ImplCl))
       return true;
 
     // Check if the method implementation is the same in a super class, i.e.
@@ -337,7 +288,8 @@ protected:
 
     for (FuncImpl &FImpl : mi->implementingFunctions) {
       if (!isAlive(FImpl.F) &&
-          canHaveSameImplementation(FD, MethodCl, FImpl.Impl.Cl)) {
+          canHaveSameImplementation(FD, MethodCl,
+                                    FImpl.Impl.get<ClassDecl *>())) {
         makeAlive(FImpl.F);
       } else {
         allImplsAreCalled = false;
@@ -354,9 +306,10 @@ protected:
       return;
     mi->methodIsCalled = true;
     for (FuncImpl &FImpl : mi->implementingFunctions) {
-      if (FImpl.Impl.Conf) {
-        SILWitnessTable *WT = Module->lookUpWitnessTable(FImpl.Impl.Conf,
-                                                  /*deserializeLazily*/ false);
+      if (auto Conf = FImpl.Impl.dyn_cast<RootProtocolConformance *>()) {
+        SILWitnessTable *WT =
+            Module->lookUpWitnessTable(Conf,
+                                       /*deserializeLazily*/ false);
         if (!WT || isAlive(WT))
           makeAlive(FImpl.F);
       } else {
@@ -377,14 +330,14 @@ protected:
   /// Scans all references inside a function.
   void scanFunction(SILFunction *F) {
 
-    DEBUG(llvm::dbgs() << "    scan function " << F->getName() << '\n');
+    LLVM_DEBUG(llvm::dbgs() << "    scan function " << F->getName() << '\n');
 
     // First scan all instructions of the function.
     for (SILBasicBlock &BB : *F) {
       for (SILInstruction &I : BB) {
         if (auto *WMI = dyn_cast<WitnessMethodInst>(&I)) {
-          auto *funcDecl = cast<AbstractFunctionDecl>(WMI->getMember().getDecl());
-          assert(funcDecl == getBase(funcDecl));
+          auto *funcDecl = getBase(
+              cast<AbstractFunctionDecl>(WMI->getMember().getDecl()));
           MethodInfo *mi = getMethodInfo(funcDecl, /*isWitnessTable*/ true);
           ensureAliveProtocolMethod(mi);
         } else if (auto *MI = dyn_cast<MethodInst>(&I)) {
@@ -398,14 +351,26 @@ protected:
           ensureAliveClassMethod(mi, dyn_cast<FuncDecl>(funcDecl), MethodCl);
         } else if (auto *FRI = dyn_cast<FunctionRefInst>(&I)) {
           ensureAlive(FRI->getReferencedFunction());
+        } else if (auto *FRI = dyn_cast<DynamicFunctionRefInst>(&I)) {
+          ensureAlive(FRI->getReferencedFunction());
+        } else if (auto *FRI = dyn_cast<PreviousDynamicFunctionRefInst>(&I)) {
+          ensureAlive(FRI->getReferencedFunction());
         } else if (auto *KPI = dyn_cast<KeyPathInst>(&I)) {
-          ensureKeyPathComponentsAreAlive(KPI->getPattern());
+          for (auto &component : KPI->getPattern()->getComponents())
+            ensureKeyPathComponentIsAlive(component);
         }
       }
     }
   }
 
   /// Retrieve the visibility information from the AST.
+  ///
+  /// This differs from SILModule::isVisibleExternally(VarDecl *) because of
+  /// it's handling of class methods. It returns true for methods whose
+  /// declarations are not directly visible externally, but have been imported
+  /// from another module. This ensures that entries aren't deleted from vtables
+  /// imported from the stdlib.
+  /// FIXME: Passes should not embed special logic for handling linkage.
   bool isVisibleExternally(const ValueDecl *decl) {
     AccessLevel access = decl->getEffectiveAccess();
     SILLinkage linkage;
@@ -425,9 +390,7 @@ protected:
     if (isPossiblyUsedExternally(linkage, Module->isWholeModule()))
       return true;
 
-    // If a vtable or witness table (method) is only visible in another module
-    // it can be accessed inside that module and we don't see this access.
-    // We hit this case e.g. if a table is imported from the stdlib.
+    // Special case for vtable visibility.
     if (decl->getDeclContext()->getParentModule() != Module->getSwiftModule())
       return true;
 
@@ -445,12 +408,13 @@ protected:
 
     for (SILFunction &F : *Module) {
       if (isAnchorFunction(&F)) {
-        DEBUG(llvm::dbgs() << "  anchor function: " << F.getName() << "\n");
+        LLVM_DEBUG(llvm::dbgs() << "  anchor function: " << F.getName() <<"\n");
         ensureAlive(&F);
       }
 
       if (!F.shouldOptimize()) {
-        DEBUG(llvm::dbgs() << "  anchor a no optimization function: " << F.getName() << "\n");
+        LLVM_DEBUG(llvm::dbgs() << "  anchor a no optimization function: "
+                                << F.getName() << "\n");
         ensureAlive(&F);
       }
     }
@@ -463,7 +427,7 @@ public:
   /// The main entry point of the optimization.
   bool findAliveFunctions() {
 
-    DEBUG(llvm::dbgs() << "running function elimination\n");
+    LLVM_DEBUG(llvm::dbgs() << "running function elimination\n");
 
     // Find everything which may not be eliminated, e.g. because it is accessed
     // externally.
@@ -512,7 +476,7 @@ class DeadFunctionElimination : FunctionLivenessComputation {
 
     // Collect witness method implementations.
     for (SILWitnessTable &WT : Module->getWitnessTableList()) {
-      ProtocolConformance *Conf = WT.getConformance();
+      auto Conf = WT.getConformance();
       for (const SILWitnessTable::Entry &entry : WT.getEntries()) {
         if (entry.getKind() != SILWitnessTable::Method)
           continue;
@@ -533,17 +497,16 @@ class DeadFunctionElimination : FunctionLivenessComputation {
     // Collect default witness method implementations.
     for (SILDefaultWitnessTable &WT : Module->getDefaultWitnessTableList()) {
       for (const SILDefaultWitnessTable::Entry &entry : WT.getEntries()) {
-        if (!entry.isValid())
+        if (!entry.isValid() || entry.getKind() != SILWitnessTable::Method)
           continue;
 
-        SILFunction *F = entry.getWitness();
-        auto *fd = cast<AbstractFunctionDecl>(entry.getRequirement().getDecl());
+        SILFunction *F = entry. getMethodWitness().Witness;
+        auto *fd = cast<AbstractFunctionDecl>(
+                     entry.getMethodWitness().Requirement.getDecl());
         MethodInfo *mi = getMethodInfo(fd, /*isWitnessTable*/ true);
         mi->addWitnessFunction(F, nullptr);
       }
     }
-
-
   }
 
   /// DeadFunctionElimination pass takes functions
@@ -616,14 +579,15 @@ class DeadFunctionElimination : FunctionLivenessComputation {
         // The default witness table is visible from "outside". Therefore all
         // methods might be called and we mark all methods as alive.
         for (const SILDefaultWitnessTable::Entry &entry : WT.getEntries()) {
-          if (!entry.isValid())
+          if (!entry.isValid() || entry.getKind() != SILWitnessTable::Method)
             continue;
 
           auto *fd =
-              cast<AbstractFunctionDecl>(entry.getRequirement().getDecl());
+              cast<AbstractFunctionDecl>(
+                entry.getMethodWitness().Requirement.getDecl());
           assert(fd == getBase(fd) &&
                  "key in default witness table is overridden");
-          SILFunction *F = entry.getWitness();
+          SILFunction *F = entry.getMethodWitness().Witness;
           if (!F)
             continue;
 
@@ -632,6 +596,13 @@ class DeadFunctionElimination : FunctionLivenessComputation {
         }
       }
     }
+    // Check property descriptor implementations.
+    for (SILProperty &P : Module->getPropertyList()) {
+      if (auto component = P.getComponent()) {
+        ensureKeyPathComponentIsAlive(*component);
+      }
+    }
+
   }
 
   /// Removes all dead methods from vtables and witness tables.
@@ -641,8 +612,8 @@ class DeadFunctionElimination : FunctionLivenessComputation {
       vTable.removeEntries_if([this, &changedTable]
                               (SILVTable::Entry &entry) -> bool {
         if (!isAlive(entry.Implementation)) {
-          DEBUG(llvm::dbgs() << "  erase dead vtable method " <<
-                entry.Implementation->getName() << "\n");
+          LLVM_DEBUG(llvm::dbgs() << "  erase dead vtable method "
+                                  << entry.Implementation->getName() << "\n");
           changedTable = true;
           return true;
         }
@@ -657,8 +628,8 @@ class DeadFunctionElimination : FunctionLivenessComputation {
       WT->clearMethods_if([this, &changedTable]
                           (const SILWitnessTable::MethodWitness &MW) -> bool {
         if (!isAlive(MW.Witness)) {
-          DEBUG(llvm::dbgs() << "  erase dead witness method " <<
-                MW.Witness->getName() << "\n");
+          LLVM_DEBUG(llvm::dbgs() << "  erase dead witness method "
+                                  << MW.Witness->getName() << "\n");
           changedTable = true;
           return true;
         }
@@ -676,8 +647,8 @@ class DeadFunctionElimination : FunctionLivenessComputation {
         if (!MW)
           return false;
         if (!isAlive(MW)) {
-          DEBUG(llvm::dbgs() << "  erase dead default witness method "
-                             << MW->getName() << "\n");
+          LLVM_DEBUG(llvm::dbgs() << "  erase dead default witness method "
+                                  << MW->getName() << "\n");
           changedTable = true;
           return true;
         }
@@ -694,7 +665,7 @@ public:
   /// The main entry point of the optimization.
   void eliminateFunctions(SILModuleTransform *DFEPass) {
 
-    DEBUG(llvm::dbgs() << "running dead function elimination\n");
+    LLVM_DEBUG(llvm::dbgs() << "running dead function elimination\n");
     findAliveFunctions();
 
     bool changedTables = removeDeadEntriesFromTables();
@@ -715,8 +686,8 @@ public:
       SILWitnessTable *Wt = &*Iter;
       Iter++;
       if (!isAlive(Wt)) {
-        DEBUG(llvm::dbgs() << "  erase dead witness table " << Wt->getName()
-                           << '\n');
+        LLVM_DEBUG(llvm::dbgs() << "  erase dead witness table "
+                                << Wt->getName() << '\n');
         Module->deleteWitnessTable(Wt);
       }
     }
@@ -726,9 +697,10 @@ public:
       SILFunction *F = DeadFunctions.back();
       DeadFunctions.pop_back();
 
-      DEBUG(llvm::dbgs() << "  erase dead function " << F->getName() << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "  erase dead function " << F->getName()
+                              << "\n");
       NumDeadFunc++;
-      DFEPass->notifyDeleteFunction(F);
+      DFEPass->notifyWillDeleteFunction(F);
       Module->eraseFunction(F);
     }
     if (changedTables)
@@ -746,7 +718,7 @@ namespace {
 
 class SILDeadFuncElimination : public SILModuleTransform {
   void run() override {
-    DEBUG(llvm::dbgs() << "Running DeadFuncElimination\n");
+    LLVM_DEBUG(llvm::dbgs() << "Running DeadFuncElimination\n");
 
     // The deserializer caches functions that it deserializes so that if it is
     // asked to deserialize that function again, it does not do extra work. This
@@ -770,5 +742,5 @@ void swift::performSILDeadFunctionElimination(SILModule *M) {
   SILPassManager PM(M);
   llvm::SmallVector<PassKind, 1> Pass = {PassKind::DeadFunctionElimination};
   PM.executePassPipelinePlan(
-      SILPassPipelinePlan::getPassPipelineForKinds(Pass));
+      SILPassPipelinePlan::getPassPipelineForKinds(M->getOptions(), Pass));
 }

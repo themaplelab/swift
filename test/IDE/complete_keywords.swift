@@ -6,6 +6,18 @@
 // RUN: %FileCheck %s -check-prefix=KW_DECL_STMT < %t.top2
 // RUN: %FileCheck %s -check-prefix=KW_NO_RETURN < %t.top2
 
+// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=TOP_LEVEL_AFTER_IF_1 > %t.top3
+// RUN: %FileCheck %s -check-prefix=KW_DECL_STMT < %t.top3
+// RUN: %FileCheck %s -check-prefix=KW_NO_RETURN < %t.top3
+
+// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=TOP_LEVEL_AFTER_IF_ELSE_1 | %FileCheck %s -check-prefix=AFTER_IF_ELSE
+
+// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=AFTER_IF_1 > %t.if1
+// RUN: %FileCheck %s -check-prefix=KW_DECL_STMT < %t.if1
+// RUN: %FileCheck %s -check-prefix=KW_RETURN < %t.if1
+
+// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=AFTER_IF_ELSE_1 | %FileCheck %s -check-prefix=AFTER_IF_ELSE
+
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=IN_FUNC_BODY_1 > %t.func1
 // RUN: %FileCheck %s -check-prefix=KW_DECL_STMT < %t.func1
 // RUN: %FileCheck %s -check-prefix=KW_RETURN < %t.func1
@@ -77,6 +89,9 @@
 // RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=EXPR_6 > %t.expr6
 // RUN: %FileCheck %s -check-prefix=KW_EXPR < %t.expr6
 // RUN: %FileCheck %s -check-prefix=KW_EXPR_NEG < %t.expr6
+
+// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=SWITCH_TOP | %FileCheck %s -check-prefix=KW_CASE
+// RUN: %target-swift-ide-test -code-completion -source-filename %s -code-completion-token=SWITCH_IN_CASE | %FileCheck %s -check-prefix=KW_CASE
 
 // KW_RETURN: Keyword[return]/None: return{{; name=.+$}}
 // KW_NO_RETURN-NOT: Keyword[return]
@@ -237,6 +252,20 @@ for _ in 1...10 {
   #^TOP_LEVEL_2^#
 }
 
+if true {} #^TOP_LEVEL_AFTER_IF_1^#
+
+if true {} else #^TOP_LEVEL_AFTER_IF_ELSE_1^# {}
+
+// AFTER_IF_ELSE: Begin completions, 1 items
+// AFTER_IF_ELSE: Keyword[if]/None: if;
+
+func testAfterIf1() {
+  if true {} #^AFTER_IF_1^#
+}
+func testAfterIfElse1() {
+  if true {} else #^AFTER_IF_ELSE_1^# {}
+}
+
 func testInFuncBody1() {
   #^IN_FUNC_BODY_1^#
 }
@@ -374,4 +403,17 @@ func inExpr5() {
 }
 func inExpr6() -> Int {
   return #^EXPR_6^#
+}
+
+func inSwitch(val: Int) {
+  switch val {
+  #^SWITCH_TOP^#
+  case 1:
+    foo()
+  #^SWITCH_IN_CASE^#
+  }
+// Begin completions
+// KW_CASE-DAG: Keyword[case]/None:                 case; name=case
+// KW_CASE-DAG: Keyword[default]/None:              default; name=default
+// End completions
 }

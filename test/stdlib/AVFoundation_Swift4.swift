@@ -1,10 +1,14 @@
-// RUN: rm -rf %t && mkdir %t
+// RUN: %empty-directory(%t)
 // RUN: %target-build-swift -swift-version 4 %s -o %t/a.out
+// RUN: %target-codesign %t/a.out
 // RUN: %target-run %t/a.out
 // REQUIRES: objc_interop
 // REQUIRES: executable_test
 // CoreMedia is not present on watchOS.
 // UNSUPPORTED: OS=watchos
+
+// Requires swift-version 5
+// UNSUPPORTED: swift_test_mode_optimize_none_with_implicit_dynamic
 
 import AVFoundation
 import StdlibUnittest

@@ -103,6 +103,13 @@ significant modes are:
     driver is run with the flag `-wmo`, `-whole-module-optimization` or
     `-force-single-frontend-invocation` (all these options are synonymous).
 
+    - **Batch** vs. **single-file** primary-file mode. This distinction refines
+    the behaviour of primary-file mode, with the new batch mode added in the
+    Swift 4.2 release cycle. Batching eliminates much of the overhead of
+    primary-file mode, and will eventually become the default way of running
+    primary-file mode, but until that time it is explicitly enabled by passing
+    the `-enable-batch-mode` flag.
+
   - **Optimizing** vs. **non-optimizing**: this varies depending on whether the
     driver (and thus each frontend) is run with the flags `-O`, `-Osize`, or
     `-Ounchecked` (each of which turn on one or more sets of optimizations), or
@@ -120,39 +127,60 @@ But these parameters can be varied independently and the compiler will spend its
 time very differently depending on their settings, so it's worth understanding
 both dimensions in a bit more detail.
 
-#### Primary-file vs. WMO
+#### Primary-file (with and without batching) vs. WMO
 
 This is the most significant variable in how the compiler behaves, so it's worth
 getting perfectly clear:
 
-  - In **primary-file mode**, the driver runs _one frontend job per file_ in the
-    module, merging the results when all the frontends finish. Each frontend job
-    itself reads _all_ the files in the module, and focuses on one _primary_
-    file among the set it read, which it compiles, lazily analyzing other
-    referenced definitions from the module as needed.
+  - In **primary-file mode**, the driver divides the work it has to do between
+    multiple frontend processes, emitting partial results and merging those
+    results when all the frontends finish. Each frontend job itself reads _all_
+    the files in the module, and focuses on one or more _primary_ file(s) among
+    the set it read, which it compiles, lazily analyzing other referenced
+    definitions from the module as needed.
+    This mode has two sub-modes:
+
+    - In the **single-file** sub-mode, it runs _one frontend job per file_, with
+      each job having a single primary.
+
+    - In the **batch** sub-mode, it runs _one frontend job per CPU_, identifying an
+      equal-sized "batch" of the module's files as primaries.
 
   - In **whole-module optimization (WMO) mode**, the driver runs one frontend
     job for the entire module, no matter what. That frontend reads all the files
     in the module _once_ and compiles them all at once.
 
-For example: if your module has 100 files in it, running `swiftc *.swift` will
-run 100 frontend subprocesses, each of which will parse all 100 inputs (for a
-total of 10,000 parses), and then each subprocess will (in parallel) compile the
-definitions in its single primary file. In contrast, running `swiftc -wmo
-*.swift` will run _one_ frontend subprocess, which then reads all 100 files
-_once_ and compiles the definitions in all of them, in order (serially).
+For example: if your module has 100 files in it:
 
-Why do both modes exist? Because they have different strengths and weaknesses;
+  - Running `swiftc *.swift` will compile in **single-file mode**, and will thus
+    run 100 frontend subprocesses, each of which will parse all 100 inputs (for
+    a total of 10,000 parses), and then each subprocess will (in parallel) 
+    compile the definitions in its single primary file.
+
+  - Running `swiftc -enable-batch-mode *.swift` will compile in **batch** mode,
+    and on a system with 4 CPUs will run 4 frontend subprocesses, each of which
+    will parse all 100 inputs (for a total of 400 parses), and then each subprocess
+    will (in parallel) compile the definitions of 25 primary files (one quarter
+    of the module in each process).
+
+  - Running `swiftc -wmo *.swift` will compile in **whole-module** mode,
+    and will thus run _one_ frontend subprocess, which then reads all 100 files
+    _once_ (for a total of 100 parses) and compiles the definitions in all of them,
+    in order (serially).
+
+Why do multiple modes exist? Because they have different strengths and weaknesses;
 neither is perfect:
 
-  - Primary-file mode's advantages are that the driver can do incremental
-    compilation by only running frontends for files that it thinks are out of
-    date, as well as running multiple frontend jobs at the same time, making use
+  - Primary-file mode's advantages are that the driver can do **incremental
+    compilation** by only running frontends for files that it thinks are out of
+    date, as well as running multiple frontend jobs **in parallel**, making use
     of multiple cores. Its disadvantage is that each frontend job has to read
-    _all the source files_ in the module before focusing on its primary-file of
+    _all the source files_ in the module before focusing on its primary-files of
     interest, which means that a _portion_ of the frontend job's work is being
-    done _quadratically_. Usually this portion is relatively small and fast, but
-    because it's quadratic, it can easily go wrong.
+    done _quadratically_ in the number of jobs. Usually this portion is relatively
+    small and fast, but because it's quadratic, it can easily go wrong. The addition
+    of **batch mode** was specifically to eliminate this quadratic increase in
+    early work.
 
   - WMO mode's advantages are that it can do certain optimizations that only
     work when they are sure they're looking at the entire module, and it avoids
@@ -161,13 +189,17 @@ neither is perfect:
     parallelism worse (at least before LLVM IR code-generation, which is always
     multithreaded).
 
-Many people get confused by the word `optimization` in the option name
-`-whole-module-optimization`, and assume the option has only to do with enabling
-"very aggressive" optimizations. It does enable such optimizations, but it also
-_significantly changes_ the way the compiler runs, so much so that some other
-people have taken to running the compiler in an unsupported (and somewhat
-unfortunate) hybrid compilation mode `-wmo -Onone`, which combines
-non-optimizing compilation with whole-module compilation.
+Whole-module mode does enable a set of optimizations that are not possible when
+compiling in primary-file mode. In particular, in modules with a lot of private
+dead code, whole-module mode can eliminate the dead code earlier and avoid
+needless work compiling it, making for both smaller output and faster compilation.
+
+It is therefore possible that, in certain cases (such as with limited available
+parallelism / many modules built in parallel), building in whole-module mode
+with optimization disabled can complete in less time than batched primary-file
+mode. This scenario depends on many factors seldom gives a significant advantage,
+and since using it trades-away support for incremental compilation entirely, it
+is not a recommended configuration.
 
 #### Amount of optimization
 
@@ -269,7 +301,7 @@ definitions than it should.
 Swift compilation performance varies _significantly_ by at least the following
 parameters:
 
-  - WMO vs. primary-file (non-WMO) mode
+  - WMO vs. primary-file (non-WMO) mode, including batching thereof
   - Optimizing vs. non-optimizing mode
   - Quantity of incremental work avoided (if in non-WMO)
   - Quantity of external definitions lazily loaded
@@ -288,7 +320,6 @@ problem you're seeing to some of the existing strategies and plans for
 improvement:
 
   - Incremental mode is over-approximate, runs too many subprocesses.
-  - Name resolution is over-eager, deserializes too many definitions.
   - Too many referenced (non-primary-file) definitions are type-checked beyond
     the point they need to be, during the quadratic phase.
   - Expression type inference solves constraints inefficiently, and can
@@ -351,7 +382,7 @@ higher-resolution, more-detailed profile, in practice Instruments will often
 stall out and become unresponsive trying to process the additional detail.
 
 Similarly, be sure that as many applications as possible (especially those with
-debuginfo themselves!) are closed, so that Instruments has has little additional
+debuginfo themselves!) are closed, so that Instruments has little additional
 material to symbolicate as possible. It collects a _whole system profile_ at
 very high resolution, so you want to make its life easy by profiling on a quiet
 machine doing little beyond the task you're interested in.
@@ -516,20 +547,22 @@ compilers on hand while you're working.
     early investigation to see which file in a primary-file-mode compilation is
     taking the majority of time, or is taking more or less time than when
     comparing compilations. Its output looks like this:
+
     ```
     ===-------------------------------------------------------------------------===
-                              Driver Time Compilation
+                                Driver Compilation Time
     ===-------------------------------------------------------------------------===
-    Total Execution Time: 0.0002 seconds (1.3390 wall clock)
+      Total Execution Time: 0.0001 seconds (0.0490 wall clock)
 
-     ---User Time---   --System Time--   --User+System--   ---Wall Time---  --- Name ---
-     0.0000 ( 87.2%)   0.0001 ( 58.7%)   0.0001 ( 67.5%)   1.0983 ( 82.0%)  compile t.swift
-     0.0000 ( 12.8%)   0.0000 ( 41.3%)   0.0000 ( 32.5%)   0.2407 ( 18.0%)  link t.swift
-     0.0000 (100.0%)   0.0001 (100.0%)   0.0002 (100.0%)   1.3390 (100.0%)  Total
+       ---User Time---   --System Time--   --User+System--   ---Wall Time---  --- Name ---
+       0.0000 ( 82.0%)   0.0001 ( 59.5%)   0.0001 ( 69.0%)   0.0284 ( 58.0%)  {compile: t-177627.o <= t.swift}
+       0.0000 ( 18.0%)   0.0000 ( 40.5%)   0.0000 ( 31.0%)   0.0206 ( 42.0%)  {link: t <= t-177627.o}
+       0.0001 (100.0%)   0.0001 (100.0%)   0.0001 (100.0%)   0.0490 (100.0%)  Total
     ```
 
   - `-Xfrontend -debug-time-compilation`: asks each frontend to print out timers
     for each phase of its execution. Its output (per-frontend) looks like this:
+
     ```
     ===-------------------------------------------------------------------------===
                                  Swift compilation
@@ -556,6 +589,7 @@ compilers on hand while you're working.
     taken. The output is therefore voluminous, but can help when reducing a
     testcase to the "one bad function" that causes it. The output looks like
     this:
+
     ```
     9.16ms  test.swift:15:6 func find<R>(_ range: R, value: R.Element) -> R where R : IteratorProtocol, R.Element : Eq
     0.28ms  test.swift:27:6 func findIf<R>(_ range: R, predicate: (R.Element) -> Bool) -> R where R : IteratorProtocol
@@ -568,6 +602,7 @@ compilers on hand while you're working.
     `-debug-time-function-bodies`, but prints a separate timer for _every
     expression_ in the program, much more detail than just the functions. The
     output looks like this:
+
     ```
     0.20ms  test.swift:17:16
     1.82ms  test.swift:18:12
@@ -582,6 +617,7 @@ compilers on hand while you're working.
     frontend, printing them out when the frontend exits. By default, most
     statistics are enabled only in assert builds, so in a release build this
     option will do nothing. In an assert build, its output will look like this:
+
     ```
     ===-------------------------------------------------------------------------===
                             ... Statistics Collected ...
@@ -609,9 +645,10 @@ compilers on hand while you're working.
     ```
 
   - `-Xfrontend -print-clang-stats`: prints counters associated with the clang
-    AST reader, which is operated as a subsystem fo the swift compiler when
+    AST reader, which is operated as a subsystem of the swift compiler when
     importing definitions from C/ObjC. Its output is added to the end of
     whatever output comes from `-print-stats`, and looks like this:
+
     ```
     *** AST File Statistics:
     1/194 source location entries read (0.515464%)
@@ -630,6 +667,7 @@ compilers on hand while you're working.
   - `-Xfrontend -print-stats -Xfrontend -print-inst-counts`: an extended form of
     `-print-stats` that activates a separate statistic counter for every kind of
     SIL instruction generated during compilation. Its output looks like this:
+
     ```
     ...
     163 sil-instcount                    - Number of AllocStackInst
@@ -647,25 +685,106 @@ compilers on hand while you're working.
     ...
     ```
 
-Finally, in an attempt to unify collection and reporting of these options,
-recent versions of the compiler support a partly redundant command
-`-stats-output-dir <directory>` that writes _all_ driver and primary frontend
-counters and timers (though not per-function timers) to JSON files in
-`<directory>`. This option also provides _some_ high-level counters that are
-"always available" regardless of whether you're using an assert or release
-build, though assert builds still get _more_ counters (all of those available
-thorugh `-print-stats`). If you are using a new-enough compiler,
-`-stats-output-dir` often simplifies analysis, since its output is
-machine-readable and aggregates all the jobs in a multi-job compilation, and
-there's a post-processing script `utils/process-stats-dir.py` to work with these
-files in aggregate.
+##### Unified stats reporter
+
+In an attempt to unify collection and reporting of the various
+statistic-gathering options, recent versions of the compiler support a partly
+redundant command `-stats-output-dir <directory>` that writes _all_ driver and
+primary frontend counters and timers (though not per-function timers) to JSON
+files in `<directory>`.
+
+This option also provides _some_ high-level counters that are "always available"
+regardless of whether you're using an assert or release build, though assert
+builds still get _more_ counters (all of those available through
+`-print-stats`). If you are using a new-enough compiler, `-stats-output-dir`
+often simplifies analysis, since its output is machine-readable and aggregates
+all the jobs in a multi-job compilation, and there's a post-processing script
+`utils/process-stats-dir.py` to work with these files in aggregate.
+
+For example, to compile a file with the unified stats reporter enabled, first
+make a directory in which to output the stats, then compile with the
+`-stats-output-dir` flag:
+
+```
+$ mkdir /tmp/stats
+$ swiftc -c test.swift -stats-output-dir /tmp/stats
+$ ls /tmp/stats
+stats-1518219149045080-swift-frontend-test-test.swift-x86_64_apple_macosx10.13-o-Onone-531621672.json
+$ cat /tmp/stats/*.json
+{
+  "AST.NumSourceBuffers": 1,
+  "AST.NumSourceLines": 1,
+  "AST.NumSourceLinesPerSecond": 3,
+  "AST.NumLinkLibraries": 0,
+  "AST.NumLoadedModules": 4,
+  "AST.NumImportedExternalDefinitions": 0,
+  "AST.NumTotalClangImportedEntities": 0,
+  ...
+  "time.swift.Parsing.wall": 5.038023e-03,
+  "time.swift.Parsing.user": 7.200000e-05,
+  "time.swift.Parsing.sys": 4.794000e-03,
+  "time.swift-frontend.test-test.swift-x86_64_apple_macosx10.13-o-Onone.wall": 3.239949e-01,
+  "time.swift-frontend.test-test.swift-x86_64_apple_macosx10.13-o-Onone.user": 2.152100e-02,
+  "time.swift-frontend.test-test.swift-x86_64_apple_macosx10.13-o-Onone.sys": 2.897520e-01
+}
+```
+
+###### Tracing stats events
+
+Furthermore, recent versions `-stats-output-dir` have a secondary, experimental
+(and much more voluminous mode) called `-trace-stats-events`, that writes _trace
+files_ in CSV to the stats output directory. These trace files show -- in quite
+verbose detail, declaration and expression at a time -- the costs incurred by
+various phases of the compiler, both in terms of absolute time and in terms of
+any changers to statistics being tracked by the unified stats reporter.
+
+For example, to compile a small file with `-trace-stats-events`, pass it as an
+extra argument to a compilation already using `-stats-output-dir`:
+
+```
+$ mkdir /tmp/stats
+$ swiftc -c test.swift -stats-output-dir /tmp/stats -trace-stats-events
+$ ls /tmp/stats
+stats-1518219460129565-swift-frontend-test-test.swift-x86_64_apple_macosx10.13-o-Onone-1576107381.json
+trace-1518219460129597-swift-frontend-test-test.swift-x86_64_apple_macosx10.13-o-Onone-1471252712.csv
+$ head /tmp/stats/trace-1518219460129597-swift-frontend-test-test.swift-x86_64_apple_macosx10.13-o-Onone-1471252712.csv
+Time,Live,IsEntry,EventName,CounterName,CounterDelta,CounterValue,EntityName,EntityRange
+40032,0,"entry","typecheck-decl","Sema.NumDeclsDeserialized",91,91,"foo","[test.swift:1:1 - line:1:32]"
+40032,0,"entry","typecheck-decl","Sema.NumLazyGenericEnvironments",40,40,"foo","[test.swift:1:1 - line:1:32]"
+40032,0,"entry","typecheck-decl","Sema.NumLazyIterableDeclContexts",40,40,"foo","[test.swift:1:1 - line:1:32]"
+40032,0,"entry","typecheck-decl","Sema.NumTypesDeserialized",106,106,"foo","[test.swift:1:1 - line:1:32]"
+40032,0,"entry","typecheck-decl","Sema.NumUnloadedLazyIterableDeclContexts",40,40,"foo","[test.swift:1:1 - line:1:32]"
+40135,0,"entry","typecheck-decl","Sema.NumDeclsValidated",1,1,"","[test.swift:1:13 - line:1:29]"
+...
+```
+
+The data volume in these trace files can be quite overwhelming, and the contents
+a little hard to read without formatting; for extraction and analysis it can be
+helpful to load them into a separate tool such as
+an [SQLite database](https://www.sqlite.org) or a command line CSV processor
+such as [`xsv`](https://github.com/BurntSushi/xsv).
+
+```
+$ cat /tmp/stats/trace-1518219460129597-swift-frontend-test-test.swift-x86_64_apple_macosx10.13-o-Onone-1471252712.csv \
+   | xsv search --select CounterName DeclsDeserialized \
+   | xsv sort --reverse --numeric --select CounterDelta \
+   | xsv table
+Time   Live  IsEntry  EventName       CounterName                CounterDelta  CounterValue  EntityName  EntityRange
+43279  0     entry    emit-SIL        Sema.NumDeclsDeserialized  360           517           _           [test.swift:1:17 - line:1:17]
+40032  0     entry    typecheck-decl  Sema.NumDeclsDeserialized  91            91            foo         [test.swift:1:1 - line:1:32]
+41324  735   exit     typecheck-decl  Sema.NumDeclsDeserialized  40            156                       [test.swift:1:13 - line:1:29]
+40432  0     entry    typecheck-decl  Sema.NumDeclsDeserialized  25            116           _           [test.swift:1:17 - line:1:17]
+43712  206   exit     emit-SIL        Sema.NumDeclsDeserialized  18            535           _           [test.swift:1:17 - line:1:17]
+41448  97    exit     typecheck-fn    Sema.NumDeclsDeserialized  1             157           _           [test.swift:1:17 - line:1:17]
+```
 
 #### Post-processing tools for diagnostics
 
 If you dump diagnostic output using `-stats-output-dir <dir>`, the resulting
 files in `<dir>` will be simple JSON files that can be processed with any
-JSON-reading program or library, such as `jq`. Alternatively, a bulk-analysis
-script also exists in `utils/process-stats-dir.py`, which permits a variety of
+JSON-reading program or library, such
+as [`jq`](https://stedolan.github.io/jq/). Alternatively, a bulk-analysis script
+also exists in `utils/process-stats-dir.py`, which permits a variety of
 aggregation and analysis tasks.
 
 Here is an example of how to use `-stats-output-dir` together with
@@ -1203,7 +1322,7 @@ internals of the compiler, just time and patience.
 
   - Add Open Source projects to the
     [source-compatibility testsuite](https://swift.org/source-compatibility/).
-    Apple's internal CI infastructure is now tracking selected non-assert-build
+    Apple's internal CI infrastructure is now tracking selected non-assert-build
     `UnifiedStatsReporter` counters on those projects, and the team is far
     more likely to catch a regression if it's shown by a project in the testsuite.
 

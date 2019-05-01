@@ -238,6 +238,7 @@ func testFunctionCollectionTypes() {
 
   _ = [1 -> Int]() // expected-error {{expected type before '->'}}
   _ = [Int -> 1]() // expected-error {{expected type after '->'}}
+    // expected-error@-1 {{single argument function types require parentheses}}
 
   // Should parse () as void type when before or after arrow
   _ = [() -> Int]()
@@ -248,7 +249,7 @@ func testFunctionCollectionTypes() {
   _ = (Int) -> Int // expected-error {{expected member name or constructor call after type name}} expected-note{{use '.self' to reference the type object}}
 
   _ = @convention(c) () -> Int // expected-error{{expected member name or constructor call after type name}} expected-note{{use '.self' to reference the type object}}
-  _ = 1 + (@convention(c) () -> Int).self // expected-error{{binary operator '+' cannot be applied to operands of type 'Int' and '(@convention(c) () -> Int).Type'}} // expected-note {{overloads}}
+  _ = 1 + (@convention(c) () -> Int).self // expected-error{{binary operator '+' cannot be applied to operands of type 'Int' and '(@convention(c) () -> Int).Type'}} // expected-note {{expected an argument list of type '(Int, Int)'}}
   _ = (@autoclosure () -> Int) -> (Int, Int).2 // expected-error {{expected type after '->'}}
   _ = ((@autoclosure () -> Int) -> (Int, Int)).1 // expected-error {{type '(@autoclosure () -> Int) -> (Int, Int)' has no member '1'}}
   _ = ((inout Int) -> Void).self

@@ -26,33 +26,23 @@
   * ClosureExpr
   * FunctionCallExpr
   * SubscriptExpr
+  * DotSelfExpr
   * PostfixUnaryExpr
   * ForcedValueExpr
   * SuperRefExpr
   * ImplicitMemberExpr
-
-### In-progress (UnknownExpr):
   * InterpolatedStringLiteralExpr
-  * ObjectLiteralExpr
-  * MagicIdentifierLiteralExpr
-  * InOutExpr
   * KeyPathExpr
   * KeyPathDotExpr
+  * InOutExpr
   * EditorPlaceholderExpr
-
-### Not-started (UnknownExpr):
-  * UnresolvedSpecializeExpr
-  * DotSelfExpr
-  * KeyPathApplicationExpr
-  * CaptureListExpr
-  * AutoClosureExpr
-  * DynamicTypeExpr
-  * ForcedCheckedCastExpr
-  * ConditionalCheckedCastExpr
-  * IsExpr
-  * CoerceExpr
-  * ArrowExpr
+  * ObjectLiteralExpr
+  * MagicIdentifierLiteralExpr
+  * SpecializeExpr
   * UnresolvedPatternExpr
+  * IsExpr
+  * AsExpr
+  * ArrowExpr
   * ObjCSelectorExpr
 
 ## Declaration
@@ -64,26 +54,19 @@
   * FuncDecl
   * ProtocolDecl
   * ImportDecl
+  * AssociatedTypeDecl
   * TypeAliasDecl
   * IfConfigDecl
   * PatternBindingDecl
   * VarDecl
   * ExtensionDecl
-
-### In-progress (UnknownDecl):
-
-### Not-started (UnknownDecl):
-  * EnumCaseDecl
-  * PrecedenceGroupDecl
-  * InfixOperatorDecl
-  * PrefixOperatorDecl
-  * PostfixOperatorDecl
-  * AssociatedTypeDecl
-  * EnumDecl
   * SubscriptDecl
   * ConstructorDecl
   * DestructorDecl
-  * EnumElementDecl
+  * EnumDecl
+  * EnumCaseDecl
+  * OperatorDecl
+  * PrecedenceGroupDecl
 
 ## Statement
 ### Done:
@@ -100,9 +83,8 @@
   * GuardStmt
   * WhileStmt
   * ForInStmt
-
-### Not-started (UnknownStmt):
   * SwitchStmt
+  * YieldStmt
 
 ## Pattern
 ### Done:

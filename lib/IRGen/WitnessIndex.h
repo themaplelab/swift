@@ -18,6 +18,7 @@
 #ifndef SWIFT_IRGEN_WITNESSINDEX_H
 #define SWIFT_IRGEN_WITNESSINDEX_H
 
+#include "swift/ABI/MetadataValues.h"
 #include "swift/IRGen/ValueWitness.h"
 
 namespace swift {
@@ -31,13 +32,21 @@ class WitnessIndex {
   unsigned IsPrefix : 1;
 public:
   WitnessIndex() = default;
-  WitnessIndex(ValueWitness index) : Value(int(index)) {}
   explicit WitnessIndex(int index, bool isPrefix)
       : Value(index), IsPrefix(isPrefix) {}
 
   int getValue() const { return Value; }
 
   bool isPrefix() const { return IsPrefix; }
+
+  /// Adjust the index to refer into a protocol witness table (rather than
+  /// a value witness table).
+  WitnessIndex forProtocolWitnessTable() const {
+    int NewValue = Value < 0
+                     ? Value
+                     : Value + WitnessTableFirstRequirementOffset;
+    return WitnessIndex(NewValue, IsPrefix);
+  }
 };
 
 } // end namespace irgen

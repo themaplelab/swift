@@ -12,6 +12,9 @@
 // RUN: %target-run-simple-swift
 // REQUIRES: executable_test
 
+// Requires swift-version 4
+// UNSUPPORTED: swift_test_mode_optimize_none_with_implicit_dynamic
+
 import StdlibUnittest
 
 
@@ -64,12 +67,12 @@ FilterTests.test("single-count") {
   }
     
   let f0 = (0..<30).makeIterator().lazy.filter(mod7AndCount)
-  let a0 = Array(f0)
+  _ = Array(f0)
   expectEqual(30, count)
 
   count = 0
   let f1 = LazyFilterCollection(_base: 0..<30, mod7AndCount)
-  let a1 = Array(f1)
+  _ = Array(f1)
   expectEqual(30, count)
 }
 

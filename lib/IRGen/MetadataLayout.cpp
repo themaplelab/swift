@@ -30,6 +30,8 @@
 #include "EnumMetadataVisitor.h"
 #include "IRGenFunction.h"
 #include "StructMetadataVisitor.h"
+#include "ForeignClassMetadataVisitor.h"
+#include "TupleMetadataVisitor.h"
 
 #include "swift/Basic/LLVM.h"
 #include "llvm/ADT/Optional.h"
@@ -78,9 +80,17 @@ public:
 
 }
 
-ClassMetadataLayout &IRGenModule::getMetadataLayout(ClassDecl *decl) {
+ClassMetadataLayout &IRGenModule::getClassMetadataLayout(ClassDecl *decl) {
+  assert(!decl->isForeign() && "Use getForeignMetadataLayout()");
   return cast<ClassMetadataLayout>(
                         getMetadataLayout(static_cast<NominalTypeDecl*>(decl)));
+}
+
+ForeignClassMetadataLayout &IRGenModule::getForeignMetadataLayout(
+                                                          ClassDecl *decl) {
+  assert(decl->isForeign() && "Use getMetadataLayout()");
+  return cast<ForeignClassMetadataLayout>(
+           getMetadataLayout(static_cast<NominalTypeDecl*>(decl)));
 }
 
 EnumMetadataLayout &IRGenModule::getMetadataLayout(EnumDecl *decl) {
@@ -93,11 +103,19 @@ StructMetadataLayout &IRGenModule::getMetadataLayout(StructDecl *decl) {
                         getMetadataLayout(static_cast<NominalTypeDecl*>(decl)));
 }
 
-NominalMetadataLayout &IRGenModule::getMetadataLayout(NominalTypeDecl *decl) {
+NominalMetadataLayout &IRGenModule::getNominalMetadataLayout(
+                                                    NominalTypeDecl *decl) {
+  return cast<NominalMetadataLayout>(getMetadataLayout(decl));
+}
+
+MetadataLayout &IRGenModule::getMetadataLayout(NominalTypeDecl *decl) {
   auto &entry = MetadataLayouts[decl];
   if (!entry) {
     if (auto theClass = dyn_cast<ClassDecl>(decl)) {
-      entry = new ClassMetadataLayout(*this, theClass);
+      if (theClass->getForeignClassKind() == ClassDecl::ForeignKind::CFType)
+        entry = new ForeignClassMetadataLayout(*this, theClass);
+      else
+        entry = new ClassMetadataLayout(*this, theClass);
     } else if (auto theEnum = dyn_cast<EnumDecl>(decl)) {
       entry = new EnumMetadataLayout(*this, theEnum);
     } else if (auto theStruct = dyn_cast<StructDecl>(decl)) {
@@ -106,7 +124,7 @@ NominalMetadataLayout &IRGenModule::getMetadataLayout(NominalTypeDecl *decl) {
       llvm_unreachable("bad nominal type!");
     }
   }
-  return *cast<NominalMetadataLayout>(entry);
+  return *cast<MetadataLayout>(entry);
 }
 
 void IRGenModule::destroyMetadataLayoutMap() {
@@ -128,6 +146,10 @@ void MetadataLayout::destroy() const {
   case Kind::Enum:
     delete cast<EnumMetadataLayout>(this);
     return;
+
+  case Kind::ForeignClass:
+    delete cast<ForeignClassMetadataLayout>(this);
+    return;
   }
   llvm_unreachable("bad kind");
 }
@@ -141,10 +163,12 @@ Offset NominalMetadataLayout::emitOffset(IRGenFunction &IGF,
   if (offset.isStatic())
     return Offset(offset.getStaticOffset());
 
-  Address offsetBaseAddr(
-    IGF.IGM.getAddrOfClassMetadataBaseOffset(cast<ClassDecl>(getDecl()),
-                                             NotForDefinition),
+  Address layoutAddr(
+    IGF.IGM.getAddrOfClassMetadataBounds(cast<ClassDecl>(getDecl()),
+                                         NotForDefinition),
     IGF.IGM.getPointerAlignment());
+
+  auto offsetBaseAddr = IGF.Builder.CreateStructGEP(layoutAddr, 0, Size(0));
 
   // FIXME: Should this be an invariant load?
   llvm::Value *offsetVal = IGF.Builder.CreateLoad(offsetBaseAddr, "base");
@@ -175,7 +199,7 @@ static llvm::Value *emitLoadOfGenericRequirement(IRGenFunction &IGF,
                                                  unsigned reqtIndex,
                                                  llvm::Type *reqtTy) {
   auto offset =
-    IGF.IGM.getMetadataLayout(decl).getGenericRequirementsOffset(IGF);
+    IGF.IGM.getNominalMetadataLayout(decl).getGenericRequirementsOffset(IGF);
   offset = offset.offsetBy(IGF, Size(reqtIndex * IGF.IGM.getPointerSize()));
 
   auto slot = IGF.emitAddressAtOffset(metadata, offset, reqtTy,
@@ -225,7 +249,11 @@ Address irgen::emitAddressOfFieldOffsetVector(IRGenFunction &IGF,
     }
   }();
 
-  return IGF.emitAddressAtOffset(metadata, offset, IGF.IGM.SizeTy,
+  auto *elementSize = IGF.IGM.SizeTy;
+  if (isa<StructDecl>(decl))
+    elementSize = IGF.IGM.Int32Ty;
+
+  return IGF.emitAddressAtOffset(metadata, offset, elementSize,
                                  IGF.IGM.getPointerAlignment());
 }
 
@@ -250,9 +278,10 @@ ClassMetadataLayout::ClassMetadataLayout(IRGenModule &IGM, ClassDecl *decl)
       // If our superclass is resilient to us, or the class itself is resilient
       // to us, we will access metadata members relative to a base offset.
       if (forClass == Target) {
+        Layout.StartOfImmediateMembers = getNextOffset();
+
         if (Layout.HasResilientSuperclass ||
-            (IGM.Context.LangOpts.EnableClassResilience &&
-             IGM.isResilient(forClass, ResilienceExpansion::Maximal))) {
+            IGM.hasResilientMetadata(forClass, ResilienceExpansion::Maximal)) {
           assert(!DynamicOffsetBase);
           DynamicOffsetBase = NextOffset;
         }
@@ -262,6 +291,11 @@ ClassMetadataLayout::ClassMetadataLayout(IRGenModule &IGM, ClassDecl *decl)
     void addClassSize() {
       Layout.MetadataSize = getNextOffset();
       super::addClassSize();
+    }
+
+    void addClassAddressPoint() {
+      Layout.MetadataAddressPoint = getNextOffset();
+      super::addClassAddressPoint();
     }
 
     void addInstanceSize() {
@@ -280,19 +314,18 @@ ClassMetadataLayout::ClassMetadataLayout(IRGenModule &IGM, ClassDecl *decl)
       super::noteStartOfGenericRequirements(forClass);
     }
 
-    void addGenericWitnessTable(CanType argType, ProtocolConformanceRef conf,
-                                ClassDecl *forClass) {
+    void addGenericWitnessTable(ClassDecl *forClass) {
       if (forClass == Target) {
         Layout.NumImmediateMembers++;
       }
-      super::addGenericWitnessTable(argType, conf, forClass);
+      super::addGenericWitnessTable(forClass);
     }
 
-    void addGenericArgument(CanType argType, ClassDecl *forClass) {
+    void addGenericArgument(ClassDecl *forClass) {
       if (forClass == Target) {
         Layout.NumImmediateMembers++;
       }
-      super::addGenericArgument(argType, forClass);
+      super::addGenericArgument(forClass);
     }
 
     void addMethod(SILDeclRef fn) {
@@ -345,6 +378,11 @@ Size ClassMetadataLayout::getMetadataSizeOffset() const {
   return MetadataSize.getStaticOffset();
 }
 
+Size ClassMetadataLayout::getMetadataAddressPointOffset() const {
+  assert(MetadataAddressPoint.isStatic());
+  return MetadataAddressPoint.getStaticOffset();
+}
+
 Size ClassMetadataLayout::getInstanceSizeOffset() const {
   assert(InstanceSize.isStatic());
   return InstanceSize.getStaticOffset();
@@ -360,19 +398,6 @@ ClassMetadataLayout::getMethodInfo(IRGenFunction &IGF, SILDeclRef method) const{
   auto &stored = getStoredMethodInfo(method);
   auto offset = emitOffset(IGF, stored.TheOffset);
   return MethodInfo(offset);
-}
-
-Size ClassMetadataLayout::getStaticMethodOffset(SILDeclRef method) const{
-  auto &stored = getStoredMethodInfo(method);
-
-  assert(stored.TheOffset.isStatic() &&
-         "resilient class metadata layout unsupported!");
-  return stored.TheOffset.getStaticOffset();
-}
-
-Offset
-ClassMetadataLayout::getVTableOffset(IRGenFunction &IGF) const {
-  return emitOffset(IGF, VTableOffset);
 }
 
 Offset ClassMetadataLayout::getFieldOffset(IRGenFunction &IGF,
@@ -418,7 +443,10 @@ ClassMetadataLayout::getFieldOffsetVectorOffset(IRGenFunction &IGF) const {
 
 Size irgen::getClassFieldOffsetOffset(IRGenModule &IGM, ClassDecl *theClass,
                                       VarDecl *field) {
-  return IGM.getMetadataLayout(theClass).getStaticFieldOffset(field);
+  if (theClass->getForeignClassKind() == ClassDecl::ForeignKind::CFType)
+    return Size();
+
+  return IGM.getClassMetadataLayout(theClass).getStaticFieldOffset(field);
 }
 
 /// Given a reference to class metadata of the given type,
@@ -436,10 +464,54 @@ Address irgen::emitAddressOfClassFieldOffset(IRGenFunction &IGF,
                                              llvm::Value *metadata,
                                              ClassDecl *theClass,
                                              VarDecl *field) {
-  auto offset = IGF.IGM.getMetadataLayout(theClass).getFieldOffset(IGF, field);
+  auto offset =
+    IGF.IGM.getClassMetadataLayout(theClass).getFieldOffset(IGF, field);
   auto slot = IGF.emitAddressAtOffset(metadata, offset, IGF.IGM.SizeTy,
                                       IGF.IGM.getPointerAlignment());
   return slot;
+}
+
+Address irgen::emitAddressOfSuperclassRefInClassMetadata(IRGenFunction &IGF,
+                                                         llvm::Value *metadata) {
+  // The superclass field in a class type is the first field past the isa.
+  unsigned index = 1;
+
+  Address addr(metadata, IGF.IGM.getPointerAlignment());
+  addr = IGF.Builder.CreateElementBitCast(addr, IGF.IGM.TypeMetadataPtrTy);
+  return IGF.Builder.CreateConstArrayGEP(addr, index, IGF.IGM.getPointerSize());
+}
+
+Size irgen::getStaticTupleElementOffset(IRGenModule &IGM,
+                                        SILType tupleType,
+                                        unsigned eltIdx) {
+  assert(tupleType.is<TupleType>() && "not a tuple type");
+
+  struct TupleElementOffsetScanner
+       : LayoutScanner<TupleElementOffsetScanner, TupleMetadataScanner> {
+  private:
+    using super = LayoutScanner;
+
+    // 8 seems a reasonable potential max number tuple elements to start with
+    llvm::SmallVector<Size, 8> Offsets;
+
+  public:
+    TupleElementOffsetScanner(IRGenModule &IGM, TupleType *const tupleType)
+      : super(IGM, tupleType) {}
+
+    void addElement(unsigned eltIdx, const TupleTypeElt &elt) {
+      Offsets.push_back(NextOffset);
+      super::addElement(eltIdx, elt);
+    }
+
+    Size getElementOffset(unsigned eltIdx) const {
+      return Offsets[eltIdx];
+    }
+  };
+
+  TupleElementOffsetScanner s(IGM, tupleType.getAs<TupleType>().getPointer());
+  s.layout();
+
+  return s.getElementOffset(eltIdx);
 }
 
 /*********************************** ENUMS ************************************/
@@ -453,6 +525,11 @@ EnumMetadataLayout::EnumMetadataLayout(IRGenModule &IGM, EnumDecl *decl)
     EnumMetadataLayout &Layout;
     Scanner(IRGenModule &IGM, EnumDecl *decl, EnumMetadataLayout &layout)
       : super(IGM, decl), Layout(layout) {}
+
+    void noteStartOfTypeSpecificMembers() {
+      assert(getNextOffset().getStaticOffset() ==
+               IGM.getOffsetOfEnumTypeSpecificMetadataMembers());
+    }
 
     void addPayloadSize() {
       Layout.PayloadSizeOffset = getNextOffset();
@@ -491,6 +568,11 @@ StructMetadataLayout::StructMetadataLayout(IRGenModule &IGM, StructDecl *decl)
     Scanner(IRGenModule &IGM, StructDecl *decl, StructMetadataLayout &layout)
       : super(IGM, decl), Layout(layout) {}
 
+    void noteStartOfTypeSpecificMembers() {
+      assert(getNextOffset().getStaticOffset() ==
+               IGM.getOffsetOfStructTypeSpecificMetadataMembers());
+    }
+
     void noteStartOfGenericRequirements() {
       Layout.GenericRequirements = getNextOffset();
       super::noteStartOfGenericRequirements();
@@ -504,6 +586,10 @@ StructMetadataLayout::StructMetadataLayout(IRGenModule &IGM, StructDecl *decl)
     void addFieldOffset(VarDecl *field) {
       Layout.FieldOffsets.try_emplace(field, getNextOffset());
       super::addFieldOffset(field);
+    }
+
+    void noteEndOfFieldOffsets() {
+      super::noteEndOfFieldOffsets();
     }
 
     void layout() {
@@ -530,4 +616,34 @@ Offset
 StructMetadataLayout::getFieldOffsetVectorOffset() const {
   assert(FieldOffsetVector.isStatic());
   return Offset(FieldOffsetVector.getStaticOffset());
+}
+
+/****************************** FOREIGN CLASSES *******************************/
+ForeignClassMetadataLayout::ForeignClassMetadataLayout(IRGenModule &IGM,
+                                                       ClassDecl *theClass)
+    : MetadataLayout(Kind::ForeignClass), Class(theClass) {
+  assert(theClass->getForeignClassKind() == ClassDecl::ForeignKind::CFType &&
+         "Not a foreign class");
+
+  struct Scanner : LayoutScanner<Scanner, ForeignClassMetadataScanner> {
+    using super = LayoutScanner;
+
+    ForeignClassMetadataLayout &Layout;
+    Scanner(IRGenModule &IGM, ClassDecl *decl,
+            ForeignClassMetadataLayout &layout)
+      : super(IGM, decl), Layout(layout) {}
+
+    void addSuperclass() {
+      Layout.SuperClassOffset = getNextOffset();
+      super::addSuperclass();
+    }
+
+    void layout() {
+      super::layout();
+      Layout.TheSize = getMetadataSize();
+    }
+  };
+
+  Scanner(IGM, theClass, *this).layout();
+
 }

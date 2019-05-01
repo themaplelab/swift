@@ -40,7 +40,7 @@ class A {
   var v9: Int { return 5 } // expected-note{{attempt to override property here}}
   var v10: Int { return 5 } // expected-note{{attempt to override property here}}
 
-  subscript (i: Int) -> String { // expected-note{{potential overridden subscript 'subscript' here}}
+  subscript (i: Int) -> String { // expected-note{{potential overridden subscript 'subscript(_:)' here}}
     get {
       return "hello"
     }
@@ -49,7 +49,7 @@ class A {
     }
   }
 
-  subscript (d: Double) -> String { // expected-note{{overridden declaration is here}} expected-note{{potential overridden subscript 'subscript' here}}
+  subscript (d: Double) -> String { // expected-note{{overridden declaration is here}} expected-note{{potential overridden subscript 'subscript(_:)' here}}
     get {
       return "hello"
     }
@@ -58,11 +58,11 @@ class A {
     }
   }
 
-  subscript (i: Int8) -> A { // expected-note{{potential overridden subscript 'subscript' here}}
+  subscript (i: Int8) -> A { // expected-note{{potential overridden subscript 'subscript(_:)' here}}
     get { return self }
   }
 
-  subscript (i: Int16) -> A { // expected-note{{attempt to override subscript here}} expected-note{{potential overridden subscript 'subscript' here}}
+  subscript (i: Int16) -> A { // expected-note{{attempt to override subscript here}} expected-note{{potential overridden subscript 'subscript(_:)' here}}
     get { return self }
     set { }
   }
@@ -155,7 +155,7 @@ enum E {
 }
 
 protocol P {
-  override func f() // expected-error{{'override' can only be specified on class members}} {{3-12=}}
+  override func f() // FIXME wording: expected-error{{method does not override any method from its superclass}}
 }
 
 override func f() { } // expected-error{{'override' can only be specified on class members}} {{1-10=}}
@@ -314,13 +314,13 @@ protocol P2 {}
 
 class MismatchOptional : MismatchOptionalBase {
   override func param(_: Int) {} // expected-error {{cannot override instance method parameter of type 'Int?' with non-optional type 'Int'}} {{29-29=?}}
-  override func paramIUO(_: Int) {} // expected-error {{cannot override instance method parameter of type 'Int!' with non-optional type 'Int'}} {{32-32=?}}
+  override func paramIUO(_: Int) {} // expected-error {{cannot override instance method parameter of type 'Int?' with non-optional type 'Int'}} {{32-32=?}}
   override func result() -> Int? { return nil } // expected-error {{cannot override instance method result type 'Int' with optional type 'Int?'}} {{32-33=}}
 
   override func fixSeveralTypes(a: Int, b: Int) -> Int! { return nil }
   // expected-error@-1 {{cannot override instance method parameter of type 'Int?' with non-optional type 'Int'}} {{39-39=?}}
-  // expected-error@-2 {{cannot override instance method parameter of type 'Int!' with non-optional type 'Int'}} {{47-47=?}}
-  // expected-error@-3 {{cannot override instance method result type 'Int' with optional type 'Int!'}} {{55-56=}}
+  // expected-error@-2 {{cannot override instance method parameter of type 'Int?' with non-optional type 'Int'}} {{47-47=?}}
+  // expected-error@-3 {{cannot override instance method result type 'Int' with optional type 'Int?'}} {{55-56=}}
 
   override func functionParam(x: @escaping (Int) -> Int) {} // expected-error {{cannot override instance method parameter of type '((Int) -> Int)?' with non-optional type '(Int) -> Int'}} {{34-34=(}} {{56-56=)?}}
   override func tupleParam(x: (Int, Int)) {} // expected-error {{cannot override instance method parameter of type '(Int, Int)?' with non-optional type '(Int, Int)'}} {{41-41=?}}
@@ -372,7 +372,7 @@ class MismatchOptional : MismatchOptionalBase {
 }
 
 class MismatchOptional2 : MismatchOptionalBase {
-  override func result() -> Int! { return nil } // expected-error {{cannot override instance method result type 'Int' with optional type 'Int!'}} {{32-33=}}
+  override func result() -> Int! { return nil } // expected-error {{cannot override instance method result type 'Int' with optional type 'Int?'}} {{32-33=}}
 
   // None of these are overrides because we didn't say 'override'. Since they're
   // not exact matches, they shouldn't result in errors.

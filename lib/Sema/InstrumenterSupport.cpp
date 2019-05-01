@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "InstrumenterSupport.h"
+#include "swift/AST/DiagnosticSuppression.h"
 
 using namespace swift;
 using namespace swift::instrumenter_support;
@@ -32,11 +33,12 @@ public:
     diags.addConsumer(*this);
   }
   ~ErrorGatherer() override { diags.takeConsumers(); }
-  void handleDiagnostic(SourceManager &SM, SourceLoc Loc,
-                        DiagnosticKind Kind,
-                        StringRef FormatString,
-                        ArrayRef<DiagnosticArgument> FormatArgs,
-                        const DiagnosticInfo &Info) override {
+  void
+  handleDiagnostic(SourceManager &SM, SourceLoc Loc, DiagnosticKind Kind,
+                   StringRef FormatString,
+                   ArrayRef<DiagnosticArgument> FormatArgs,
+                   const DiagnosticInfo &Info,
+                   const SourceLoc bufferIndirectlyCausingDiagnostic) override {
     if (Kind == swift::DiagnosticKind::Error) {
       error = true;
     }
@@ -77,10 +79,10 @@ void InstrumenterBase::anchor() {}
 
 bool InstrumenterBase::doTypeCheckImpl(ASTContext &Ctx, DeclContext *DC,
                                        Expr * &parsedExpr) {
-  DiagnosticEngine diags(Ctx.SourceMgr);
-  ErrorGatherer errorGatherer(diags);
+  DiagnosticSuppression suppression(Ctx.Diags);
+  ErrorGatherer errorGatherer(Ctx.Diags);
 
-  TypeChecker TC(Ctx, diags);
+  TypeChecker &TC = TypeChecker::createForContext(Ctx);
 
   TC.typeCheckExpression(parsedExpr, DC);
 

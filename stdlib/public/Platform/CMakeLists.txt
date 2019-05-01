@@ -1,33 +1,48 @@
-set(swift_platform_name)
-set(swift_platform_flags)
 set(swift_platform_sources
     Platform.swift
-    TiocConstants.swift
+    TiocConstants.swift)
+set(swift_platform_gyb_sources
     tgmath.swift.gyb)
 
-add_swift_library(swiftDarwin ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS_SDK_OVERLAY
-    Darwin.swift.gyb
+add_swift_target_library(swiftDarwin ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS_SDK_OVERLAY
     ${swift_platform_sources}
     POSIXError.swift
     MachError.swift
 
+    "${SWIFT_SOURCE_DIR}/stdlib/linker-support/magic-symbols-for-install-name.c"
+
+    GYB_SOURCES
+      ${swift_platform_gyb_sources}
+      Darwin.swift.gyb
+
     SWIFT_COMPILE_FLAGS -Xfrontend -disable-objc-attr-requires-foundation-module "${SWIFT_RUNTIME_SWIFT_COMPILE_FLAGS}"
     LINK_FLAGS "${SWIFT_RUNTIME_SWIFT_LINK_FLAGS}"
     TARGET_SDKS ALL_APPLE_PLATFORMS
-    API_NOTES_NON_OVERLAY)
 
-add_swift_library(swiftGlibc ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS_SDK_OVERLAY
-    Glibc.swift.gyb
+    # This is overly conservative, but we have so few API notes files that
+    # haven't migrated to the Swift repo that it's probably fine in practice.
+    DEPENDS copy_apinotes)
+
+add_swift_target_library(swiftGlibc ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS_SDK_OVERLAY
     ${swift_platform_sources}
+    POSIXError.swift
+
+    GYB_SOURCES
+      ${swift_platform_gyb_sources}
+      Glibc.swift.gyb
 
     SWIFT_COMPILE_FLAGS "${SWIFT_RUNTIME_SWIFT_COMPILE_FLAGS}"
     LINK_FLAGS "${SWIFT_RUNTIME_SWIFT_LINK_FLAGS}"
     TARGET_SDKS ANDROID CYGWIN FREEBSD LINUX HAIKU
     DEPENDS glibc_modulemap)
 
-add_swift_library(swiftMSVCRT ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS_SDK_OVERLAY
+add_swift_target_library(swiftMSVCRT ${SWIFT_STDLIB_LIBRARY_BUILD_TYPES} IS_SDK_OVERLAY
     msvcrt.swift
     ${swift_platform_sources}
+    POSIXError.swift
+
+    GYB_SOURCES
+      ${swift_platform_gyb_sources}
 
     SWIFT_COMPILE_FLAGS "${SWIFT_RUNTIME_SWIFT_COMPILE_FLAGS}"
     LINK_FLAGS "${SWIFT_RUNTIME_SWIFT_LINK_FLAGS}"
@@ -52,11 +67,14 @@ foreach(sdk ${SWIFT_SDKS})
       # at /system/develop/headers.
       set(GLIBC_INCLUDE_PATH "/system/develop/headers/posix")
       set(GLIBC_ARCH_INCLUDE_PATH "/system/develop/headers/posix")
-      set(GLIBC_SYSROOT_RELATIVE_INCLUDE_PATH "/system/develop/headers/")
+      set(GLIBC_SYSROOT_RELATIVE_ARCH_INCLUDE_PATH "/system/develop/headers/")
+    elseif("${sdk}" STREQUAL "ANDROID")
+      set(GLIBC_SYSROOT_RELATIVE_INCLUDE_PATH "${SWIFT_ANDROID_NDK_PATH}/sysroot/usr/include")
+      set(GLIBC_SYSROOT_RELATIVE_ARCH_INCLUDE_PATH "${SWIFT_ANDROID_NDK_PATH}/sysroot/usr/include")
     else()
       # Determine the location of glibc headers based on the target.
       set(GLIBC_SYSROOT_RELATIVE_INCLUDE_PATH "/usr/include")
-      set(GLIBC_SYSROOT_RELATIVE_ARCH_INCLUDE_PATH ${GLIBC_SYSROOT_RELATIVE_INCLUDE_PATH})
+      set(GLIBC_SYSROOT_RELATIVE_ARCH_INCLUDE_PATH "${GLIBC_SYSROOT_RELATIVE_INCLUDE_PATH}")
     endif()
 
     # Some SDKs place their headers in architecture-specific subfolders.
@@ -64,9 +82,12 @@ foreach(sdk ${SWIFT_SDKS})
       set(GLIBC_SYSROOT_RELATIVE_ARCH_INCLUDE_PATH "${GLIBC_SYSROOT_RELATIVE_ARCH_INCLUDE_PATH}/${CMAKE_LIBRARY_ARCHITECTURE}")
     endif()
 
-    if(NOT "${sdk}" STREQUAL "HAIKU")
-      set(GLIBC_INCLUDE_PATH "${SWIFT_SDK_${sdk}_PATH}/${GLIBC_SYSROOT_RELATIVE_INCLUDE_PATH}")
-      set(GLIBC_ARCH_INCLUDE_PATH "${SWIFT_SDK_${sdk}_PATH}/${GLIBC_SYSROOT_RELATIVE_ARCH_INCLUDE_PATH}")
+    set(GLIBC_INCLUDE_PATH "${GLIBC_SYSROOT_RELATIVE_INCLUDE_PATH}")
+    set(GLIBC_ARCH_INCLUDE_PATH "${GLIBC_SYSROOT_RELATIVE_ARCH_INCLUDE_PATH}")
+
+    if(NOT "${SWIFT_SDK_${sdk}_ARCH_${arch}_PATH}" STREQUAL "/" AND NOT "${sdk}" STREQUAL "ANDROID")
+      set(GLIBC_INCLUDE_PATH "${SWIFT_SDK_${sdk}_ARCH_${arch}_PATH}${GLIBC_INCLUDE_PATH}")
+      set(GLIBC_ARCH_INCLUDE_PATH "${SWIFT_SDK_${sdk}_ARCH_${arch}_PATH}${GLIBC_ARCH_INCLUDE_PATH}")
     endif()
 
     set(glibc_modulemap_source "glibc.modulemap.gyb")
@@ -88,7 +109,7 @@ foreach(sdk ${SWIFT_SDKS})
 
     # If this SDK is a target for a non-native host, create a native modulemap
     # without a sysroot prefix. This is the one we'll install instead.
-    if(NOT "${SWIFT_SDK_${SWIFT_HOST_VARIANT_SDK}_PATH}" STREQUAL "/")
+    if(NOT "${SWIFT_SDK_${SWIFT_HOST_VARIANT_SDK}_ARCH_${arch}_PATH}" STREQUAL "/")
 
       set(glibc_sysroot_relative_modulemap_out "${module_dir}/sysroot-relative-modulemaps/glibc.modulemap")
       handle_gyb_source_single(glibc_modulemap_native_target
@@ -106,12 +127,13 @@ foreach(sdk ${SWIFT_SDKS})
     # FIXME: When SDK is a cross-compile target (SDK != Host), the generated
     #        modulemap will be relative to the Host, with hardcoded paths.
     #        It is not relocatable to the target platform itself.
-    #        This only affects ANDROID right now, but could affect cross-compiled LINUX targets
+    #        This affects any cross-comipled targets that use glibc.modulemap.
 
-    swift_install_in_component(sdk-overlay
-        FILES "${glibc_modulemap_out}"
-        DESTINATION "lib/swift/${arch_subdir}")
+    swift_install_in_component(FILES "${glibc_modulemap_out}"
+                               DESTINATION "lib/swift/${arch_subdir}"
+                               COMPONENT sdk-overlay)
 
   endforeach()
 endforeach()
 add_custom_target(glibc_modulemap DEPENDS ${glibc_modulemap_target_list})
+set_property(TARGET glibc_modulemap PROPERTY FOLDER "Miscellaneous")

@@ -1,7 +1,7 @@
 // REQUIRES: no_asan
 // RUN: %empty-directory(%t)
-// RUN: %target-build-swift %S/Inputs/ConcreteTypes.swift %S/Inputs/GenericTypes.swift %S/Inputs/Protocols.swift %S/Inputs/Extensions.swift %S/Inputs/Closures.swift -parse-as-library -emit-module -emit-library -module-name TypesToReflect -o %t/libTypesToReflect.%target-dylib-extension
-// RUN: %target-swift-reflection-dump -binary-filename %t/libTypesToReflect.%target-dylib-extension | %FileCheck %s
+// RUN: %target-build-swift %S/Inputs/ConcreteTypes.swift %S/Inputs/GenericTypes.swift %S/Inputs/Protocols.swift %S/Inputs/Extensions.swift %S/Inputs/Closures.swift -parse-as-library -emit-module -emit-library -module-name TypesToReflect -o %t/%target-library-name(TypesToReflect)
+// RUN: %target-swift-reflection-dump -binary-filename %t/%target-library-name(TypesToReflect) | %FileCheck %s
 
 // CHECK: FIELDS:
 // CHECK: =======
@@ -92,11 +92,6 @@
 // CHECK:  (result
 // CHECK:    (tuple))
 
-// CHECK: TypesToReflect.S.NestedS
-// CHECK: ------------------------
-// CHECK: aField: Swift.Int
-// CHECK: (struct Swift.Int)
-
 // CHECK: TypesToReflect.S
 // CHECK: ----------------
 // CHECK: aClass: TypesToReflect.C
@@ -140,6 +135,11 @@
 // CHECK: aFunctionWithCRepresentation: @convention(c) () -> ()
 // CHECK: (function convention=c
 // CHECK:   (tuple))
+
+// CHECK: TypesToReflect.S.NestedS
+// CHECK: ------------------------
+// CHECK: aField: Swift.Int
+// CHECK: (struct Swift.Int)
 
 // CHECK: TypesToReflect.E
 // CHECK: ----------------
@@ -292,8 +292,7 @@
 // CHECK: (generic_type_parameter depth=0 index=0)
 
 // CHECK: dependentMember1: A.Inner
-// CHECK: (dependent_member
-// CHECK:   (protocol TypesToReflect.P1)
+// CHECK: (dependent_member protocol=14TypesToReflect2P1P
 // CHECK:   (generic_type_parameter depth=0 index=0) member=Inner)
 
 // CHECK: TypesToReflect.C3
@@ -342,15 +341,12 @@
 // CHECK: (generic_type_parameter depth=0 index=0)
 
 // CHECK: dependentMember1: A.Outer
-// CHECK: (dependent_member
-// CHECK:   (protocol TypesToReflect.P2)
+// CHECK: (dependent_member protocol=14TypesToReflect2P2P
 // CHECK:   (generic_type_parameter depth=0 index=0) member=Outer)
 
 // CHECK: dependentMember2: A.Outer.Inner
-// CHECK: (dependent_member
-// CHECK:   (protocol TypesToReflect.P1)
-// CHECK:   (dependent_member
-// CHECK:     (protocol TypesToReflect.P2)
+// CHECK: (dependent_member protocol=14TypesToReflect2P1P
+// CHECK:   (dependent_member protocol=14TypesToReflect2P2P
 // CHECK:     (generic_type_parameter depth=0 index=0) member=Outer) member=Inner)
 
 // CHECK: TypesToReflect.C4
@@ -454,8 +450,7 @@
 // CHECK: (generic_type_parameter depth=0 index=0)
 
 // CHECK: dependentMember1: A.Inner
-// CHECK: (dependent_member
-// CHECK:   (protocol TypesToReflect.P1)
+// CHECK: (dependent_member protocol=14TypesToReflect2P1P
 // CHECK:   (generic_type_parameter depth=0 index=0) member=Inner)
 
 // CHECK: TypesToReflect.S3
@@ -508,15 +503,12 @@
 // CHECK: (generic_type_parameter depth=0 index=0)
 
 // CHECK: dependentMember1: A.Outer
-// CHECK: (dependent_member
-// CHECK:   (protocol TypesToReflect.P2)
+// CHECK: (dependent_member protocol=14TypesToReflect2P2P
 // CHECK:   (generic_type_parameter depth=0 index=0) member=Outer)
 
 // CHECK: dependentMember2: A.Outer.Inner
-// CHECK: (dependent_member
-// CHECK:   (protocol TypesToReflect.P1)
-// CHECK:   (dependent_member
-// CHECK:     (protocol TypesToReflect.P2)
+// CHECK: (dependent_member protocol=14TypesToReflect2P1P
+// CHECK:   (dependent_member protocol=14TypesToReflect2P2P
 // CHECK:     (generic_type_parameter depth=0 index=0) member=Outer) member=Inner)
 
 // CHECK: TypesToReflect.S4
@@ -596,8 +588,7 @@
 // CHECK: (generic_type_parameter depth=0 index=0)
 
 // CHECK: DependentMemberInner: A.Inner
-// CHECK: (dependent_member
-// CHECK:   (protocol TypesToReflect.P1)
+// CHECK: (dependent_member protocol=14TypesToReflect2P1P
 // CHECK:   (generic_type_parameter depth=0 index=0) member=Inner)
 
 // CHECK: ExistentialMetatype: A.Type
@@ -640,15 +631,12 @@
 // CHECK: (generic_type_parameter depth=0 index=0)
 
 // CHECK: DependentMemberOuter: A.Outer
-// CHECK: (dependent_member
-// CHECK:   (protocol TypesToReflect.P2)
+// CHECK: (dependent_member protocol=14TypesToReflect2P2P
 // CHECK:   (generic_type_parameter depth=0 index=0) member=Outer)
 
 // CHECK: DependentMemberInner: A.Outer.Inner
-// CHECK: (dependent_member
-// CHECK:   (protocol TypesToReflect.P1)
-// CHECK:   (dependent_member
-// CHECK:     (protocol TypesToReflect.P2)
+// CHECK: (dependent_member protocol=14TypesToReflect2P1P
+// CHECK:   (dependent_member protocol=14TypesToReflect2P2P
 // CHECK:     (generic_type_parameter depth=0 index=0) member=Outer) member=Inner)
 
 // CHECK: TypesToReflect.E4
@@ -664,13 +652,14 @@
 // CHECK: TypesToReflect.ClassBoundP
 // CHECK: --------------------------
 
-// CHECK: TypesToReflect.(FileprivateProtocol in _{{[0-9A-F]+}})
+// CHECK: TypesToReflect.(FileprivateProtocol in _{{[0-9a-fA-F]+}})
 // CHECK: -------------------------------------------------------------------------
 
 // CHECK: TypesToReflect.HasFileprivateProtocol
 // CHECK: -------------------------------------
-// CHECK: x: TypesToReflect.(FileprivateProtocol in _{{[0-9A-F]+}})
-// CHECK: (protocol TypesToReflect.(FileprivateProtocol in _{{[0-9A-F]+}}))
+// CHECK: x: TypesToReflect.(FileprivateProtocol in ${{[0-9a-fA-F]+}})
+// CHECK: (protocol_composition
+// CHECK-NEXT: (protocol TypesToReflect.(FileprivateProtocol in ${{[0-9a-fA-F]+}})))
 
 // CHECK: ASSOCIATED TYPES:
 // CHECK: =================
@@ -719,8 +708,7 @@
 // CHECK: CAPTURE DESCRIPTORS:
 // CHECK: ====================
 // CHECK: - Capture types:
-// CHECK: (sil_box
-// CHECK:   (generic_type_parameter depth=0 index=0))
+// CHECK: (builtin Builtin.NativeObject)
 // CHECK: - Metadata sources:
 // CHECK: (generic_type_parameter depth=0 index=0)
 // CHECK: (closure_binding index=0)

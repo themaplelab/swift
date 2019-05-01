@@ -59,17 +59,10 @@ struct OpaqueValue;
 ///
 /// POSSIBILITIES: The argument order is fair game.  It may be useful
 /// to have a variant which guarantees zero-initialized memory.
-SWIFT_RT_ENTRY_VISIBILITY
+SWIFT_RUNTIME_EXPORT
 HeapObject *swift_allocObject(HeapMetadata const *metadata,
                               size_t requiredSize,
-                              size_t requiredAlignmentMask)
-    SWIFT_CC(RegisterPreservingCC);
-
-SWIFT_RUNTIME_EXPORT
-HeapObject *(*SWIFT_CC(RegisterPreservingCC) _swift_allocObject)(
-                                              HeapMetadata const *metadata,
-                                              size_t requiredSize,
-                                              size_t requiredAlignmentMask);
+                              size_t requiredAlignmentMask);
 
 /// Initializes the object header of a stack allocated object.
 ///
@@ -112,9 +105,6 @@ struct BoxPair {
 SWIFT_CC(swift) SWIFT_RUNTIME_EXPORT
 BoxPair swift_allocBox(Metadata const *type);
 
-SWIFT_CC(swift) SWIFT_RUNTIME_EXPORT
-BoxPair (*_swift_allocBox)(Metadata const *type);
-
 /// Performs a uniqueness check on the pointer to a box structure. If the check
 /// fails allocates a new box and stores the pointer in the buffer.
 ///
@@ -133,16 +123,13 @@ HeapObject* swift_allocEmptyBox();
 //
 // An "alignment mask" is just the alignment (a power of 2) minus 1.
 
-SWIFT_RT_ENTRY_VISIBILITY
-void *swift_slowAlloc(size_t bytes, size_t alignMask)
-     SWIFT_CC(RegisterPreservingCC);
-
+SWIFT_RUNTIME_EXPORT
+void *swift_slowAlloc(size_t bytes, size_t alignMask);
 
 // If the caller cannot promise to zero the object during destruction,
 // then call these corresponding APIs:
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_slowDealloc(void *ptr, size_t bytes, size_t alignMask)
-     SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+void swift_slowDealloc(void *ptr, size_t bytes, size_t alignMask);
 
 /// Atomically increments the retain count of an object.
 ///
@@ -160,80 +147,26 @@ void swift_slowDealloc(void *ptr, size_t bytes, size_t alignMask)
 ///      - maybe a variant that can assume a non-null object
 /// It may also prove worthwhile to have this use a custom CC
 /// which preserves a larger set of registers.
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject *swift_retain(HeapObject *object)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+HeapObject *swift_retain(HeapObject *object);
 
 SWIFT_RUNTIME_EXPORT
-HeapObject *(*SWIFT_CC(RegisterPreservingCC) _swift_retain)(HeapObject *object);
-
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject *swift_retain_n(HeapObject *object, uint32_t n)
-    SWIFT_CC(RegisterPreservingCC);
+HeapObject *swift_retain_n(HeapObject *object, uint32_t n);
 
 SWIFT_RUNTIME_EXPORT
-HeapObject *(*SWIFT_CC(RegisterPreservingCC)
-                 _swift_retain_n)(HeapObject *object, uint32_t n);
-
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject *swift_nonatomic_retain(HeapObject *object)
-    SWIFT_CC(RegisterPreservingCC);
+HeapObject *swift_nonatomic_retain(HeapObject *object);
 
 SWIFT_RUNTIME_EXPORT
-HeapObject *(*SWIFT_CC(RegisterPreservingCC)
-                 _swift_nonatomic_retain)(HeapObject *object);
-
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject* swift_nonatomic_retain_n(HeapObject *object, uint32_t n)
-    SWIFT_CC(RegisterPreservingCC);
-
-SWIFT_RUNTIME_EXPORT
-HeapObject *(*SWIFT_CC(RegisterPreservingCC)
-                 _swift_nonatomic_retain_n)(HeapObject *object, uint32_t n);
+HeapObject* swift_nonatomic_retain_n(HeapObject *object, uint32_t n);
 
 /// Atomically increments the reference count of an object, unless it has
 /// already been destroyed. Returns nil if the object is dead.
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject *swift_tryRetain(HeapObject *object)
-    SWIFT_CC(RegisterPreservingCC);
-
 SWIFT_RUNTIME_EXPORT
-HeapObject * (* SWIFT_CC(RegisterPreservingCC) _swift_tryRetain)(HeapObject *);
+HeapObject *swift_tryRetain(HeapObject *object);
 
 /// Returns true if an object is in the process of being deallocated.
 SWIFT_RUNTIME_EXPORT
 bool swift_isDeallocating(HeapObject *object);
-
-SWIFT_RUNTIME_EXPORT
-bool (* SWIFT_CC(RegisterPreservingCC) _swift_isDeallocating)(HeapObject *);
-
-
-/// Attempts to atomically pin an object and increment its reference
-/// count.  Returns nil if the object was already pinned.
-///
-/// The standard protocol is that the caller is responsible for
-/// calling swift_unpin on the return value.
-///
-/// The object reference may not be nil.
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject *swift_tryPin(HeapObject *object)
-    SWIFT_CC(RegisterPreservingCC);
-
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject *swift_nonatomic_tryPin(HeapObject *object)
-    SWIFT_CC(RegisterPreservingCC);
-
-/// Given that an object is pinned, atomically unpin it and decrement
-/// the reference count.
-///
-/// The object reference may be nil (to simplify the protocol).
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_unpin(HeapObject *object)
-    SWIFT_CC(RegisterPreservingCC);
-
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_nonatomic_unpin(HeapObject *object)
-    SWIFT_CC(RegisterPreservingCC);
 
 /// Atomically decrements the retain count of an object.  If the
 /// retain count reaches zero, the object is destroyed as follows:
@@ -250,32 +183,16 @@ void swift_nonatomic_unpin(HeapObject *object)
 ///      - a variant that can safely use non-atomic operations
 ///      - maybe a variant that can assume a non-null object
 /// It's unlikely that a custom CC would be beneficial here.
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_release(HeapObject *object)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+void swift_release(HeapObject *object);
 
 SWIFT_RUNTIME_EXPORT
-void (*SWIFT_CC(RegisterPreservingCC)
-                     _swift_release)(HeapObject *object);
-
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_nonatomic_release(HeapObject *object)
-    SWIFT_CC(RegisterPreservingCC);
-
-SWIFT_RUNTIME_EXPORT
-void (*SWIFT_CC(RegisterPreservingCC)
-                     _swift_nonatomic_release)(HeapObject *object);
-
+void swift_nonatomic_release(HeapObject *object);
 
 /// Atomically decrements the retain count of an object n times. If the retain
 /// count reaches zero, the object is destroyed
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_release_n(HeapObject *object, uint32_t n)
-    SWIFT_CC(RegisterPreservingCC);
-
 SWIFT_RUNTIME_EXPORT
-void (*SWIFT_CC(RegisterPreservingCC)
-                     _swift_release_n)(HeapObject *object, uint32_t n);
+void swift_release_n(HeapObject *object, uint32_t n);
 
 /// Sets the RC_DEALLOCATING_FLAG flag. This is done non-atomically.
 /// The strong reference count of \p object must be 1 and no other thread may
@@ -283,19 +200,16 @@ void (*SWIFT_CC(RegisterPreservingCC)
 SWIFT_RUNTIME_EXPORT
 void swift_setDeallocating(HeapObject *object);
 
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_nonatomic_release_n(HeapObject *object, uint32_t n)
-    SWIFT_CC(RegisterPreservingCC);
-
 SWIFT_RUNTIME_EXPORT
-void (*SWIFT_CC(RegisterPreservingCC)
-                     _swift_nonatomic_release_n)(HeapObject *object, uint32_t n);
+void swift_nonatomic_release_n(HeapObject *object, uint32_t n);
 
 // Refcounting observation hooks for memory tools. Don't use these.
 SWIFT_RUNTIME_EXPORT
 size_t swift_retainCount(HeapObject *object);
 SWIFT_RUNTIME_EXPORT
 size_t swift_unownedRetainCount(HeapObject *object);
+SWIFT_RUNTIME_EXPORT
+size_t swift_weakRetainCount(HeapObject *object);
 
 /// Is this pointer a non-null unique reference to an object
 /// that uses Swift reference counting?
@@ -307,21 +221,10 @@ bool swift_isUniquelyReferencedNonObjC(const void *);
 SWIFT_RUNTIME_EXPORT
 bool swift_isUniquelyReferencedNonObjC_nonNull(const void *);
 
-/// Is this non-null pointer a reference to an object that uses Swift
-/// reference counting and is either uniquely referenced or pinned?
-SWIFT_RUNTIME_EXPORT
-bool swift_isUniquelyReferencedOrPinnedNonObjC_nonNull(const void *);
-
 /// Is this non-null BridgeObject a unique reference to an object
 /// that uses Swift reference counting?
 SWIFT_RUNTIME_EXPORT
 bool swift_isUniquelyReferencedNonObjC_nonNull_bridgeObject(
-  uintptr_t bits);
-
-/// Is this non-null BridgeObject a unique or pinned reference to an
-/// object that uses Swift reference counting?
-SWIFT_RUNTIME_EXPORT
-bool swift_isUniquelyReferencedOrPinnedNonObjC_nonNull_bridgeObject(
   uintptr_t bits);
 
 /// Is this native Swift pointer a non-null unique reference to
@@ -329,23 +232,28 @@ bool swift_isUniquelyReferencedOrPinnedNonObjC_nonNull_bridgeObject(
 SWIFT_RUNTIME_EXPORT
 bool swift_isUniquelyReferenced_native(const struct HeapObject *);
 
-/// Is this native Swift pointer a non-null unique or pinned reference
-/// to an object?
-SWIFT_RT_ENTRY_VISIBILITY
-bool swift_isUniquelyReferencedOrPinned_native(
-  const struct HeapObject *) SWIFT_CC(RegisterPreservingCC);
-
 /// Is this non-null native Swift pointer a unique reference to
 /// an object?
-SWIFT_RT_ENTRY_VISIBILITY
-bool swift_isUniquelyReferenced_nonNull_native(
-  const struct HeapObject *) SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+bool swift_isUniquelyReferenced_nonNull_native(const struct HeapObject *);
 
-/// Does this non-null native Swift pointer refer to an object that
-/// is either uniquely referenced or pinned?
-SWIFT_RT_ENTRY_VISIBILITY
-bool swift_isUniquelyReferencedOrPinned_nonNull_native(
-  const struct HeapObject *) SWIFT_CC(RegisterPreservingCC);
+/// Is this native Swift pointer non-null and has a reference count greater than
+/// one.
+/// This runtime call will print an error message with file name and location if
+/// the closure is escaping but it will not abort.
+///
+/// \p type: 0 - withoutActuallyEscaping verification
+///              Was the closure passed to a withoutActuallyEscaping block
+///              escaped in the block?
+///          1 - @objc closure sentinel verfication
+///              Was the closure passed to Objective-C escaped?
+SWIFT_RUNTIME_EXPORT
+bool swift_isEscapingClosureAtFileLocation(const struct HeapObject *object,
+                                           const unsigned char *filename,
+                                           int32_t filenameLength,
+                                           int32_t line,
+                                           int32_t column,
+                                           unsigned type);
 
 /// Deallocate the given memory.
 ///
@@ -362,10 +270,9 @@ bool swift_isUniquelyReferencedOrPinned_nonNull_native(
 /// POSSIBILITIES: It may be useful to have a variant which
 /// requires the object to have been fully zeroed from offsets
 /// sizeof(SwiftHeapObject) to allocatedSize.
-SWIFT_RT_ENTRY_VISIBILITY
+SWIFT_RUNTIME_EXPORT
 void swift_deallocObject(HeapObject *object, size_t allocatedSize,
-                         size_t allocatedAlignMask)
-    SWIFT_CC(RegisterPreservingCC);
+                         size_t allocatedAlignMask);
 
 /// Deallocate an uninitialized object with a strong reference count of +1.
 ///
@@ -378,10 +285,9 @@ void swift_deallocObject(HeapObject *object, size_t allocatedSize,
 /// \param allocatedAlignMask - the alignment requirement that was passed
 ///   to allocObject
 ///
-SWIFT_RT_ENTRY_VISIBILITY
+SWIFT_RUNTIME_EXPORT
 void swift_deallocUninitializedObject(HeapObject *object, size_t allocatedSize,
-                                      size_t allocatedAlignMask)
-    SWIFT_CC(RegisterPreservingCC);
+                                      size_t allocatedAlignMask);
 
 /// Deallocate the given memory.
 ///
@@ -489,70 +395,58 @@ struct UnownedReference {
 };
 
 /// Increment the unowned retain count.
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject *swift_unownedRetain(HeapObject *value)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+HeapObject *swift_unownedRetain(HeapObject *value);
 
 /// Decrement the unowned retain count.
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_unownedRelease(HeapObject *value)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+void swift_unownedRelease(HeapObject *value);
 
 /// Increment the unowned retain count.
-SWIFT_RT_ENTRY_VISIBILITY
-void *swift_nonatomic_unownedRetain(HeapObject *value)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+void *swift_nonatomic_unownedRetain(HeapObject *value);
 
 /// Decrement the unowned retain count.
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_nonatomic_unownedRelease(HeapObject *value)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+void swift_nonatomic_unownedRelease(HeapObject *value);
 
 /// Increment the unowned retain count by n.
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject *swift_unownedRetain_n(HeapObject *value, int n)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+HeapObject *swift_unownedRetain_n(HeapObject *value, int n);
 
 /// Decrement the unowned retain count by n.
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_unownedRelease_n(HeapObject *value, int n)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+void swift_unownedRelease_n(HeapObject *value, int n);
 
 /// Increment the unowned retain count by n.
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject *swift_nonatomic_unownedRetain_n(HeapObject *value, int n)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+HeapObject *swift_nonatomic_unownedRetain_n(HeapObject *value, int n);
 
 /// Decrement the unowned retain count by n.
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_nonatomic_unownedRelease_n(HeapObject *value, int n)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+void swift_nonatomic_unownedRelease_n(HeapObject *value, int n);
 
 /// Increment the strong retain count of an object, aborting if it has
 /// been deallocated.
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject *swift_unownedRetainStrong(HeapObject *value)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+HeapObject *swift_unownedRetainStrong(HeapObject *value);
 
 /// Increment the strong retain count of an object, aborting if it has
 /// been deallocated.
-SWIFT_RT_ENTRY_VISIBILITY
-HeapObject *swift_nonatomic_unownedRetainStrong(HeapObject *value)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+HeapObject *swift_nonatomic_unownedRetainStrong(HeapObject *value);
 
 /// Increment the strong retain count of an object which may have been
 /// deallocated, aborting if it has been deallocated, and decrement its
 /// unowned reference count.
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_unownedRetainStrongAndRelease(HeapObject *value)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+void swift_unownedRetainStrongAndRelease(HeapObject *value);
 
 /// Increment the strong retain count of an object which may have been
 /// deallocated, aborting if it has been deallocated, and decrement its
 /// unowned reference count.
-SWIFT_RT_ENTRY_VISIBILITY
-void swift_nonatomic_unownedRetainStrongAndRelease(HeapObject *value)
-    SWIFT_CC(RegisterPreservingCC);
+SWIFT_RUNTIME_EXPORT
+void swift_nonatomic_unownedRetainStrongAndRelease(HeapObject *value);
 
 /// Aborts if the object has been deallocated.
 SWIFT_RUNTIME_EXPORT
@@ -710,21 +604,21 @@ WeakReference *swift_weakTakeAssign(WeakReference *dest, WeakReference *src);
 /*****************************************************************************/
 
 SWIFT_RUNTIME_EXPORT
-void *swift_bridgeObjectRetain(void *value)
-    SWIFT_CC(DefaultCC);
-/// Increment the strong retain count of a bridged object by n.
-SWIFT_RUNTIME_EXPORT
-void *swift_bridgeObjectRetain_n(void *value, int n)
-    SWIFT_CC(DefaultCC);
-
-SWIFT_RUNTIME_EXPORT
-void *swift_nonatomic_bridgeObjectRetain(void *value)
-    SWIFT_CC(DefaultCC);
+void *swift_bridgeObjectRetain(void *value);
 
 /// Increment the strong retain count of a bridged object by n.
 SWIFT_RUNTIME_EXPORT
-void *swift_nonatomic_bridgeObjectRetain_n(void *value, int n)
-    SWIFT_CC(DefaultCC);
+void *swift_bridgeObjectRetain_n(void *value, int n);
+
+
+SWIFT_RUNTIME_EXPORT
+void *swift_nonatomic_bridgeObjectRetain(void *value);
+
+
+/// Increment the strong retain count of a bridged object by n.
+SWIFT_RUNTIME_EXPORT
+void *swift_nonatomic_bridgeObjectRetain_n(void *value, int n);
+
 
 /*****************************************************************************/
 /************************ UNKNOWN REFERENCE-COUNTING *************************/
@@ -735,45 +629,38 @@ void *swift_nonatomic_bridgeObjectRetain_n(void *value, int n)
 /// Increment the strong retain count of an object which might not be a native
 /// Swift object.
 SWIFT_RUNTIME_EXPORT
-void *swift_unknownRetain(void *value)
-    SWIFT_CC(DefaultCC);
+void *swift_unknownObjectRetain(void *value);
+
 /// Increment the strong retain count of an object which might not be a native
 /// Swift object by n.
 SWIFT_RUNTIME_EXPORT
-void *swift_unknownRetain_n(void *value, int n)
-    SWIFT_CC(DefaultCC);
+void *swift_unknownObjectRetain_n(void *value, int n);
 
 /// Increment the strong retain count of an object which might not be a native
 /// Swift object.
 SWIFT_RUNTIME_EXPORT
-void *swift_nonatomic_unknownRetain(void *value)
-    SWIFT_CC(DefaultCC);
+void *swift_nonatomic_unknownObjectRetain(void *value);
+
 /// Increment the strong retain count of an object which might not be a native
 /// Swift object by n.
 SWIFT_RUNTIME_EXPORT
-void *swift_nonatomic_unknownRetain_n(void *value, int n)
-    SWIFT_CC(DefaultCC);
-
+void *swift_nonatomic_unknownObjectRetain_n(void *value, int n);
 
 #else
 
-static inline void *swift_unknownRetain(void *value)
-    SWIFT_CC(DefaultCC) {
+static inline void *swift_unknownObjectRetain(void *value) {
   return swift_retain(static_cast<HeapObject *>(value));
 }
 
-static inline void *swift_unknownRetain_n(void *value, int n)
-    SWIFT_CC(DefaultCC) {
+static inline void *swift_unknownObjectRetain_n(void *value, int n) {
   return swift_retain_n(static_cast<HeapObject *>(value), n);
 }
 
-static inline void *swift_nonatomic_unknownRetain(void *value)
-    SWIFT_CC(DefaultCC) {
+static inline void *swift_nonatomic_unknownObjectRetain(void *value) {
   return swift_nonatomic_retain(static_cast<HeapObject *>(value));
 }
 
-static inline void *swift_nonatomic_unknownRetain_n(void *value, int n)
-    SWIFT_CC(DefaultCC) {
+static inline void *swift_nonatomic_unknownObjectRetain_n(void *value, int n) {
   return swift_nonatomic_retain_n(static_cast<HeapObject *>(value), n);
 }
 
@@ -781,64 +668,56 @@ static inline void *swift_nonatomic_unknownRetain_n(void *value, int n)
 #endif /* SWIFT_OBJC_INTEROP */
 
 SWIFT_RUNTIME_EXPORT
-void swift_bridgeObjectRelease(void *value)
-    SWIFT_CC(DefaultCC);
+void swift_bridgeObjectRelease(void *value);
+
 /// Decrement the strong retain count of a bridged object by n.
 SWIFT_RUNTIME_EXPORT
-void swift_bridgeObjectRelease_n(void *value, int n)
-    SWIFT_CC(DefaultCC);
+void swift_bridgeObjectRelease_n(void *value, int n);
 
 SWIFT_RUNTIME_EXPORT
-void swift_nonatomic_bridgeObjectRelease(void *value)
-    SWIFT_CC(DefaultCC);
+void swift_nonatomic_bridgeObjectRelease(void *value);
+
 /// Decrement the strong retain count of a bridged object by n.
 SWIFT_RUNTIME_EXPORT
-void swift_nonatomic_bridgeObjectRelease_n(void *value, int n)
-    SWIFT_CC(DefaultCC);
+void swift_nonatomic_bridgeObjectRelease_n(void *value, int n);
 
 #if SWIFT_OBJC_INTEROP
 
 /// Decrement the strong retain count of an object which might not be a native
 /// Swift object.
 SWIFT_RUNTIME_EXPORT
-void swift_unknownRelease(void *value)
-    SWIFT_CC(DefaultCC);
+void swift_unknownObjectRelease(void *value);
+
 /// Decrement the strong retain count of an object which might not be a native
 /// Swift object by n.
 SWIFT_RUNTIME_EXPORT
-void swift_unknownRelease_n(void *value, int n)
-    SWIFT_CC(DefaultCC);
+void swift_unknownObjectRelease_n(void *value, int n);
 
 /// Decrement the strong retain count of an object which might not be a native
 /// Swift object.
 SWIFT_RUNTIME_EXPORT
-void swift_nonatomic_unknownRelease(void *value)
-    SWIFT_CC(DefaultCC);
+void swift_nonatomic_unknownObjectRelease(void *value);
+
 /// Decrement the strong retain count of an object which might not be a native
 /// Swift object by n.
 SWIFT_RUNTIME_EXPORT
-void swift_nonatomic_unknownRelease_n(void *value, int n)
-    SWIFT_CC(DefaultCC);
+void swift_nonatomic_unknownObjectRelease_n(void *value, int n);
 
 #else
 
-static inline void swift_unknownRelease(void *value)
-    SWIFT_CC(RegisterPreservingCC) {
+static inline void swift_unknownObjectRelease(void *value) {
   swift_release(static_cast<HeapObject *>(value));
 }
 
-static inline void swift_unknownRelease_n(void *value, int n)
-    SWIFT_CC(RegisterPreservingCC) {
+static inline void swift_unknownObjectRelease_n(void *value, int n) {
   swift_release_n(static_cast<HeapObject *>(value), n);
 }
 
-static inline void swift_nonatomic_unknownRelease(void *value)
-    SWIFT_CC(RegisterPreservingCC) {
+static inline void swift_nonatomic_unknownObjectRelease(void *value) {
   swift_nonatomic_release(static_cast<HeapObject *>(value));
 }
 
-static inline void swift_nonatomic_unknownRelease_n(void *value, int n)
-    SWIFT_CC(RegisterPreservingCC) {
+static inline void swift_nonatomic_unknownObjectRelease_n(void *value, int n) {
   swift_nonatomic_release_n(static_cast<HeapObject *>(value), n);
 }
 
@@ -856,12 +735,12 @@ static inline void swift_nonatomic_unknownRelease_n(void *value, int n)
 /// \param value - not necessarily a native Swift object; can be null
 /// \return ref
 SWIFT_RUNTIME_EXPORT
-WeakReference *swift_unknownWeakInit(WeakReference *ref, void *value);
+WeakReference *swift_unknownObjectWeakInit(WeakReference *ref, void *value);
 
 #else
 
-static inline WeakReference *swift_unknownWeakInit(WeakReference *ref,
-                                                   void *value) {
+static inline WeakReference *swift_unknownObjectWeakInit(WeakReference *ref,
+                                                         void *value) {
   return swift_weakInit(ref, static_cast<HeapObject *>(value));
 }
 
@@ -875,12 +754,12 @@ static inline WeakReference *swift_unknownWeakInit(WeakReference *ref,
 /// \param value - not necessarily a native Swift object; can be null
 /// \return ref
 SWIFT_RUNTIME_EXPORT
-WeakReference *swift_unknownWeakAssign(WeakReference *ref, void *value);
+WeakReference *swift_unknownObjectWeakAssign(WeakReference *ref, void *value);
 
 #else
 
-static inline WeakReference *swift_unknownWeakAssign(WeakReference *ref,
-                                                     void *value) {
+static inline WeakReference *swift_unknownObjectWeakAssign(WeakReference *ref,
+                                                           void *value) {
   return swift_weakAssign(ref, static_cast<HeapObject *>(value));
 }
 
@@ -894,11 +773,11 @@ static inline WeakReference *swift_unknownWeakAssign(WeakReference *ref,
 /// \param ref - never null
 /// \return can be null
 SWIFT_RUNTIME_EXPORT
-void *swift_unknownWeakLoadStrong(WeakReference *ref);
+void *swift_unknownObjectWeakLoadStrong(WeakReference *ref);
 
 #else
 
-static inline void *swift_unknownWeakLoadStrong(WeakReference *ref) {
+static inline void *swift_unknownObjectWeakLoadStrong(WeakReference *ref) {
   return static_cast<void *>(swift_weakLoadStrong(ref));
 }
 
@@ -907,17 +786,17 @@ static inline void *swift_unknownWeakLoadStrong(WeakReference *ref) {
 #if SWIFT_OBJC_INTEROP
 
 /// Load a value from a weak reference as if by
-/// swift_unknownWeakLoadStrong, but leaving the reference in an
+/// swift_unknownObjectWeakLoadStrong, but leaving the reference in an
 /// uninitialized state.
 ///
 /// \param ref - never null
 /// \return can be null
 SWIFT_RUNTIME_EXPORT
-void *swift_unknownWeakTakeStrong(WeakReference *ref);
+void *swift_unknownObjectWeakTakeStrong(WeakReference *ref);
 
 #else
 
-static inline void *swift_unknownWeakTakeStrong(WeakReference *ref) {
+static inline void *swift_unknownObjectWeakTakeStrong(WeakReference *ref) {
   return static_cast<void *>(swift_weakTakeStrong(ref));
 }
 
@@ -928,11 +807,11 @@ static inline void *swift_unknownWeakTakeStrong(WeakReference *ref) {
 /// Destroy a weak reference variable that might not refer to a native
 /// Swift object.
 SWIFT_RUNTIME_EXPORT
-void swift_unknownWeakDestroy(WeakReference *object);
+void swift_unknownObjectWeakDestroy(WeakReference *object);
 
 #else
 
-static inline void swift_unknownWeakDestroy(WeakReference *object) {
+static inline void swift_unknownObjectWeakDestroy(WeakReference *object) {
   swift_weakDestroy(object);
 }
 
@@ -944,13 +823,13 @@ static inline void swift_unknownWeakDestroy(WeakReference *object) {
 /// refer to a native Swift object.
 /// \return dest
 SWIFT_RUNTIME_EXPORT
-WeakReference *swift_unknownWeakCopyInit(WeakReference *dest,
-                                         WeakReference *src);
+WeakReference *swift_unknownObjectWeakCopyInit(WeakReference *dest,
+                                               WeakReference *src);
 
 #else
 
-static inline WeakReference *swift_unknownWeakCopyInit(WeakReference *dest,
-                                                       WeakReference *src) {
+static inline WeakReference *
+swift_unknownObjectWeakCopyInit(WeakReference *dest, WeakReference *src) {
   return swift_weakCopyInit(dest, src);
 }
 
@@ -962,13 +841,13 @@ static inline WeakReference *swift_unknownWeakCopyInit(WeakReference *dest,
 /// refer to a native Swift object.
 /// \return dest
 SWIFT_RUNTIME_EXPORT
-WeakReference *swift_unknownWeakTakeInit(WeakReference *dest,
-                                         WeakReference *src);
+WeakReference *swift_unknownObjectWeakTakeInit(WeakReference *dest,
+                                               WeakReference *src);
 
 #else
 
-static inline WeakReference *swift_unknownWeakTakeInit(WeakReference *dest,
-                                                       WeakReference *src) {
+static inline WeakReference *
+swift_unknownObjectWeakTakeInit(WeakReference *dest, WeakReference *src) {
   return swift_weakTakeInit(dest, src);
 }
 
@@ -980,13 +859,13 @@ static inline WeakReference *swift_unknownWeakTakeInit(WeakReference *dest,
 /// or both variables might not refer to a native Swift object.
 /// \return dest
 SWIFT_RUNTIME_EXPORT
-WeakReference *swift_unknownWeakCopyAssign(WeakReference *dest,
-                                           WeakReference *src);
+WeakReference *swift_unknownObjectWeakCopyAssign(WeakReference *dest,
+                                                 WeakReference *src);
 
 #else
 
-static inline WeakReference *swift_unknownWeakCopyAssign(WeakReference *dest,
-                                                         WeakReference *src) {
+static inline WeakReference *
+swift_unknownObjectWeakCopyAssign(WeakReference *dest, WeakReference *src) {
   return swift_weakCopyAssign(dest, src);
 }
 
@@ -998,13 +877,13 @@ static inline WeakReference *swift_unknownWeakCopyAssign(WeakReference *dest,
 /// or both variables might not refer to a native Swift object.
 /// \return dest
 SWIFT_RUNTIME_EXPORT
-WeakReference *swift_unknownWeakTakeAssign(WeakReference *dest,
-                                           WeakReference *src);
+WeakReference *swift_unknownObjectWeakTakeAssign(WeakReference *dest,
+                                                 WeakReference *src);
 
 #else
 
-static inline WeakReference *swift_unknownWeakTakeAssign(WeakReference *dest,
-                                                         WeakReference *src) {
+static inline WeakReference *
+swift_unknownObjectWeakTakeAssign(WeakReference *dest, WeakReference *src) {
   return swift_weakTakeAssign(dest, src);
 }
 
@@ -1020,12 +899,13 @@ static inline WeakReference *swift_unknownWeakTakeAssign(WeakReference *dest,
 /// counting.
 /// \return ref
 SWIFT_RUNTIME_EXPORT
-UnownedReference *swift_unknownUnownedInit(UnownedReference *ref, void *value);
+UnownedReference *swift_unknownObjectUnownedInit(UnownedReference *ref,
+                                                 void *value);
 
 #else
 
-static inline UnownedReference *swift_unknownUnownedInit(UnownedReference *ref,
-                                                         void *value) {
+static inline UnownedReference *
+swift_unknownObjectUnownedInit(UnownedReference *ref, void *value) {
   swift_unownedInit(ref, static_cast<HeapObject*>(value));
   return ref;
 }
@@ -1038,13 +918,13 @@ static inline UnownedReference *swift_unknownUnownedInit(UnownedReference *ref,
 /// counting.
 /// \return ref
 SWIFT_RUNTIME_EXPORT
-UnownedReference *swift_unknownUnownedAssign(UnownedReference *ref,
-                                             void *value);
+UnownedReference *swift_unknownObjectUnownedAssign(UnownedReference *ref,
+                                                   void *value);
 
 #else
 
 static inline UnownedReference *
-swift_unknownUnownedAssign(UnownedReference *ref, void *value) {
+swift_unknownObjectUnownedAssign(UnownedReference *ref, void *value) {
   swift_unownedAssign(ref, static_cast<HeapObject*>(value));
   return ref;
 }
@@ -1056,11 +936,12 @@ swift_unknownUnownedAssign(UnownedReference *ref, void *value) {
 /// Load from an unowned reference to an object with unknown reference
 /// counting.
 SWIFT_RUNTIME_EXPORT
-void *swift_unknownUnownedLoadStrong(UnownedReference *ref);
+void *swift_unknownObjectUnownedLoadStrong(UnownedReference *ref);
 
 #else
 
-static inline void *swift_unknownUnownedLoadStrong(UnownedReference *ref) {
+static inline void *
+swift_unknownObjectUnownedLoadStrong(UnownedReference *ref) {
   return swift_unownedLoadStrong(ref);
 }
 
@@ -1071,11 +952,12 @@ static inline void *swift_unknownUnownedLoadStrong(UnownedReference *ref) {
 /// Take from an unowned reference to an object with unknown reference
 /// counting.
 SWIFT_RUNTIME_EXPORT
-void *swift_unknownUnownedTakeStrong(UnownedReference *ref);
+void *swift_unknownObjectUnownedTakeStrong(UnownedReference *ref);
 
 #else
 
-static inline void *swift_unknownUnownedTakeStrong(UnownedReference *ref) {
+static inline void *
+swift_unknownObjectUnownedTakeStrong(UnownedReference *ref) {
   return swift_unownedTakeStrong(ref);
 }
 
@@ -1085,11 +967,11 @@ static inline void *swift_unknownUnownedTakeStrong(UnownedReference *ref) {
   
 /// Destroy an unowned reference to an object with unknown reference counting.
 SWIFT_RUNTIME_EXPORT
-void swift_unknownUnownedDestroy(UnownedReference *ref);
+void swift_unknownObjectUnownedDestroy(UnownedReference *ref);
 
 #else
 
-static inline void swift_unknownUnownedDestroy(UnownedReference *ref) {
+static inline void swift_unknownObjectUnownedDestroy(UnownedReference *ref) {
   swift_unownedDestroy(ref);
 }
 
@@ -1101,13 +983,14 @@ static inline void swift_unknownUnownedDestroy(UnownedReference *ref) {
 /// refer to a native Swift object.
 /// \return dest
 SWIFT_RUNTIME_EXPORT
-UnownedReference *swift_unknownUnownedCopyInit(UnownedReference *dest,
-                                               UnownedReference *src);
+UnownedReference *swift_unknownObjectUnownedCopyInit(UnownedReference *dest,
+                                                     UnownedReference *src);
 
 #else
 
 static inline UnownedReference *
-swift_unknownUnownedCopyInit(UnownedReference *dest, UnownedReference *src) {
+swift_unknownObjectUnownedCopyInit(UnownedReference *dest,
+                                   UnownedReference *src) {
   swift_unownedCopyInit(dest, src);
   return dest;
 }
@@ -1119,13 +1002,14 @@ swift_unknownUnownedCopyInit(UnownedReference *dest, UnownedReference *src) {
 /// Take-initialize an unowned reference variable from one that might not
 /// refer to a native Swift object.
 SWIFT_RUNTIME_EXPORT
-UnownedReference *swift_unknownUnownedTakeInit(UnownedReference *dest,
-                                               UnownedReference *src);
+UnownedReference *swift_unknownObjectUnownedTakeInit(UnownedReference *dest,
+                                                     UnownedReference *src);
 
 #else
 
 static inline UnownedReference *
-swift_unknownUnownedTakeInit(UnownedReference *dest, UnownedReference *src) {
+swift_unknownObjectUnownedTakeInit(UnownedReference *dest,
+                                   UnownedReference *src) {
   swift_unownedTakeInit(dest, src);
   return dest;
 }
@@ -1138,13 +1022,14 @@ swift_unknownUnownedTakeInit(UnownedReference *dest, UnownedReference *src) {
 /// or both variables might not refer to a native Swift object.
 /// \return dest
 SWIFT_RUNTIME_EXPORT
-UnownedReference *swift_unknownUnownedCopyAssign(UnownedReference *dest,
-                                                 UnownedReference *src);
+UnownedReference *swift_unknownObjectUnownedCopyAssign(UnownedReference *dest,
+                                                       UnownedReference *src);
 
 #else
 
 static inline UnownedReference *
-swift_unknownUnownedCopyAssign(UnownedReference *dest, UnownedReference *src) {
+swift_unknownObjectUnownedCopyAssign(UnownedReference *dest,
+                                     UnownedReference *src) {
   swift_unownedCopyAssign(dest, src);
   return dest;
 }
@@ -1157,13 +1042,14 @@ swift_unknownUnownedCopyAssign(UnownedReference *dest, UnownedReference *src) {
 /// or both variables might not refer to a native Swift object.
 /// \return dest
 SWIFT_RUNTIME_EXPORT
-UnownedReference *swift_unknownUnownedTakeAssign(UnownedReference *dest,
-                                                 UnownedReference *src);
+UnownedReference *swift_unknownObjectUnownedTakeAssign(UnownedReference *dest,
+                                                       UnownedReference *src);
 
 #else
 
 static inline UnownedReference *
-swift_unknownUnownedTakeAssign(UnownedReference *dest, UnownedReference *src) {
+swift_unknownObjectUnownedTakeAssign(UnownedReference *dest,
+                                     UnownedReference *src) {
   swift_unownedTakeAssign(dest, src);
   return dest;
 }
@@ -1175,12 +1061,12 @@ swift_unknownUnownedTakeAssign(UnownedReference *dest, UnownedReference *src) {
 /// Return `*ref == value` when ref might not refer to a native Swift object.
 /// Does not halt when *ref is a dead object as long as *ref != value.
 SWIFT_RUNTIME_EXPORT
-bool swift_unknownUnownedIsEqual(UnownedReference *ref, void *value);
+bool swift_unknownObjectUnownedIsEqual(UnownedReference *ref, void *value);
 
 #else
 
-static inline bool swift_unknownUnownedIsEqual(UnownedReference *ref,
-                                               void *value) {
+static inline bool swift_unknownObjectUnownedIsEqual(UnownedReference *ref,
+                                                     void *value) {
   return swift_unownedIsEqual(ref, static_cast<HeapObject *>(value));
 }
 

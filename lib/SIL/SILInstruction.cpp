@@ -17,6 +17,7 @@
 #include "swift/SIL/SILInstruction.h"
 #include "swift/Basic/type_traits.h"
 #include "swift/Basic/Unicode.h"
+#include "swift/SIL/ApplySite.h"
 #include "swift/SIL/SILBuilder.h"
 #include "swift/SIL/SILCloner.h"
 #include "swift/SIL/SILDebugScope.h"
@@ -40,7 +41,7 @@ const SILDebugScope *SILInstruction::getDebugScope() const {
   return Location.getScope();
 }
 
-void SILInstruction::setDebugScope(SILBuilder &B, const SILDebugScope *DS) {
+void SILInstruction::setDebugScope(const SILDebugScope *DS) {
   if (getDebugScope() && getDebugScope()->InlinedCallSite)
     assert(DS->InlinedCallSite && "throwing away inlined scope info");
 
@@ -85,8 +86,10 @@ transferNodesFromList(llvm::ilist_traits<SILInstruction> &L2,
   if (ThisParent == L2.getContainingBlock()) return;
 
   // Update the parent fields in the instructions.
-  for (; first != last; ++first)
+  for (; first != last; ++first) {
+    SWIFT_FUNC_STAT_NAMED("sil");
     first->ParentBB = ThisParent;
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -154,7 +157,7 @@ void SILInstruction::dropAllReferences() {
 
   // If we have a function ref inst, we need to especially drop its function
   // argument so that it gets a proper ref decrement.
-  if (auto *FRI = dyn_cast<FunctionRefInst>(this)) {
+  if (auto *FRI = dyn_cast<FunctionRefBaseInst>(this)) {
     if (!FRI->getReferencedFunction())
       return;
     FRI->dropReferencedFunction();
@@ -387,7 +390,9 @@ namespace {
     bool visitBeginAccessInst(const BeginAccessInst *right) {
       auto left = cast<BeginAccessInst>(LHS);
       return left->getAccessKind() == right->getAccessKind()
-          && left->getEnforcement() == right->getEnforcement();
+          && left->getEnforcement() == right->getEnforcement()
+          && left->hasNoNestedConflict() == right->hasNoNestedConflict()
+          && left->isFromBuiltin() == right->isFromBuiltin();
     }
 
     bool visitEndAccessInst(const EndAccessInst *right) {
@@ -398,13 +403,16 @@ namespace {
     bool visitBeginUnpairedAccessInst(const BeginUnpairedAccessInst *right) {
       auto left = cast<BeginUnpairedAccessInst>(LHS);
       return left->getAccessKind() == right->getAccessKind()
-          && left->getEnforcement() == right->getEnforcement();
+          && left->getEnforcement() == right->getEnforcement()
+          && left->hasNoNestedConflict() == right->hasNoNestedConflict()
+          && left->isFromBuiltin() == right->isFromBuiltin();
     }
 
     bool visitEndUnpairedAccessInst(const EndUnpairedAccessInst *right) {
       auto left = cast<EndUnpairedAccessInst>(LHS);
       return left->getEnforcement() == right->getEnforcement()
-          && left->isAborting() == right->isAborting();
+             && left->isAborting() == right->isAborting()
+             && left->isFromBuiltin() == right->isFromBuiltin();
     }
 
     bool visitStrongReleaseInst(const StrongReleaseInst *RHS) {
@@ -412,10 +420,6 @@ namespace {
     }
 
     bool visitStrongRetainInst(const StrongRetainInst *RHS) {
-      return true;
-    }
-
-    bool visitStrongRetainUnownedInst(const StrongRetainUnownedInst *RHS) {
       return true;
     }
 
@@ -449,6 +453,15 @@ namespace {
       auto *X = cast<FunctionRefInst>(LHS);
       return X->getReferencedFunction() == RHS->getReferencedFunction();
     }
+    bool visitDynamicFunctionRefInst(const DynamicFunctionRefInst *RHS) {
+      auto *X = cast<DynamicFunctionRefInst>(LHS);
+      return X->getReferencedFunction() == RHS->getReferencedFunction();
+    }
+    bool visitPreviousDynamicFunctionRefInst(
+        const PreviousDynamicFunctionRefInst *RHS) {
+      auto *X = cast<PreviousDynamicFunctionRefInst>(LHS);
+      return X->getReferencedFunction() == RHS->getReferencedFunction();
+    }
 
     bool visitAllocGlobalInst(const AllocGlobalInst *RHS) {
       auto *X = cast<AllocGlobalInst>(LHS);
@@ -479,12 +492,6 @@ namespace {
       auto LHS_ = cast<StringLiteralInst>(LHS);
       return LHS_->getEncoding() == RHS->getEncoding()
         && LHS_->getValue().equals(RHS->getValue());
-    }
-
-    bool visitConstStringLiteralInst(const ConstStringLiteralInst *RHS) {
-      auto LHS_ = cast<ConstStringLiteralInst>(LHS);
-      return LHS_->getEncoding() == RHS->getEncoding() &&
-             LHS_->getValue().equals(RHS->getValue());
     }
 
     bool visitStructInst(const StructInst *RHS) {
@@ -604,7 +611,7 @@ namespace {
 
     bool visitApplyInst(ApplyInst *RHS) {
       auto *X = cast<ApplyInst>(LHS);
-      return X->getSubstitutions() == RHS->getSubstitutions();
+      return X->getSubstitutionMap() == RHS->getSubstitutionMap();
     }
 
     bool visitBuiltinInst(BuiltinInst *RHS) {
@@ -710,21 +717,18 @@ namespace {
       return true;
     }
 
-    bool visitRefToUnownedInst(RefToUnownedInst *RHS) {
-      return true;
+#define LOADABLE_REF_STORAGE_HELPER(Name) \
+    bool visit##Name##ToRefInst(Name##ToRefInst *RHS) { return true; } \
+    bool visitRefTo##Name##Inst(RefTo##Name##Inst *RHS) { return true; }
+#define ALWAYS_OR_SOMETIMES_LOADABLE_CHECKED_REF_STORAGE(Name, ...) \
+    LOADABLE_REF_STORAGE_HELPER(Name) \
+    bool visitStrongRetain##Name##Inst(const StrongRetain##Name##Inst *RHS) { \
+      return true; \
     }
-
-    bool visitUnownedToRefInst(UnownedToRefInst *RHS) {
-      return true;
-    }
-
-    bool visitRefToUnmanagedInst(RefToUnmanagedInst *RHS) {
-      return true;
-    }
-
-    bool visitUnmanagedToRefInst(UnmanagedToRefInst *RHS) {
-      return true;
-    }
+#define UNCHECKED_REF_STORAGE(Name, ...) \
+    LOADABLE_REF_STORAGE_HELPER(Name)
+#include "swift/AST/ReferenceStorage.def"
+#undef LOADABLE_REF_STORAGE_HELPER
 
     bool visitThinToThickFunctionInst(ThinToThickFunctionInst *RHS) {
       return true;
@@ -742,6 +746,10 @@ namespace {
       return true;
     }
 
+    bool visitConvertEscapeToNoEscapeInst(ConvertEscapeToNoEscapeInst *RHS) {
+      return true;
+    }
+
     bool visitObjCMetatypeToObjectInst(ObjCMetatypeToObjectInst *RHS) {
       return true;
     }
@@ -755,6 +763,10 @@ namespace {
     }
 
     bool visitBridgeObjectToRefInst(BridgeObjectToRefInst *X) {
+      return true;
+    }
+
+    bool visitValueToBridgeObjectInst(ValueToBridgeObjectInst *i) {
       return true;
     }
 
@@ -995,9 +1007,15 @@ bool SILInstruction::mayRelease() const {
 
   case SILInstructionKind::ApplyInst:
   case SILInstructionKind::TryApplyInst:
+  case SILInstructionKind::BeginApplyInst:
+  case SILInstructionKind::AbortApplyInst:
+  case SILInstructionKind::EndApplyInst:
+  case SILInstructionKind::YieldInst:
   case SILInstructionKind::DestroyAddrInst:
   case SILInstructionKind::StrongReleaseInst:
-  case SILInstructionKind::UnownedReleaseInst:
+#define ALWAYS_OR_SOMETIMES_LOADABLE_CHECKED_REF_STORAGE(Name, ...) \
+  case SILInstructionKind::Name##ReleaseInst:
+#include "swift/AST/ReferenceStorage.def"
   case SILInstructionKind::ReleaseValueInst:
   case SILInstructionKind::ReleaseValueAddrInst:
     return true;
@@ -1056,7 +1074,7 @@ bool SILInstruction::mayRelease() const {
 bool SILInstruction::mayReleaseOrReadRefCount() const {
   switch (getKind()) {
   case SILInstructionKind::IsUniqueInst:
-  case SILInstructionKind::IsUniqueOrPinnedInst:
+  case SILInstructionKind::IsEscapingClosureInst:
     return true;
   default:
     return mayRelease();
@@ -1084,7 +1102,7 @@ namespace {
       Result = Cloned;
       SILCloner<TrivialCloner>::postProcess(Orig, Cloned);
     }
-    SILValue remapValue(SILValue Value) {
+    SILValue getMappedValue(SILValue Value) {
       return Value;
     }
     SILBasicBlock *remapBasicBlock(SILBasicBlock *BB) { return BB; }
@@ -1099,6 +1117,10 @@ bool SILInstruction::isAllocatingStack() const {
     if (ARI->canAllocOnStack())
       return true;
   }
+
+  if (auto *PA = dyn_cast<PartialApplyInst>(this))
+    return PA->isOnStack();
+
   return false;
 }
 
@@ -1130,9 +1152,6 @@ SILInstruction *SILInstruction::clone(SILInstruction *InsertPt) {
 /// additional handling. It is important to know this information when
 /// you perform such optimizations like e.g. jump-threading.
 bool SILInstruction::isTriviallyDuplicatable() const {
-  if (isa<ThrowInst>(this))
-    return false;
-
   if (isa<AllocStackInst>(this) || isa<DeallocStackInst>(this)) {
     return false;
   }
@@ -1140,7 +1159,6 @@ bool SILInstruction::isTriviallyDuplicatable() const {
     if (ARI->canAllocOnStack())
       return false;
   }
-
   if (isa<OpenExistentialAddrInst>(this) || isa<OpenExistentialRefInst>(this) ||
       isa<OpenExistentialMetatypeInst>(this) ||
       isa<OpenExistentialValueInst>(this) || isa<OpenExistentialBoxInst>(this) ||
@@ -1157,6 +1175,28 @@ bool SILInstruction::isTriviallyDuplicatable() const {
     if (MI->getMember().isForeign)
       return false;
   }
+  if (isa<ThrowInst>(this))
+    return false;
+
+  // BeginAccess defines the access scope entry point. All associated EndAccess
+  // instructions must directly operate on the BeginAccess.
+  if (isa<BeginAccessInst>(this))
+    return false;
+
+  // begin_apply creates a token that has to be directly used by the
+  // corresponding end_apply and abort_apply.
+  if (isa<BeginApplyInst>(this))
+    return false;
+
+  // dynamic_method_br is not duplicatable because IRGen does not support phi
+  // nodes of objc_method type.
+  if (isa<DynamicMethodBranchInst>(this))
+    return false;
+
+  if (auto *PA = dyn_cast<PartialApplyInst>(this))
+    return !PA->isOnStack();
+
+  // If you add more cases here, you should also update SILLoop:canDuplicate.
 
   return true;
 }
@@ -1170,6 +1210,20 @@ bool SILInstruction::mayTrap() const {
   default:
     return false;
   }
+}
+
+bool SILInstruction::isMetaInstruction() const {
+  // Every instruction that implements getVarInfo() should be in this list.
+  switch (getKind()) {
+  case SILInstructionKind::AllocBoxInst:
+  case SILInstructionKind::AllocStackInst:
+  case SILInstructionKind::DebugValueInst:
+  case SILInstructionKind::DebugValueAddrInst:
+    return true;
+  default:
+    return false;
+  }
+  llvm_unreachable("Instruction not handled in isMetaInstruction()!");
 }
 
 //===----------------------------------------------------------------------===//
@@ -1272,7 +1326,7 @@ SILInstructionResultArray::SILInstructionResultArray(
   auto TRangeBegin = TypedRange.begin();
   auto TRangeIter = TRangeBegin;
   auto TRangeEnd = TypedRange.end();
-  assert(MVResults.size() == unsigned(std::distance(VRangeBegin, VRangeEnd)));
+  assert(MVResults.size() == unsigned(std::distance(TRangeBegin, TRangeEnd)));
   for (unsigned i : indices(MVResults)) {
     assert(SILValue(&MVResults[i]) == (*this)[i]);
     assert(SILValue(&MVResults[i])->getType() == (*this)[i]->getType());
@@ -1322,37 +1376,10 @@ operator==(const SILInstructionResultArray &other) {
 
 SILInstructionResultArray::type_range
 SILInstructionResultArray::getTypes() const {
-  std::function<SILType(SILValue)> F = [](SILValue V) -> SILType {
+  SILType (*F)(SILValue) = [](SILValue V) -> SILType {
     return V->getType();
   };
   return {llvm::map_iterator(begin(), F), llvm::map_iterator(end(), F)};
-}
-
-SILInstructionResultArray::iterator SILInstructionResultArray::begin() const {
-  return iterator(*this, getStartOffset());
-}
-
-SILInstructionResultArray::iterator SILInstructionResultArray::end() const {
-  return iterator(*this, getEndOffset());
-}
-
-SILInstructionResultArray::reverse_iterator
-SILInstructionResultArray::rbegin() const {
-  return llvm::make_reverse_iterator(end());
-}
-
-SILInstructionResultArray::reverse_iterator
-SILInstructionResultArray::rend() const {
-  return llvm::make_reverse_iterator(begin());
-}
-
-SILInstructionResultArray::range SILInstructionResultArray::getValues() const {
-  return {begin(), end()};
-}
-
-SILInstructionResultArray::reverse_range
-SILInstructionResultArray::getReversedValues() const {
-  return {rbegin(), rend()};
 }
 
 const ValueBase *SILInstructionResultArray::front() const {

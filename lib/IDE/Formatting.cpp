@@ -39,7 +39,7 @@ struct TokenInfo {
   operator bool() { return StartOfLineTarget && StartOfLineBeforeTarget; }
 };
 
-typedef llvm::SmallString<64> StringBuilder;
+using StringBuilder = llvm::SmallString<64>;
 
 static SourceLoc getVarDeclInitEnd(VarDecl *VD) {
   return VD->getBracesRange().isValid()
@@ -339,7 +339,7 @@ public:
     //  { <- We add no indentation here.
     //    return 0
     //  }
-    if (auto FD = dyn_cast_or_null<FuncDecl>(Start.getAsDecl())) {
+    if (auto FD = dyn_cast_or_null<AccessorDecl>(Start.getAsDecl())) {
       if (FD->isGetter() && FD->getAccessorKeywordLoc().isInvalid()) {
         if (SM.getLineNumber(FD->getBody()->getLBraceLoc()) == Line)
           return false;
@@ -485,7 +485,7 @@ public:
 };
 
 class FormatWalker : public SourceEntityWalker {
-  typedef ArrayRef<Token>::iterator TokenIt;
+  using TokenIt = ArrayRef<Token>::iterator;
   class SiblingCollector {
     SourceLoc FoundSibling;
     SourceManager &SM;
@@ -510,6 +510,7 @@ class FormatWalker : public SourceEntityWalker {
       bool operator==(const SourceLocIterator& rhs) {return It==rhs.It;}
       bool operator!=(const SourceLocIterator& rhs) {return It!=rhs.It;}
       SourceLoc operator*() {return It->getLoc();}
+      const SourceLoc operator*() const { return It->getLoc(); }
     };
 
     void adjustTokenIteratorToImmediateAfter(SourceLoc End) {
@@ -574,8 +575,12 @@ class FormatWalker : public SourceEntityWalker {
       };
 
       if (auto AE = dyn_cast_or_null<ApplyExpr>(Node.dyn_cast<Expr *>())) {
-        collect(AE->getArg());
-        return;
+        // PrefixUnaryExpr shouldn't be syntactically considered as a function call
+        // for sibling alignment.
+        if (!isa<PrefixUnaryExpr>(AE)) {
+          collect(AE->getArg());
+          return;
+        }
       }
 
       if (auto PE = dyn_cast_or_null<ParenExpr>(Node.dyn_cast<Expr *>())) {
@@ -600,12 +605,9 @@ class FormatWalker : public SourceEntityWalker {
 
       if (auto AFD = dyn_cast_or_null<AbstractFunctionDecl>(Node.dyn_cast<Decl*>())) {
         // Function parameters are siblings.
-        for (auto P : AFD->getParameterLists()) {
-          for (ParamDecl* param : *P) {
-            if (!param->isSelfParameter())
-              addPair(param->getEndLoc(), FindAlignLoc(param->getStartLoc()),
-                      tok::comma);
-          }
+        for (auto *param : *AFD->getParameters()) {
+          addPair(param->getEndLoc(), FindAlignLoc(param->getStartLoc()),
+                  tok::comma);
         }
       }
 
@@ -667,7 +669,7 @@ class FormatWalker : public SourceEntityWalker {
   SiblingCollector SCollector;
 
   /// Sometimes, target is a part of "parent", for instance, "#else" is a part
-  /// of an ifconfigstmt, so that ifconfigstmt is not really the parent of "#else".
+  /// of an IfConfigDecl, so that IfConfigDecl is not really the parent of "#else".
   bool isTargetPartOf(swift::ASTWalker::ParentTy Parent) {
     if (auto Conf = dyn_cast_or_null<IfConfigDecl>(Parent.getAsDecl())) {
       for (auto Clause : Conf->getClauses()) {
@@ -815,7 +817,9 @@ public:
                                            StringRef Text, TokenInfo ToInfo) {
 
     // If having sibling locs to align with, respect siblings.
-    if (FC.HasSibling()) {
+    auto isClosingSquare =
+      ToInfo && ToInfo.StartOfLineTarget->getKind() == tok::r_square;
+    if (!isClosingSquare && FC.HasSibling()) {
       StringRef Line = swift::ide::getTextForLine(LineIndex, Text, /*Trim*/true);
       StringBuilder Builder;
       FC.padToSiblingColumn(Builder, FmtOptions);
@@ -842,6 +846,9 @@ public:
     auto AddIndentFunc = [&] () {
       auto Width = FmtOptions.UseTabs ? FmtOptions.TabWidth
                                       : FmtOptions.IndentWidth;
+      // We don't need to add additional indentation if Width is zero.
+      if (!Width)
+        return;
       // Increment indent.
       ExpandedIndent += Width;
       // Normalize indent to align on proper column indent width.
@@ -981,6 +988,15 @@ std::pair<LineRange, std::string> swift::ide::reformat(LineRange Range,
                                                        CodeFormatOptions Options,
                                                        SourceManager &SM,
                                                        SourceFile &SF) {
+  // Sanitize 0-width tab
+  if (Options.UseTabs && !Options.TabWidth) {
+    // If IndentWidth is specified, use it as the tab width.
+    if (Options.IndentWidth)
+      Options.TabWidth = Options.IndentWidth;
+    // Otherwise, use the default value,
+    else
+      Options.TabWidth = 4;
+  }
   FormatWalker walker(SF, SM);
   auto SourceBufferID = SF.getBufferID().getValue();
   StringRef Text = SM.getLLVMSourceMgr()

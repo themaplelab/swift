@@ -49,8 +49,8 @@ public:
   enum class Kind {
     Class,
     Struct,
-    Enum
-    // Update NominalMetadataLayout::classof if you add a non-nominal layout.
+    Enum,
+    ForeignClass,
   };
 
   class StoredOffset {
@@ -151,7 +151,16 @@ public:
   Offset getGenericRequirementsOffset(IRGenFunction &IGF) const;
 
   static bool classof(const MetadataLayout *layout) {
-    return true; // No non-nominal metadata for now.
+    switch (layout->getKind()) {
+    case MetadataLayout::Kind::Class:
+    case MetadataLayout::Kind::Enum:
+    case MetadataLayout::Kind::Struct:
+      return true;
+
+    case MetadataLayout::Kind::ForeignClass:
+      return false;
+    }
+    llvm_unreachable("unhandled kind");
   }
 };
 
@@ -169,7 +178,10 @@ public:
 private:
   bool HasResilientSuperclass = false;
 
+  StoredOffset StartOfImmediateMembers;
+
   StoredOffset MetadataSize;
+  StoredOffset MetadataAddressPoint;
 
   StoredOffset InstanceSize;
   StoredOffset InstanceAlignMask;
@@ -216,28 +228,19 @@ public:
     return HasResilientSuperclass;
   }
 
+  constexpr static bool areImmediateMembersNegative() {
+    return false;
+  }
+
   Size getMetadataSizeOffset() const;
+
+  Size getMetadataAddressPointOffset() const;
 
   Size getInstanceSizeOffset() const;
 
   Size getInstanceAlignMaskOffset() const;
 
-  /// Returns the start of the vtable in the class metadata.
-  Offset getVTableOffset(IRGenFunction &IGF) const;
-
-  /// Returns the size of the vtable, in words.
-  unsigned getVTableSize() const {
-    return MethodInfos.size();
-  }
-
   MethodInfo getMethodInfo(IRGenFunction &IGF, SILDeclRef method) const;
-
-  /// Assuming that the given method is at a static offset in the metadata,
-  /// return that static offset.
-  ///
-  /// DEPRECATED: callers should be updated to handle this in a
-  /// more arbitrary fashion.
-  Size getStaticMethodOffset(SILDeclRef method) const;
 
   Offset getFieldOffset(IRGenFunction &IGF, VarDecl *field) const;
 
@@ -258,6 +261,12 @@ public:
   Size getRelativeVTableOffset() const;
 
   Offset getFieldOffsetVectorOffset(IRGenFunction &IGF) const;
+
+  /// If the start of the immediate members is statically known, this
+  /// method will return it. Otherwise, it will assert.
+  Size getStartOfImmediateMembers() const {
+    return StartOfImmediateMembers.getStaticOffset();
+  }
 
   /// The number of members to add after superclass metadata. The size of
   /// this metadata is the superclass size plus the number of immediate
@@ -335,6 +344,22 @@ public:
   }
 };
 
+/// Layout for foreign class type metadata.
+class ForeignClassMetadataLayout : public MetadataLayout {
+  ClassDecl *Class;
+  StoredOffset SuperClassOffset;
+
+  friend class IRGenModule;
+  ForeignClassMetadataLayout(IRGenModule &IGM, ClassDecl *theClass);
+
+public:
+  StoredOffset getSuperClassOffset() const { return SuperClassOffset; }
+
+  static bool classof(const MetadataLayout *layout) {
+    return layout->getKind() == Kind::ForeignClass;
+  }
+};
+
 /// Emit the address of the field-offset slot in the given class metadata.
 Address emitAddressOfClassFieldOffset(IRGenFunction &IGF,
                                       llvm::Value *metadata,
@@ -354,6 +379,23 @@ Size getClassFieldOffsetOffset(IRGenModule &IGM,
 Address emitAddressOfFieldOffsetVector(IRGenFunction &IGF,
                                        llvm::Value *metadata,
                                        NominalTypeDecl *theDecl);
+
+/// Given a reference to class type metadata of the given type,
+/// decide the offset to the given field.  This assumes that the
+/// offset is stored in the metadata, i.e. its offset is potentially
+/// dependent on generic arguments.  The result is a ptrdiff_t.
+llvm::Value *emitClassFieldOffset(IRGenFunction &IGF,
+                                  ClassDecl *theClass,
+                                  VarDecl *field,
+                                  llvm::Value *metadata);
+
+/// Given a class metadata pointer, emit the address of its superclass field.  
+Address emitAddressOfSuperclassRefInClassMetadata(IRGenFunction &IGF,
+                                                  llvm::Value *metadata);
+
+Size getStaticTupleElementOffset(IRGenModule &IGM,
+                                 SILType tupleType,
+                                 unsigned eltIdx);
 
 } // end namespace irgen
 } // end namespace swift

@@ -38,6 +38,7 @@ typedef CCRefrigeratorRef CCFridgeRef;
 typedef const void *CCOpaqueTypeRef __attribute__((objc_bridge(id)));
 CCOpaqueTypeRef CCRetain(CCOpaqueTypeRef typeRef);
 void CCRelease(CCOpaqueTypeRef typeRef);
+CCOpaqueTypeRef CCMungeAndRetain(CCOpaqueTypeRef typeRef) __attribute__((swift_name("CCMungeAndRetain(_:)")));
 
 // Nullability
 void CCRefrigeratorOpenDoSomething(_Nonnull CCRefrigeratorRef fridge);
@@ -56,3 +57,12 @@ void CCRefrigeratorGetItemUnaudited(CCRefrigeratorRef fridge, unsigned index, CC
 
 typedef void *CFNonConstVoidRef __attribute__((objc_bridge(id)));
 CFNonConstVoidRef CFNonConstBottom();
+
+typedef struct IceCube {
+    float width;
+    float height;
+    float depth;
+} IceCube;
+
+typedef IceCube IceCube;
+typedef IceCube BlockOfIce;

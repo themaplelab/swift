@@ -17,10 +17,10 @@
 #include "swift/Parse/Parser.h"
 #include "swift/AST/DiagnosticsParse.h"
 #include "swift/Parse/CodeCompletionCallbacks.h"
+#include "swift/Parse/SyntaxParsingContext.h"
 #include "swift/Parse/Lexer.h"
 #include "swift/Syntax/SyntaxBuilders.h"
 #include "swift/Syntax/SyntaxNodes.h"
-#include "swift/Syntax/SyntaxParsingContext.h"
 using namespace swift;
 using namespace swift::syntax;
 
@@ -55,6 +55,10 @@ Parser::parseGenericParametersBeforeWhere(SourceLoc LAngleLoc,
     // Note that we're parsing a declaration.
     StructureMarkerRAII ParsingDecl(*this, Tok.getLoc(),
                                     StructureMarkerKind::Declaration);
+    
+    if (ParsingDecl.isFailed()) {
+      return makeParserError();
+    }
 
     // Parse attributes.
     DeclAttributes attributes;
@@ -225,12 +229,8 @@ Parser::diagnoseWhereClauseInGenericParamList(const GenericParamList *
   if (Tok.is(tok::kw_where))
     WhereClauseText << ',';
 
-  // For Swift 3, keep this warning. 
-  const auto Message = Context.isSwiftVersion3() 
-                             ? diag::swift3_where_inside_brackets 
-                             : diag::where_inside_brackets;
-
-  auto Diag = diagnose(WhereRangeInsideBrackets.Start, Message);
+  auto Diag = diagnose(WhereRangeInsideBrackets.Start,
+                       diag::where_inside_brackets);
 
   Diag.fixItRemoveChars(RemoveWhereRange.getStart(),
                         RemoveWhereRange.getEnd());
@@ -275,8 +275,9 @@ ParserStatus Parser::parseGenericWhereClause(
   bool HasNextReq;
   do {
     SyntaxParsingContext ReqContext(SyntaxContext, SyntaxContextKind::Syntax);
-    // Parse the leading type-identifier.
-    ParserResult<TypeRepr> FirstType = parseTypeIdentifier();
+    // Parse the leading type. It doesn't necessarily have to be just a type
+    // identifier if we're dealing with a same-type constraint.
+    ParserResult<TypeRepr> FirstType = parseType();
 
     if (FirstType.hasCodeCompletion()) {
       Status.setHasCodeCompletion();
@@ -296,8 +297,8 @@ ParserStatus Parser::parseGenericWhereClause(
           getLayoutConstraint(Context.getIdentifier(Tok.getText()), Context)
               ->isKnownLayout()) {
         // Parse a layout constraint.
-        auto LayoutName = Context.getIdentifier(Tok.getText());
-        auto LayoutLoc = consumeToken();
+        Identifier LayoutName;
+        auto LayoutLoc = consumeIdentifier(&LayoutName);
         auto LayoutInfo = parseLayoutConstraint(LayoutName);
         if (!LayoutInfo->isKnownLayout()) {
           // There was a bug in the layout constraint.

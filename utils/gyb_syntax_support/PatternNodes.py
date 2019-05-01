@@ -51,10 +51,12 @@ PATTERN_NODES = [
 
     # tuple-pattern -> '(' tuple-pattern-element-list ')'
     Node('TuplePattern', kind='Pattern',
+         traits=['Parenthesized'],
          children=[
-             Child('OpenParen', kind='LeftParenToken'),
-             Child('Elements', kind='TuplePatternElementList'),
-             Child('CloseParen', kind='RightParenToken'),
+             Child('LeftParen', kind='LeftParenToken'),
+             Child('Elements', kind='TuplePatternElementList',
+                   collection_element_name='Element'),
+             Child('RightParen', kind='RightParenToken'),
          ]),
 
     # wildcard-pattern -> '_' type-annotation?
@@ -67,13 +69,14 @@ PATTERN_NODES = [
 
     # tuple-pattern-element -> identifier? ':' pattern ','?
     Node('TuplePatternElement', kind='Syntax',
+         traits=['WithTrailingComma', 'Labeled'],
          children=[
              Child('LabelName', kind='IdentifierToken',
                    is_optional=True),
-             Child('Colon', kind='ColonToken',
+             Child('LabelColon', kind='ColonToken',
                    is_optional=True),
              Child('Pattern', kind='Pattern'),
-             Child('Comma', kind='CommaToken',
+             Child('TrailingComma', kind='CommaToken',
                    is_optional=True),
          ]),
 

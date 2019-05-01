@@ -65,8 +65,8 @@ public func testFactoryMethods() {
 
 #if !IRGEN
 public func testSubscript(_ foo: Foo) {
-  _ = foo[foo] // expected-error {{type 'Foo' has no subscript members}}
-  _ = foo[1] // expected-error {{type 'Foo' has no subscript members}}
+  _ = foo[foo] // expected-error {{value of type 'Foo' has no subscripts}}
+  _ = foo[1] // expected-error {{value of type 'Foo' has no subscripts}}
 }
 #endif
 
@@ -91,17 +91,17 @@ public func testTopLevel() {
 #endif
 }
 
-// CHECK-LABEL: define linkonce_odr hidden %swift.type* @_T0So12__PrivFooSubCMa{{.*}} {
+// CHECK-LABEL: define linkonce_odr hidden swiftcc %swift.metadata_response @"$sSo10PrivFooSubCMa{{.*}} {
 // CHECK: %objc_class** @"OBJC_CLASS_REF_$_PrivFooSub"
 // CHECK: }
 
-// CHECK-LABEL: define linkonce_odr hidden {{.+}} @_T0So3BarC8__noArgsSQyABGyt_tcfcTO
+// CHECK-LABEL: define linkonce_odr hidden {{.+}} @"$sSo3BarC8__noArgsABSgyt_tcfcTO"
 // CHECK: @"\01L_selector(initWithNoArgs)"
-// CHECK-LABEL: define linkonce_odr hidden {{.+}} @_T0So3BarC8__oneArgSQyABGs5Int32V_tcfcTO
+// CHECK-LABEL: define linkonce_odr hidden {{.+}} @"$sSo3BarC8__oneArgABSgs5Int32V_tcfcTO"
 // CHECK: @"\01L_selector(initWithOneArg:)"
-// CHECK-LABEL: define linkonce_odr hidden {{.+}} @_T0So3BarC9__twoArgs5otherSQyABGs5Int32V_AGtcfcTO
+// CHECK-LABEL: define linkonce_odr hidden {{.+}} @"$sSo3BarC9__twoArgs5otherABSgs5Int32V_AGtcfcTO"
 // CHECK: @"\01L_selector(initWithTwoArgs:other:)"
-// CHECK-LABEL: define linkonce_odr hidden {{.+}} @_T0So3BarC2__SQyABGs5Int32V_tcfcTO
+// CHECK-LABEL: define linkonce_odr hidden {{.+}} @"$sSo3BarC2__ABSgs5Int32V_tcfcTO"
 // CHECK: @"\01L_selector(init:)"
 
 _ = __PrivAnonymousA

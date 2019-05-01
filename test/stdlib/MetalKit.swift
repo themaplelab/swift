@@ -1,7 +1,12 @@
-// RUN: rm -rf %t ; mkdir -p %t
-// RUN: %target-build-swift %s -o %t/a.out4 -swift-version 4 && %target-run %t/a.out4
+// RUN: %empty-directory(%t)
+// RUN: %target-build-swift %s -o %t/a.out4 -swift-version 4 && %target-codesign %t/a.out4 &&  %target-run %t/a.out4
 // REQUIRES: objc_interop
 // UNSUPPORTED: OS=watchos
+
+// REQUIRES: executable_test
+
+// Requires swift-version 4
+// UNSUPPORTED: swift_test_mode_optimize_none_with_implicit_dynamic
 
 import StdlibUnittest
 

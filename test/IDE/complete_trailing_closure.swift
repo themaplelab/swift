@@ -41,7 +41,7 @@ func test1() {
 // GLOBAL_1: Begin completions
 // GLOBAL_1-DAG: Decl[FreeFunction]/CurrModule:      global1 {|}[#Void#]
 // GLOBAL_1-DAG: Decl[FreeFunction]/CurrModule:      global2 {|}[#Void#]
-// GLOBAL_1-DAG: Decl[FreeFunction]/CurrModule:      global3 {|}[#Void#]
+// GLOBAL_1-DAG: Decl[FreeFunction]/CurrModule:      global3 {|}[' rethrows'][#Void#]
 // GLOBAL_1-DAG: Decl[FreeFunction]/CurrModule:      global4 {|}[#Void#]
 // GLOBAL_1-DAG: Decl[FreeFunction]/CurrModule:      global1({#() -> ()##() -> ()#})[#Void#]
 // GLOBAL_1-DAG: Decl[FreeFunction]/CurrModule:      global2({#label: () -> ()##() -> ()#})[#Void#]
@@ -57,6 +57,7 @@ struct S {
   func method1(_: ()->()) {}
   static func method2(_: ()->()) {}
   func nonTrivial1(_: (Int)->()) {}
+  func nonTrivial2(_: @autoclosure ()->()) {}
   func test2() {
     self.#^METHOD_1^#
   }
@@ -64,6 +65,7 @@ struct S {
 // METHOD_1: Decl[InstanceMethod]/CurrNominal:   method1 {|}[#Void#]
 // METHOD_1: Decl[InstanceMethod]/CurrNominal:   method1({#() -> ()##() -> ()#})[#Void#]
 // METHOD_1: Decl[InstanceMethod]/CurrNominal:   nonTrivial1({#(Int) -> ()##(Int) -> ()#})[#Void#]
+// METHOD_1: Decl[InstanceMethod]/CurrNominal:   nonTrivial2({#()#})[#Void#]
 // METHOD_1: End completions
 
   func test3() {
@@ -85,6 +87,7 @@ class C {
   func method1(_: ()->()) {}
   class func method2(_: ()->()) {}
   func nonTrivial1(_: (Int)->()) {}
+  func nonTrivial2(_: @autoclosure ()->()) {}
   func test6() {
     self.#^METHOD_4^#
   }

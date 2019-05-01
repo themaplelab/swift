@@ -1,6 +1,4 @@
-// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -typecheck -verify %s
-
-// XFAIL: linux
+// RUN: %target-swift-frontend(mock-sdk: %clang-importer-sdk) -enable-objc-interop -typecheck -verify %s
 
 @_exported import macros
 
@@ -171,4 +169,10 @@ func testRecursion() {
   _ = RECURSION_IN_EXPR // expected-error {{use of unresolved identifier 'RECURSION_IN_EXPR'}}
   _ = RECURSION_IN_EXPR2 // expected-error {{use of unresolved identifier 'RECURSION_IN_EXPR2'}}
   _ = RECURSION_IN_EXPR3 // expected-error {{use of unresolved identifier 'RECURSION_IN_EXPR3'}}
+}
+
+func testNulls() {
+  let _: Int = UNAVAILABLE_ONE // expected-error {{use of unresolved identifier 'UNAVAILABLE_ONE'}}
+  let _: Int = DEPRECATED_ONE // expected-error {{use of unresolved identifier 'DEPRECATED_ONE'}}
+  let _: Int = OKAY_TYPED_ONE // expected-error {{cannot convert value of type 'okay_t' (aka 'UInt32') to specified type 'Int'}}
 }

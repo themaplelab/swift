@@ -1,4 +1,4 @@
-// RUN: %target-swift-frontend -enable-sil-ownership -emit-sil %s -o /dev/null -verify
+// RUN: %target-swift-emit-sil %s -o /dev/null -verify
 
 func testUnreachableAfterReturn() -> Int {
   var x: Int = 3
@@ -106,7 +106,7 @@ func testUnreachableCase5(a : Tree) {
   switch a {
   case _:
     break
-  default:  
+  default:  // expected-warning {{default will never be executed}}
     return
   }
 }

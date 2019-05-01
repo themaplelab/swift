@@ -10,8 +10,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-@_inlineable // FIXME(sil-serialize-all)
-@_versioned // FIXME(sil-serialize-all)
+/// Returns c as a UTF16.CodeUnit.  Meant to be used as _ascii16("x").
+@inlinable
+internal func _ascii16(_ c: Unicode.Scalar) -> UTF16.CodeUnit {
+  _internalInvariant(c.value >= 0 && c.value <= 0x7F, "not ASCII")
+  return UTF16.CodeUnit(c.value)
+}
+
+@inlinable
 @inline(__always)
 internal func _asciiDigit<CodeUnit : UnsignedInteger, Result : BinaryInteger>(
   codeUnit u_: CodeUnit, radix: Result
@@ -30,8 +36,7 @@ internal func _asciiDigit<CodeUnit : UnsignedInteger, Result : BinaryInteger>(
   return Result(truncatingIfNeeded: d)
 }
 
-@_inlineable // FIXME(sil-serialize-all)
-@_versioned // FIXME(sil-serialize-all)
+@inlinable
 @inline(__always)
 internal func _parseUnsignedASCII<
   Rest : IteratorProtocol, Result: FixedWidthInteger
@@ -47,7 +52,7 @@ where Rest.Element : UnsignedInteger {
     guard _fastPath(!overflow0) else { return nil }
     result = result0
   }
-  
+
   while let u = rest.next() {
     let d0 = _asciiDigit(codeUnit: u, radix: radix)
     guard _fastPath(d0 != nil), let d = d0 else { return nil }
@@ -62,8 +67,12 @@ where Rest.Element : UnsignedInteger {
   return result
 }
 
-@_inlineable // FIXME(sil-serialize-all)
-@_versioned // FIXME(sil-serialize-all)
+//
+// TODO (TODO: JIRA): This needs to be completely rewritten. It's about 20KB of
+// always-inline code, most of which are MOV instructions.
+//
+
+@inlinable
 @inline(__always)
 internal func _parseASCII<
   CodeUnits : IteratorProtocol, Result: FixedWidthInteger
@@ -93,10 +102,9 @@ extension FixedWidthInteger {
   // _parseASCII function thunk that prevents inlining used as an implementation
   // detail for FixedWidthInteger.init(_: radix:) on the slow path to save code
   // size.
-  @_inlineable // FIXME(sil-serialize-all)
-  @_versioned // FIXME(sil-serialize-all)
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @inline(never)
+  @usableFromInline
   internal static func _parseASCIISlowPath<
     CodeUnits : IteratorProtocol, Result: FixedWidthInteger
   >(
@@ -138,31 +146,31 @@ extension FixedWidthInteger {
   ///     `radix`.
   ///   - radix: The radix, or base, to use for converting `text` to an integer
   ///     value. `radix` must be in the range `2...36`. The default is 10.
-  @_inlineable // FIXME(sil-serialize-all)
+  @inlinable // @specializable
   @_semantics("optimize.sil.specialize.generic.partial.never")
   public init?<S : StringProtocol>(_ text: S, radix: Int = 10) {
     _precondition(2...36 ~= radix, "Radix not in range 2...36")
-    let r = Self(radix)
-    let s = text._ephemeralString
-    defer { _fixLifetime(s) }
-    
-    let c = s._core
-    let result: Self?
-    if _slowPath(c._baseAddress == nil) {
-      var i = s.utf16.makeIterator()
-      result = Self._parseASCIISlowPath(codeUnits: &i, radix: r)
+
+    if let str = text as? String, str._guts.isFastUTF8 {
+      guard let ret = str._guts.withFastUTF8 ({ utf8 -> Self? in
+        var iter = utf8.makeIterator()
+        return _parseASCII(codeUnits: &iter, radix: Self(radix))
+      }) else {
+        return nil
+      }
+      self = ret
+      return
     }
-    else if _fastPath(c.elementWidth == 1), let a = c.asciiBuffer {
-      var i = a.makeIterator()
-      result = _parseASCII(codeUnits: &i, radix: r)
-    }
-    else {
-      let b = UnsafeBufferPointer(start: c.startUTF16, count: c.count)
-      var i = b.makeIterator()
-      result = Self._parseASCIISlowPath(codeUnits: &i, radix: r)
-    }
-    guard _fastPath(result != nil) else { return nil }
-    self = result!
+
+    // TODO(String performance): We can provide fast paths for common radices,
+    // native UTF-8 storage, etc.
+
+    var iter = text.utf8.makeIterator()
+    guard let ret = Self._parseASCIISlowPath(
+      codeUnits: &iter, radix: Self(radix)
+    ) else { return nil }
+
+    self = ret
   }
 
   /// Creates a new integer value from the given string.
@@ -183,7 +191,7 @@ extension FixedWidthInteger {
   ///     Int("10000000000000000000000000") // Out of range
   ///
   /// - Parameter description: The ASCII representation of a number.
-  @_inlineable // FIXME(sil-serialize-all)
+  @inlinable
   @_semantics("optimize.sil.specialize.generic.partial.never")
   @inline(__always)
   public init?(_ description: String) {

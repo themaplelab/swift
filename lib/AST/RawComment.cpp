@@ -57,11 +57,11 @@ static SingleRawComment::CommentKind getCommentKind(StringRef Comment) {
 SingleRawComment::SingleRawComment(CharSourceRange Range,
                                    const SourceManager &SourceMgr)
     : Range(Range), RawText(SourceMgr.extractText(Range)),
-      Kind(static_cast<unsigned>(getCommentKind(RawText))),
-      EndLine(SourceMgr.getLineNumber(Range.getEnd())) {
+      Kind(static_cast<unsigned>(getCommentKind(RawText))) {
   auto StartLineAndColumn = SourceMgr.getLineAndColumn(Range.getStart());
   StartLine = StartLineAndColumn.first;
   StartColumn = StartLineAndColumn.second;
+  EndLine = SourceMgr.getLineNumber(Range.getEnd());
 }
 
 SingleRawComment::SingleRawComment(StringRef RawText, unsigned StartColumn)
@@ -108,7 +108,8 @@ static RawComment toRawComment(ASTContext &Context, CharSourceRange Range) {
   unsigned Offset = SourceMgr.getLocOffsetInBuffer(Range.getStart(), BufferID);
   unsigned EndOffset = SourceMgr.getLocOffsetInBuffer(Range.getEnd(), BufferID);
   LangOptions FakeLangOpts;
-  Lexer L(FakeLangOpts, SourceMgr, BufferID, nullptr, /*InSILMode=*/false,
+  Lexer L(FakeLangOpts, SourceMgr, BufferID, nullptr, LexerMode::Swift,
+          HashbangMode::Disallowed,
           CommentRetentionMode::ReturnAsTokens,
           TriviaRetentionMode::WithoutTrivia,
           Offset, EndOffset);
@@ -163,8 +164,8 @@ static const Decl* getGroupDecl(const Decl *D) {
   // Extensions always exist in the same group with the nominal.
   if (auto ED = dyn_cast_or_null<ExtensionDecl>(D->getDeclContext()->
                                                 getInnermostTypeContext())) {
-    if (auto ExtTy = ED->getExtendedType())
-      GroupD = ExtTy->getAnyNominal();
+    if (auto ExtNominal = ED->getExtendedNominal())
+      GroupD = ExtNominal;
   }
   return GroupD;
 }

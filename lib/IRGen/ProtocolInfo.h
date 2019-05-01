@@ -29,12 +29,9 @@
 
 namespace swift {
   class CanType;
-  class Decl;
   class ProtocolConformance;
-  class ProtocolDecl;
 
 namespace irgen {
-  class ConformanceInfo; // private to GenProto.cpp
   class IRGenModule;
   class TypeInfo;
 
@@ -43,10 +40,11 @@ namespace irgen {
 /// introduced by the protocol.
 class WitnessTableEntry {
 public:
-  void *MemberOrAssociatedType;
+  llvm::PointerUnion<Decl *, TypeBase *> MemberOrAssociatedType;
   ProtocolDecl *Protocol;
 
-  WitnessTableEntry(void *member, ProtocolDecl *protocol)
+  WitnessTableEntry(llvm::PointerUnion<Decl *, TypeBase *> member,
+                    ProtocolDecl *protocol)
     : MemberOrAssociatedType(member), Protocol(protocol) {}
 
 public:
@@ -54,15 +52,15 @@ public:
 
   static WitnessTableEntry forOutOfLineBase(ProtocolDecl *proto) {
     assert(proto != nullptr);
-    return WitnessTableEntry(nullptr, proto);
+    return WitnessTableEntry({}, proto);
   }
 
   /// Is this a base-protocol entry?
-  bool isBase() const { return MemberOrAssociatedType == nullptr; }
+  bool isBase() const { return MemberOrAssociatedType.isNull(); }
 
   bool matchesBase(ProtocolDecl *proto) const {
     assert(proto != nullptr);
-    return MemberOrAssociatedType == nullptr && Protocol == proto;
+    return MemberOrAssociatedType.isNull() && Protocol == proto;
   }
 
   /// Given that this is a base-protocol entry, is the table
@@ -83,19 +81,21 @@ public:
   }
   
   bool isFunction() const {
-    return Protocol == nullptr &&
-           isa<AbstractFunctionDecl>(
-             static_cast<Decl*>(MemberOrAssociatedType));
+    auto decl = MemberOrAssociatedType.dyn_cast<Decl*>();
+    return Protocol == nullptr && decl && isa<AbstractFunctionDecl>(decl);
   }
 
   bool matchesFunction(AbstractFunctionDecl *func) const {
     assert(func != nullptr);
-    return MemberOrAssociatedType == func && Protocol == nullptr;
+    if (auto decl = MemberOrAssociatedType.dyn_cast<Decl*>())
+      return decl == func && Protocol == nullptr;
+    return false;
   }
 
   AbstractFunctionDecl *getFunction() const {
     assert(isFunction());
-    return static_cast<AbstractFunctionDecl*>(MemberOrAssociatedType);
+    auto decl = MemberOrAssociatedType.get<Decl*>();
+    return static_cast<AbstractFunctionDecl*>(decl);
   }
 
   static WitnessTableEntry forAssociatedType(AssociatedType ty) {
@@ -103,19 +103,21 @@ public:
   }
   
   bool isAssociatedType() const {
-    return Protocol == nullptr &&
-           isa<AssociatedTypeDecl>(
-             static_cast<Decl*>(MemberOrAssociatedType));
+    if (auto decl = MemberOrAssociatedType.dyn_cast<Decl*>())
+      return Protocol == nullptr && isa<AssociatedTypeDecl>(decl);
+    return false;
   }
 
   bool matchesAssociatedType(AssociatedType assocType) const {
-    return MemberOrAssociatedType == assocType.getAssociation() &&
-           Protocol == nullptr;
+    if (auto decl = MemberOrAssociatedType.dyn_cast<Decl*>())
+      return decl == assocType.getAssociation() && Protocol == nullptr;
+    return false;
   }
 
   AssociatedTypeDecl *getAssociatedType() const {
     assert(isAssociatedType());
-    return static_cast<AssociatedTypeDecl*>(MemberOrAssociatedType);
+    auto decl = MemberOrAssociatedType.get<Decl*>();
+    return static_cast<AssociatedTypeDecl*>(decl);
   }
 
   static WitnessTableEntry forAssociatedConformance(AssociatedConformance conf){
@@ -124,58 +126,70 @@ public:
   }
 
   bool isAssociatedConformance() const {
-    return Protocol != nullptr && MemberOrAssociatedType != nullptr;
+    return Protocol != nullptr && !MemberOrAssociatedType.isNull();
   }
 
   bool matchesAssociatedConformance(const AssociatedConformance &conf) const {
-    return MemberOrAssociatedType == conf.getAssociation().getPointer() &&
-           Protocol == conf.getAssociatedRequirement();
+    if (auto type = MemberOrAssociatedType.dyn_cast<TypeBase*>())
+      return type == conf.getAssociation().getPointer() &&
+             Protocol == conf.getAssociatedRequirement();
+    return false;
   }
 
   CanType getAssociatedConformancePath() const {
     assert(isAssociatedConformance());
-    return CanType(static_cast<TypeBase *>(MemberOrAssociatedType));
+    auto type = MemberOrAssociatedType.get<TypeBase*>();
+    return CanType(type);
   }
 
   ProtocolDecl *getAssociatedConformanceRequirement() const {
     assert(isAssociatedConformance());
     return Protocol;
   }
+
+  friend bool operator==(WitnessTableEntry left, WitnessTableEntry right) {
+    return left.MemberOrAssociatedType == right.MemberOrAssociatedType &&
+           left.Protocol == right.Protocol;
+  }
+};
+
+/// Describes the information available in a ProtocolInfo.
+///
+/// Each kind includes the information of the kinds before it.
+enum class ProtocolInfoKind : uint8_t {
+  RequirementSignature,
+  Full
 };
 
 /// An abstract description of a protocol.
 class ProtocolInfo final :
     private llvm::TrailingObjects<ProtocolInfo, WitnessTableEntry> {
   friend TrailingObjects;
-
-  /// A singly-linked-list of all the protocols that have been laid out.
-  const ProtocolInfo *NextConverted;
   friend class TypeConverter;
 
   /// The number of table entries in this protocol layout.
   unsigned NumTableEntries;
 
-  /// A table of all the conformances we've needed so far for this
-  /// protocol.  We expect this to be quite small for most protocols.
-  mutable llvm::SmallDenseMap<const ProtocolConformance*, ConformanceInfo*, 2>
-    Conformances;
+  ProtocolInfoKind Kind;
 
-  ProtocolInfo(ArrayRef<WitnessTableEntry> table)
-      : NumTableEntries(table.size()) {
+  ProtocolInfoKind getKind() const {
+    return Kind;
+  }
+
+  ProtocolInfo(ArrayRef<WitnessTableEntry> table, ProtocolInfoKind kind)
+      : NumTableEntries(table.size()), Kind(kind) {
     std::uninitialized_copy(table.begin(), table.end(),
                             getTrailingObjects<WitnessTableEntry>());
   }
 
-  static ProtocolInfo *create(ArrayRef<WitnessTableEntry> table);
+  static std::unique_ptr<ProtocolInfo> create(ArrayRef<WitnessTableEntry> table,
+                                              ProtocolInfoKind kind);
 
 public:
-  const ConformanceInfo &getConformance(IRGenModule &IGM,
-                                        ProtocolDecl *protocol,
-                                        const ProtocolConformance *conf) const;
-
   /// The number of witness slots in a conformance to this protocol;
   /// in other words, the size of the table in words.
   unsigned getNumWitnesses() const {
+    assert(getKind() == ProtocolInfoKind::Full);
     return NumTableEntries;
   }
 
@@ -223,6 +237,7 @@ public:
   /// Return the witness index for the witness function for the given
   /// function requirement.
   WitnessIndex getFunctionIndex(AbstractFunctionDecl *function) const {
+    assert(getKind() >= ProtocolInfoKind::Full);
     for (auto &witness : getWitnessEntries()) {
       if (witness.matchesFunction(function))
         return getNonBaseWitnessIndex(&witness);
@@ -232,13 +247,8 @@ public:
 
   /// Return the witness index for the type metadata access function
   /// for the given associated type.
-  WitnessIndex getAssociatedTypeIndex(AssociatedType assocType) const {
-    for (auto &witness : getWitnessEntries()) {
-      if (witness.matchesAssociatedType(assocType))
-        return getNonBaseWitnessIndex(&witness);
-    }
-    llvm_unreachable("didn't find entry for associated type");
-  }
+  WitnessIndex getAssociatedTypeIndex(IRGenModule &IGM,
+                                      AssociatedType assocType) const;
 
   /// Return the witness index for the protocol witness table access
   /// function for the given associated protocol conformance.
@@ -250,8 +260,19 @@ public:
     }
     llvm_unreachable("didn't find entry for associated conformance");
   }
+};
 
-  ~ProtocolInfo();
+/// Detail about how an object conforms to a protocol.
+class ConformanceInfo {
+  virtual void anchor();
+public:
+  virtual ~ConformanceInfo() = default;
+  virtual llvm::Value *getTable(IRGenFunction &IGF,
+                               llvm::Value **conformingMetadataCache) const = 0;
+  /// Try to get this table as a constant pointer.  This might just
+  /// not be supportable at all.
+  virtual llvm::Constant *tryGetConstantTable(IRGenModule &IGM,
+                                              CanType conformingType) const = 0;
 };
 
 } // end namespace irgen

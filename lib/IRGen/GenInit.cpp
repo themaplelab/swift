@@ -24,13 +24,12 @@
 #include "llvm/IR/Module.h"
 
 #include "DebugTypeInfo.h"
-#include "Explosion.h"
-#include "GenHeap.h"
 #include "GenTuple.h"
 #include "IRGenDebugInfo.h"
 #include "IRGenFunction.h"
 #include "IRGenModule.h"
 #include "FixedTypeInfo.h"
+#include "Temporary.h"
 
 using namespace swift;
 using namespace irgen;
@@ -38,15 +37,17 @@ using namespace irgen;
 /// Emit a global variable.
 void IRGenModule::emitSILGlobalVariable(SILGlobalVariable *var) {
   auto &ti = getTypeInfo(var->getLoweredType());
-  
-  // If the variable is empty in all resilience domains, don't actually emit it;
-  // just return undef.
-  if (ti.isKnownEmpty(ResilienceExpansion::Minimal)) {
+  auto expansion = getResilienceExpansionForLayout(var);
+
+  // If the variable is empty in all resilience domains that can access this
+  // variable directly, don't actually emit it; just return undef.
+  if (ti.isKnownEmpty(expansion)) {
     if (DebugInfo && var->getDecl()) {
       auto DbgTy = DebugTypeInfo::getGlobal(var, Int8Ty, Size(0), Alignment(1));
       DebugInfo->emitGlobalVariableDeclaration(
           nullptr, var->getDecl()->getName().str(), "", DbgTy,
-          var->getLinkage() != SILLinkage::Public, SILLocation(var->getDecl()));
+          var->getLinkage() != SILLinkage::Public,
+          IRGenDebugInfo::NotHeapAllocated, SILLocation(var->getDecl()));
     }
     return;
   }
@@ -82,4 +83,18 @@ void FixedTypeInfo::deallocateStack(IRGenFunction &IGF, StackAddress addr,
   if (isKnownEmpty(ResilienceExpansion::Maximal))
     return;
   IGF.Builder.CreateLifetimeEnd(addr.getAddress(), getFixedSize());
+}
+
+void TemporarySet::destroyAll(IRGenFunction &IGF) const {
+  assert(!hasBeenCleared() && "destroying a set that's been cleared?");
+
+  // Deallocate all the temporaries.
+  for (auto &temporary : reversed(Stack)) {
+    temporary.destroy(IGF);
+  }
+}
+
+void Temporary::destroy(IRGenFunction &IGF) const {
+  auto &ti = IGF.getTypeInfo(Type);
+  ti.deallocateStack(IGF, Addr, Type);
 }

@@ -9,7 +9,7 @@
 // See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
 //
 //===----------------------------------------------------------------------===//
-// RUN: rm -rf %t ; mkdir -p %t
+// RUN: %empty-directory(%t)
 // RUN: %gyb -DWORD_BITS=%target-ptrsize %s -o %t/Integers.swift
 // RUN: %line-directive %t/Integers.swift -- %target-build-swift %t/Integers.swift -swift-version 4 -Onone -o %t/a.out
 // RUN: %line-directive %t/Integers.swift -- %target-run %t/a.out
@@ -17,6 +17,9 @@
 
 // FIXME: this test runs forever on iOS arm64
 // REQUIRES: OS=macosx
+
+// Requires swift-version 4
+// UNSUPPORTED: swift_test_mode_optimize_none_with_implicit_dynamic
 %{
 word_bits = int(WORD_BITS) / 2
 from SwiftIntTypes import all_integer_types
@@ -29,7 +32,7 @@ public func _log(_ message: @autoclosure () -> String) {
   // print(message())
 }
 
-extension FixedWidthInteger where Words : Collection {
+extension FixedWidthInteger {
   /// a hex representation of every bit in the number
   func hexBits(_ bitWidth: Int) -> String {
     let hexDigits: [Unicode.Scalar] = [
@@ -63,6 +66,170 @@ typealias UWord = UInt${word_bits}
 typealias DWord = Int${word_bits*2}
 typealias UDWord = UInt${word_bits*2}
 
+struct MockBinaryInteger<T : BinaryInteger> {
+  var _value: T
+
+  init(_ value: T) {
+    _value = value
+  }
+}
+
+extension MockBinaryInteger : CustomStringConvertible {
+  var description: String {
+    return _value.description
+  }
+}
+
+extension MockBinaryInteger : ExpressibleByIntegerLiteral {
+  init(integerLiteral value: T.IntegerLiteralType) {
+    _value = T(integerLiteral: value)
+  }
+}
+
+extension MockBinaryInteger : Comparable {
+  static func < (lhs: MockBinaryInteger<T>, rhs: MockBinaryInteger<T>) -> Bool {
+    return lhs._value < rhs._value
+  }
+
+  static func == (
+    lhs: MockBinaryInteger<T>, rhs: MockBinaryInteger<T>
+  ) -> Bool {
+    return lhs._value == rhs._value
+  }
+}
+
+extension MockBinaryInteger : Hashable {
+  func hash(into hasher: inout Hasher) {
+    hasher.combine(_value)
+  }
+}
+
+extension MockBinaryInteger : BinaryInteger {
+  static var isSigned: Bool {
+    return T.isSigned
+  }
+
+  init<Source>(_ source: Source) where Source : BinaryFloatingPoint {
+    _value = T(source)
+  }
+
+  init?<Source>(exactly source: Source) where Source : BinaryFloatingPoint {
+    guard let result = T(exactly: source) else { return nil }
+    _value = result
+  }
+
+  init<Source>(_ source: Source) where Source : BinaryInteger {
+    _value = T(source)
+  }
+
+  init?<Source>(exactly source: Source) where Source : BinaryInteger {
+    guard let result = T(exactly: source) else { return nil }
+    _value = result
+  }
+
+  init<Source>(truncatingIfNeeded source: Source) where Source : BinaryInteger {
+    _value = T(truncatingIfNeeded: source)
+  }
+
+  init<Source>(clamping source: Source) where Source : BinaryInteger {
+    _value = T(clamping: source)
+  }
+
+  var magnitude: MockBinaryInteger<T.Magnitude> {
+    return MockBinaryInteger<T.Magnitude>(_value.magnitude)
+  }
+
+  var words: T.Words {
+    return _value.words
+  }
+
+  var bitWidth: Int {
+    return _value.bitWidth
+  }
+
+  var trailingZeroBitCount: Int {
+    return _value.trailingZeroBitCount
+  }
+
+  static func + (
+    lhs: MockBinaryInteger<T>, rhs: MockBinaryInteger<T>
+  ) -> MockBinaryInteger<T> {
+    return MockBinaryInteger(lhs._value + rhs._value)
+  }
+
+  static func += (lhs: inout MockBinaryInteger<T>, rhs: MockBinaryInteger<T>) {
+    lhs._value += rhs._value
+  }
+
+  static func - (
+    lhs: MockBinaryInteger<T>, rhs: MockBinaryInteger<T>
+  ) -> MockBinaryInteger<T> {
+    return MockBinaryInteger(lhs._value - rhs._value)
+  }
+
+  static func -= (lhs: inout MockBinaryInteger<T>, rhs: MockBinaryInteger<T>) {
+    lhs._value -= rhs._value
+  }
+
+  static func * (
+    lhs: MockBinaryInteger<T>, rhs: MockBinaryInteger<T>
+  ) -> MockBinaryInteger<T> {
+    return MockBinaryInteger(lhs._value * rhs._value)
+  }
+
+  static func *= (lhs: inout MockBinaryInteger<T>, rhs: MockBinaryInteger<T>) {
+    lhs._value *= rhs._value
+  }
+
+  static func / (
+    lhs: MockBinaryInteger<T>, rhs: MockBinaryInteger<T>
+  ) -> MockBinaryInteger<T> {
+    return MockBinaryInteger(lhs._value / rhs._value)
+  }
+
+  static func /= (lhs: inout MockBinaryInteger<T>, rhs: MockBinaryInteger<T>) {
+    lhs._value /= rhs._value
+  }
+
+  static func % (
+    lhs: MockBinaryInteger<T>, rhs: MockBinaryInteger<T>
+  ) -> MockBinaryInteger<T> {
+    return MockBinaryInteger(lhs._value % rhs._value)
+  }
+
+  static func %= (lhs: inout MockBinaryInteger<T>, rhs: MockBinaryInteger<T>) {
+    lhs._value %= rhs._value
+  }
+
+  static func &= (lhs: inout MockBinaryInteger<T>, rhs: MockBinaryInteger<T>) {
+    lhs._value &= rhs._value
+  }
+
+  static func |= (lhs: inout MockBinaryInteger<T>, rhs: MockBinaryInteger<T>) {
+    lhs._value |= rhs._value
+  }
+
+  static func ^= (lhs: inout MockBinaryInteger<T>, rhs: MockBinaryInteger<T>) {
+    lhs._value ^= rhs._value
+  }
+
+  static prefix func ~ (x: MockBinaryInteger<T>) -> MockBinaryInteger<T> {
+    return MockBinaryInteger(~x._value)
+  }
+
+  static func >>= <RHS>(
+    lhs: inout MockBinaryInteger<T>, rhs: RHS
+  ) where RHS : BinaryInteger {
+    lhs._value >>= rhs
+  }
+
+  static func <<= <RHS>(
+    lhs: inout MockBinaryInteger<T>, rhs: RHS
+  ) where RHS : BinaryInteger {
+    lhs._value <<= rhs
+  }
+}
+
 import StdlibUnittest
 
 
@@ -72,7 +239,7 @@ func expectEqual<T : FixedWidthInteger>(
   stackTrace: SourceLocStack = SourceLocStack(),
   showFrame: Bool = true,
   file: String = #file, line: UInt = #line
-) where T.Words : Collection {
+) {
   if expected != actual {
     expectationFailure(
       "expected: \(String(reflecting: expected))"
@@ -168,12 +335,24 @@ tests.test("${Type}/Add/Overflow") {
   _ = f(${Type}.max)
 }
 
+tests.test("${Type}/Add/MaskingOverflow") {
+  expectEqual(${Type}.min, ${Type}.max &+ 1)
+}
+
 tests.test("${Type}/Subtract/Underflow") {
   func f(_ x: ${Type}) -> ${Type} {
     return x - 1
   }
   expectCrashLater()
   _ = f(${Type}.min)
+}
+
+tests.test("${Type}/Subtract/MaskingUnderflow") {
+  expectEqual(${Type}.max, ${Type}.min &- 1)
+}
+
+tests.test("${Type}/Multiply/MaskingOverflow") {
+  expectEqual(${Type}.min, (${Type}.max / 2 + 1) &* 2)
 }
 
 tests.test("${Type}/AddInPlace/Overflow") {
@@ -185,6 +364,12 @@ tests.test("${Type}/AddInPlace/Overflow") {
   f(&x)
 }
 
+tests.test("${Type}/AddInPlace/MaskingOverflow") {
+  var x = ${Type}.max
+  x &+= 1
+  expectEqual(${Type}.min, x)
+}
+
 tests.test("${Type}/SubtractInPlace/Underflow") {
   func f(_ x: inout ${Type}) {
     x -= 1
@@ -192,6 +377,18 @@ tests.test("${Type}/SubtractInPlace/Underflow") {
   expectCrashLater()
   var x = ${Type}.min
   f(&x)
+}
+
+tests.test("${Type}/SubtractInPlace/MaskingUnderflow") {
+  var x = ${Type}.min
+  x &-= 1
+  expectEqual(${Type}.max, x)
+}
+
+tests.test("${Type}/MultiplyInPlace/MaskingOverflow") {
+  var x = ${Type}.max / 2 + 1
+  x &*= 2
+  expectEqual(${Type}.min, x)
 }
 %   end
 % end
@@ -366,7 +563,7 @@ tests.test("truncatingIfNeeded") {
 
 tests.test("Parsing/LosslessStringConvertible") {
   func _toArray<T: LosslessStringConvertible>(_ text: String) -> [T] {
-    return text.split(separator: " ").map { T(String($0)) }.flatMap { $0 }
+    return text.split(separator: " ").map { T(String($0)) }.compactMap { $0 }
   }
 
   expectEqualSequence([1, 2, 3], _toArray("1 2 3") as [Int])
@@ -533,6 +730,9 @@ tests.test("words") {
 
   expectEqualSequence([1], 1.words)
   expectEqualSequence([0], 0.words)
+
+  // Random access to words with Int indexing
+  expectEqual(1, 1.words[0])
 }
 
 tests.test("multipliedFullWidth/UInt8") {
@@ -576,6 +776,18 @@ tests.test("Remainder/DividingBy0") {
   _ = f(42, 0)
 }
 
+tests.test("RemainderReportingOverflow/DividingByMinusOne") {
+  // Work around SR-5964.
+  func minusOne<T : SignedInteger>() -> T {
+    return -1 as T
+  }
+  func f(_ x: Int, _ y: Int) -> Int {
+    return x.remainderReportingOverflow(dividingBy: y).partialValue
+  }
+  expectEqual(f(.max, minusOne()), 0)
+  expectEqual(f(.min, minusOne()), 0)
+}
+
 tests.test("Division/By0") {
   func f(_ x: Int, _ y: Int) -> Int {
     return x / y
@@ -590,6 +802,27 @@ tests.test("DivideMinByMinusOne") {
   }
   expectCrashLater()
   _ = f(Int.min)
+}
+
+tests.test("isMultiple") {
+  func isMultipleTest<T: FixedWidthInteger>(type: T.Type) {
+    expectTrue(T.min.isMultiple(of: 2))
+    expectFalse(T.max.isMultiple(of: 10))
+    // Test that these do not crash.
+    expectTrue((0 as T).isMultiple(of: 0))
+    expectFalse((1 as T).isMultiple(of: 0))
+    expectTrue(T.min.isMultiple(of: 0 &- 1))
+  }
+  isMultipleTest(type: Int.self)
+  isMultipleTest(type: Int8.self)
+  isMultipleTest(type: Int16.self)
+  isMultipleTest(type: Int32.self)
+  isMultipleTest(type: Int64.self)
+  isMultipleTest(type: UInt.self)
+  isMultipleTest(type: UInt8.self)
+  isMultipleTest(type: UInt16.self)
+  isMultipleTest(type: UInt32.self)
+  isMultipleTest(type: UInt64.self)
 }
 
 tests.test("MultiplyMinByMinusOne") {
@@ -652,4 +885,38 @@ tests.test("signum/concrete") {
 %   end
 % end
 }
+
+tests.test("binaryLogarithm/generic") {
+  expectEqual(
+    (42 as MockBinaryInteger<Int8>)._binaryLogarithm(),
+    (42 as Int8)._binaryLogarithm())
+  expectEqual(
+    (42 as MockBinaryInteger<UInt8>)._binaryLogarithm(),
+    (42 as UInt8)._binaryLogarithm())
+  expectEqual(
+    (42 as MockBinaryInteger<Int16>)._binaryLogarithm(),
+    (42 as Int16)._binaryLogarithm())
+  expectEqual(
+    (42 as MockBinaryInteger<UInt16>)._binaryLogarithm(),
+    (42 as UInt16)._binaryLogarithm())
+  expectEqual(
+    (42 as MockBinaryInteger<Int32>)._binaryLogarithm(),
+    (42 as Int32)._binaryLogarithm())
+  expectEqual(
+    (42 as MockBinaryInteger<UInt32>)._binaryLogarithm(),
+    (42 as UInt32)._binaryLogarithm())
+  expectEqual(
+    (42 as MockBinaryInteger<Int64>)._binaryLogarithm(),
+    (42 as Int64)._binaryLogarithm())
+  expectEqual(
+    (42 as MockBinaryInteger<UInt64>)._binaryLogarithm(),
+    (42 as UInt64)._binaryLogarithm())
+  expectEqual(
+    (42 as MockBinaryInteger<Int>)._binaryLogarithm(),
+    (42 as Int)._binaryLogarithm())
+  expectEqual(
+    (42 as MockBinaryInteger<UInt>)._binaryLogarithm(),
+    (42 as UInt)._binaryLogarithm())
+}
+
 runAllTests()

@@ -1,4 +1,4 @@
-// RUN: %target-sil-opt -assume-parsing-unqualified-ownership-sil -enable-sil-verify-all %s -devirtualizer | %FileCheck %s
+// RUN: %target-sil-opt -enable-sil-verify-all %s -devirtualizer | %FileCheck %s
 
 sil_stage canonical
 
@@ -50,5 +50,5 @@ bb0(%0 : $Foo):
 }
 
 sil_vtable Foo {
-  #Foo.get!1: _TFC4main3Foo3getfS0_FT_Si
+  #Foo.get!1: @_TFC4main3Foo3getfS0_FT_Si
 }

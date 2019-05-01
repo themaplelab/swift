@@ -12,6 +12,7 @@
 
 #include "swift/Syntax/Syntax.h"
 #include "swift/Syntax/SyntaxData.h"
+#include "swift/Syntax/SyntaxVisitor.h"
 
 using namespace swift;
 using namespace swift::syntax;
@@ -21,11 +22,12 @@ RC<RawSyntax> Syntax::getRaw() const {
 }
 
 SyntaxKind Syntax::getKind() const {
-  return getRaw()->Kind;
+  return getRaw()->getKind();
 }
 
 void Syntax::print(llvm::raw_ostream &OS, SyntaxPrintOptions Opts) const {
-  getRaw()->print(OS, Opts);
+  if (auto Raw = getRaw())
+    Raw->print(OS, Opts);
 }
 
 void Syntax::dump() const {
@@ -73,39 +75,24 @@ bool Syntax::isMissing() const {
 }
 
 llvm::Optional<Syntax> Syntax::getParent() const {
-  auto ParentData = getData().Parent;
-  if (ParentData == nullptr) return llvm::None;
+  auto ParentData = getData().getParent();
+  if (!ParentData) return llvm::None;
   return llvm::Optional<Syntax> {
     Syntax { Root, ParentData }
   };
 }
 
-size_t Syntax::getNumChildren() const {
-  size_t NonTokenChildren = 0;
-  for (auto Child : getRaw()->Layout) {
-    if (!Child->isToken()) {
-      ++NonTokenChildren;
-    }
-  }
-  return NonTokenChildren;
+Syntax Syntax::getRoot() const {
+  return { Root, Root.get() };
 }
 
-Syntax Syntax::getChild(const size_t N) const {
-  // The actual index of the Nth non-token child.
-  size_t ActualIndex = 0;
-  // The number of non-token children we've seen.
-  size_t NumNonTokenSeen = 0;
-  for (auto Child : getRaw()->Layout) {
-    // If we see a child that's not a token, count it.
-    if (!Child->isToken()) {
-      ++NumNonTokenSeen;
-    }
-    // If the number of children we've seen indexes the same (count - 1) as
-    // the number we're looking for, then we're done.
-    if (NumNonTokenSeen == N + 1) { break; }
+size_t Syntax::getNumChildren() const {
+  return Data->getNumChildren();
+}
 
-    // Otherwise increment the actual index and keep searching.
-    ++ActualIndex;
-  }
-  return Syntax { Root, Data->getChild(ActualIndex).get() };
+llvm::Optional<Syntax> Syntax::getChild(const size_t N) const {
+  auto ChildData = Data->getChild(N);
+  if (!ChildData)
+    return llvm::None;
+  return Syntax {Root, ChildData.get()};
 }

@@ -30,9 +30,6 @@ using namespace swift;
 /// Get the method dispatch mechanism for a method.
 MethodDispatch
 swift::getMethodDispatch(AbstractFunctionDecl *method) {
-  // Final methods can be statically referenced.
-  if (method->isFinal())
-    return MethodDispatch::Static;
   // Some methods are forced to be statically dispatched.
   if (method->hasForcedStaticDispatch())
     return MethodDispatch::Static;
@@ -41,23 +38,32 @@ swift::getMethodDispatch(AbstractFunctionDecl *method) {
   if (method->isImportAsMember())
     return MethodDispatch::Static;
 
-  // If this declaration is in a class but not marked final, then it is
-  // always dynamically dispatched.
   auto dc = method->getDeclContext();
-  if (isa<ClassDecl>(dc))
-    return MethodDispatch::Class;
 
-  // Class extension methods are only dynamically dispatched if they're
-  // dispatched by objc_msgSend, which happens if they're foreign or dynamic.
-  if (dc->getAsClassOrClassExtensionContext()) {
-    if (method->hasClangNode())
+  if (dc->getSelfClassDecl()) {
+    if (method->isObjCDynamic()) {
       return MethodDispatch::Class;
-    if (auto fd = dyn_cast<FuncDecl>(method)) {
-      if (fd->isAccessor() && fd->getAccessorStorageDecl()->hasClangNode())
-        return MethodDispatch::Class;
     }
-    if (method->isDynamic())
+
+    // Final methods can be statically referenced.
+    if (method->isFinal())
+      return MethodDispatch::Static;
+
+    // Imported class methods are dynamically dispatched.
+    if (method->isObjC() && method->hasClangNode())
       return MethodDispatch::Class;
+
+    // Members defined directly inside a class are dynamically dispatched.
+    if (isa<ClassDecl>(dc)) {
+      // Native convenience initializers are not dynamically dispatched unless
+      // required.
+      if (auto ctor = dyn_cast<ConstructorDecl>(method)) {
+        if (!ctor->isRequired() && !ctor->isDesignatedInit()
+            && !requiresForeignEntryPoint(ctor))
+          return MethodDispatch::Static;
+      }
+      return MethodDispatch::Class;
+    }
   }
 
   // Otherwise, it can be referenced statically.
@@ -79,164 +85,42 @@ bool swift::requiresForeignToNativeThunk(ValueDecl *vd) {
   return false;
 }
 
-/// FIXME: merge requiresForeignEntryPoint() into getMethodDispatch() and add
-/// an ObjectiveC case to the MethodDispatch enum.
 bool swift::requiresForeignEntryPoint(ValueDecl *vd) {
+  assert(!isa<AbstractStorageDecl>(vd));
+
+  if (vd->isObjCDynamic()) {
+    return true;
+  }
+
+  if (vd->isObjC() && isa<ProtocolDecl>(vd->getDeclContext()))
+    return true;
+
   if (vd->isImportAsMember())
     return true;
 
-  // Final functions never require ObjC dispatch.
-  if (vd->isFinal())
-    return false;
-
-  if (requiresForeignToNativeThunk(vd))
+  if (vd->hasClangNode())
     return true;
 
-  if (auto *fd = dyn_cast<FuncDecl>(vd)) {
-  
+  if (auto *accessor = dyn_cast<AccessorDecl>(vd)) {
     // Property accessors should be generated alongside the property.
-    if (fd->isGetterOrSetter())
-      return requiresForeignEntryPoint(fd->getAccessorStorageDecl());
-
-    return fd->isDynamic();
-  }
-
-  if (auto *cd = dyn_cast<ConstructorDecl>(vd)) {
-    if (cd->hasClangNode())
-      return true;
-
-    return cd->isDynamic();
-  }
-
-  if (auto *asd = dyn_cast<AbstractStorageDecl>(vd))
-    return asd->requiresForeignGetterAndSetter();
-
-  return vd->isDynamic();
-}
-
-/// TODO: We should consult the cached LoweredLocalCaptures the SIL
-/// TypeConverter calculates, but that would require plumbing SILModule&
-/// through every SILDeclRef constructor. Since this is only used to determine
-/// "natural uncurry level", and "uncurry level" is a concept we'd like to
-/// phase out, it's not worth it.
-static bool hasLoweredLocalCaptures(AnyFunctionRef AFR,
-                                    llvm::DenseSet<AnyFunctionRef> &visited) {
-  if (!AFR.getCaptureInfo().hasLocalCaptures())
-    return false;
-  
-  // Scan for local, non-function captures.
-  bool functionCapturesToRecursivelyCheck = false;
-  auto addFunctionCapture = [&](AnyFunctionRef capture) {
-    if (visited.find(capture) == visited.end())
-      functionCapturesToRecursivelyCheck = true;
-  };
-  for (auto &capture : AFR.getCaptureInfo().getCaptures()) {
-    if (!capture.getDecl()->getDeclContext()->isLocalContext())
-      continue;
-    // We transitively capture a local function's captures.
-    if (auto func = dyn_cast<AbstractFunctionDecl>(capture.getDecl())) {
-      addFunctionCapture(func);
-      continue;
-    }
-    // We may either directly capture properties, or capture through their
-    // accessors.
-    if (auto var = dyn_cast<VarDecl>(capture.getDecl())) {
-      switch (var->getStorageKind()) {
-      case VarDecl::StoredWithTrivialAccessors:
-        llvm_unreachable("stored local variable with trivial accessors?");
-
-      case VarDecl::InheritedWithObservers:
-        llvm_unreachable("inherited local variable?");
-
-      case VarDecl::StoredWithObservers:
-      case VarDecl::Addressed:
-      case VarDecl::AddressedWithTrivialAccessors:
-      case VarDecl::AddressedWithObservers:
-      case VarDecl::ComputedWithMutableAddress:
-        // Directly capture storage if we're supposed to.
-        if (capture.isDirect())
-          return true;
-
-        // Otherwise, transitively capture the accessors.
-        LLVM_FALLTHROUGH;
-
-      case VarDecl::Computed:
-        addFunctionCapture(var->getGetter());
-        if (auto setter = var->getSetter())
-          addFunctionCapture(setter);
-        continue;
-      
-      case VarDecl::Stored:
+    if (accessor->isGetterOrSetter()) {
+      auto *asd = accessor->getStorage();
+      if (asd->isObjC() && asd->hasClangNode())
         return true;
-      }
-    }
-    // Anything else is directly captured.
-    return true;
-  }
-  
-  // Recursively consider function captures, since we didn't have any direct
-  // captures.
-  auto captureHasLocalCaptures = [&](AnyFunctionRef capture) -> bool {
-    if (visited.insert(capture).second)
-      return hasLoweredLocalCaptures(capture, visited);
-    return false;
-  };
-  
-  if (functionCapturesToRecursivelyCheck) {
-    for (auto &capture : AFR.getCaptureInfo().getCaptures()) {
-      if (!capture.getDecl()->getDeclContext()->isLocalContext())
-        continue;
-      if (auto func = dyn_cast<AbstractFunctionDecl>(capture.getDecl())) {
-        if (captureHasLocalCaptures(func))
-          return true;
-        continue;
-      }
-      if (auto var = dyn_cast<VarDecl>(capture.getDecl())) {
-        switch (var->getStorageKind()) {
-        case VarDecl::StoredWithTrivialAccessors:
-          llvm_unreachable("stored local variable with trivial accessors?");
-          
-        case VarDecl::InheritedWithObservers:
-          llvm_unreachable("inherited local variable?");
-          
-        case VarDecl::StoredWithObservers:
-        case VarDecl::Addressed:
-        case VarDecl::AddressedWithTrivialAccessors:
-        case VarDecl::AddressedWithObservers:
-        case VarDecl::ComputedWithMutableAddress:
-          assert(!capture.isDirect() && "should have short circuited out");
-          // Otherwise, transitively capture the accessors.
-          LLVM_FALLTHROUGH;
-          
-        case VarDecl::Computed:
-          if (captureHasLocalCaptures(var->getGetter()))
-            return true;
-          if (auto setter = var->getSetter())
-            if (captureHasLocalCaptures(setter))
-              return true;
-          continue;
-        
-        case VarDecl::Stored:
-          llvm_unreachable("should have short circuited out");
-        }
-      }
-      llvm_unreachable("should have short circuited out");
     }
   }
-  
+
   return false;
 }
 
 SILDeclRef::SILDeclRef(ValueDecl *vd, SILDeclRef::Kind kind,
-                       ResilienceExpansion expansion,
                        bool isCurried, bool isForeign)
-  : loc(vd), kind(kind), Expansion(unsigned(expansion)),
+  : loc(vd), kind(kind),
     isCurried(isCurried), isForeign(isForeign),
     isDirectReference(0), defaultArgIndex(0)
 {}
 
 SILDeclRef::SILDeclRef(SILDeclRef::Loc baseLoc,
-                       ResilienceExpansion expansion,
                        bool isCurried, bool asForeign) 
   : isCurried(isCurried), isDirectReference(0), defaultArgIndex(0)
 {
@@ -271,13 +155,10 @@ SILDeclRef::SILDeclRef(SILDeclRef::Loc baseLoc,
   } else if (auto *ACE = baseLoc.dyn_cast<AbstractClosureExpr *>()) {
     loc = ACE;
     kind = Kind::Func;
-    assert(ACE->getParameterLists().size() >= 1 &&
-           "no param patterns for function?!");
   } else {
     llvm_unreachable("impossible SILDeclRef loc");
   }
 
-  Expansion = (unsigned) expansion;
   isForeign = asForeign;
 }
 
@@ -311,7 +192,7 @@ bool SILDeclRef::isClangImported() const {
       return !isForeign;
 
     if (auto *FD = dyn_cast<FuncDecl>(d))
-      if (FD->isAccessor() ||
+      if (isa<AccessorDecl>(FD) ||
           isa<NominalTypeDecl>(d->getDeclContext()))
         return !isForeign;
   }
@@ -345,9 +226,7 @@ bool SILDeclRef::isImplicit() const {
 
 SILLinkage SILDeclRef::getLinkage(ForDefinition_t forDefinition) const {
   if (getAbstractClosureExpr()) {
-    if (isSerialized())
-      return SILLinkage::Shared;
-    return SILLinkage::Private;
+    return isSerialized() ? SILLinkage::Shared : SILLinkage::Private;
   }
 
   // Add External to the linkage (e.g. Public -> PublicExternal) if this is a
@@ -363,9 +242,7 @@ SILLinkage SILDeclRef::getLinkage(ForDefinition_t forDefinition) const {
   DeclContext *moduleContext = d->getDeclContext();
   while (!moduleContext->isModuleScopeContext()) {
     if (!isForeign && moduleContext->isLocalContext()) {
-      if (isSerialized())
-        return SILLinkage::Shared;
-      return SILLinkage::Private;
+      return isSerialized() ? SILLinkage::Shared : SILLinkage::Private;
     }
     moduleContext = moduleContext->getParent();
   }
@@ -379,20 +256,10 @@ SILLinkage SILDeclRef::getLinkage(ForDefinition_t forDefinition) const {
     case AccessLevel::FilePrivate:
       return maybeAddExternal(SILLinkage::Private);
 
-    default:
+    case AccessLevel::Internal:
+    case AccessLevel::Public:
+    case AccessLevel::Open:
       return SILLinkage::Shared;
-    }
-  }
-
-  // ivar initializers and destroyers are completely contained within the class
-  // from which they come, and never get seen externally.
-  if (isIVarInitializerOrDestroyer()) {
-    switch (d->getEffectiveAccess()) {
-    case AccessLevel::Private:
-    case AccessLevel::FilePrivate:
-      return maybeAddExternal(SILLinkage::Private);
-    default:
-      return maybeAddExternal(SILLinkage::Hidden);
     }
   }
 
@@ -409,45 +276,116 @@ SILLinkage SILDeclRef::getLinkage(ForDefinition_t forDefinition) const {
   if (isClangImported())
     return SILLinkage::Shared;
 
+  // Default argument generators of Public functions have PublicNonABI linkage
+  // if the function was type-checked in Swift 4 mode.
+  if (kind == SILDeclRef::Kind::DefaultArgGenerator) {
+    if (isSerialized())
+      return maybeAddExternal(SILLinkage::PublicNonABI);
+  }
+
+  enum class Limit {
+    /// No limit.
+    None,
+    /// The declaration is emitted on-demand; it should end up with internal
+    /// or shared linkage.
+    OnDemand,
+    /// The declaration should never be made public.
+    NeverPublic,
+    /// The declaration should always be emitted into the client,
+    AlwaysEmitIntoClient,
+  };
+  auto limit = Limit::None;
+
+  // @_alwaysEmitIntoClient declarations are like the default arguments of
+  // public functions; they are roots for dead code elimination and have
+  // serialized bodies, but no public symbol in the generated binary.
+  if (d->getAttrs().hasAttribute<AlwaysEmitIntoClientAttr>())
+    limit = Limit::AlwaysEmitIntoClient;
+  if (auto accessor = dyn_cast<AccessorDecl>(d)) {
+    auto *storage = accessor->getStorage();
+    if (storage->getAttrs().hasAttribute<AlwaysEmitIntoClientAttr>())
+      limit = Limit::AlwaysEmitIntoClient;
+  }
+
+  // ivar initializers and destroyers are completely contained within the class
+  // from which they come, and never get seen externally.
+  if (isIVarInitializerOrDestroyer()) {
+    limit = Limit::NeverPublic;
+  }
+
   // Stored property initializers get the linkage of their containing type.
   if (isStoredPropertyInitializer()) {
-    // If the property is public, the initializer needs to be public, because
-    // it might be referenced from an inlineable initializer.
+    // Three cases:
     //
-    // Note that we don't serialize the presence of an initializer, so there's
-    // no way to reference one from another module except for this case.
+    // 1) Type is formally @_fixed_layout. Root initializers can be declared
+    //    @inlinable. The property initializer must only reference
+    //    public symbols, and is serialized, so we give it PublicNonABI linkage.
     //
-    // This is silly, and we need a proper resilience story here.
-    if (d->getEffectiveAccess() == AccessLevel::Public)
-      return maybeAddExternal(SILLinkage::Public);
+    // 2) Type is not formally @_fixed_layout and the module is not resilient.
+    //    Root initializers can be declared @inlinable. This is the annoying
+    //    case. We give the initializer public linkage if the type is public.
+    //
+    // 3) Type is resilient. The property initializer is never public because
+    //    root initializers cannot be @inlinable.
+    //
+    // FIXME: Get rid of case 2 somehow.
+    if (isSerialized())
+      return maybeAddExternal(SILLinkage::PublicNonABI);
 
     d = cast<NominalTypeDecl>(d->getDeclContext());
 
-    // Otherwise, use the visibility of the type itself, because even if the
-    // property is private, we might reference the initializer from another
-    // file.
-    switch (d->getEffectiveAccess()) {
-    case AccessLevel::Private:
-    case AccessLevel::FilePrivate:
-      return maybeAddExternal(SILLinkage::Private);
+    // FIXME: This should always be true.
+    if (d->getModuleContext()->isResilient())
+      limit = Limit::NeverPublic;
+  }
 
-    default:
-      return maybeAddExternal(SILLinkage::Hidden);
+  // The global addressor is never public for resilient globals.
+  if (kind == Kind::GlobalAccessor) {
+    if (cast<VarDecl>(d)->isResilient()) {
+      limit = Limit::NeverPublic;
     }
   }
 
-  // Otherwise, we have external linkage.
-  switch (d->getEffectiveAccess()) {
-    case AccessLevel::Private:
-    case AccessLevel::FilePrivate:
-      return maybeAddExternal(SILLinkage::Private);
-
-    case AccessLevel::Internal:
-      return maybeAddExternal(SILLinkage::Hidden);
-
-    default:
-      return maybeAddExternal(SILLinkage::Public);
+  // Forced-static-dispatch functions are created on-demand and have
+  // at best shared linkage.
+  if (auto fn = dyn_cast<FuncDecl>(d)) {
+    if (fn->hasForcedStaticDispatch()) {
+      limit = Limit::OnDemand;
+    }
   }
+  
+  auto effectiveAccess = d->getEffectiveAccess();
+  
+  // Private setter implementations for an internal storage declaration should
+  // be internal as well, so that a dynamically-writable
+  // keypath can be formed from other files.
+  if (auto accessor = dyn_cast<AccessorDecl>(d)) {
+    if (accessor->isSetter()
+       && accessor->getStorage()->getEffectiveAccess() == AccessLevel::Internal)
+      effectiveAccess = AccessLevel::Internal;
+  }
+
+  switch (effectiveAccess) {
+  case AccessLevel::Private:
+  case AccessLevel::FilePrivate:
+    return maybeAddExternal(SILLinkage::Private);
+
+  case AccessLevel::Internal:
+    if (limit == Limit::OnDemand)
+      return SILLinkage::Shared;
+    return maybeAddExternal(SILLinkage::Hidden);
+
+  case AccessLevel::Public:
+  case AccessLevel::Open:
+    if (limit == Limit::OnDemand)
+      return SILLinkage::Shared;
+    if (limit == Limit::NeverPublic)
+      return maybeAddExternal(SILLinkage::Hidden);
+    if (limit == Limit::AlwaysEmitIntoClient)
+      return maybeAddExternal(SILLinkage::PublicNonABI);
+    return maybeAddExternal(SILLinkage::Public);
+  }
+  llvm_unreachable("unhandled access");
 }
 
 SILDeclRef SILDeclRef::getDefaultArgGenerator(Loc loc,
@@ -485,16 +423,18 @@ FuncDecl *SILDeclRef::getFuncDecl() const {
 }
 
 bool SILDeclRef::isSetter() const {
-  if (!hasFuncDecl())
+  if (!hasDecl())
     return false;
-  return getFuncDecl()->isSetter();
+  if (auto accessor = dyn_cast<AccessorDecl>(getDecl()))
+    return accessor->isSetter();
+  return false;
 }
 
 AbstractFunctionDecl *SILDeclRef::getAbstractFunctionDecl() const {
   return dyn_cast<AbstractFunctionDecl>(getDecl());
 }
 
-/// \brief True if the function should be treated as transparent.
+/// True if the function should be treated as transparent.
 bool SILDeclRef::isTransparent() const {
   if (isEnumElement())
     return true;
@@ -516,87 +456,165 @@ bool SILDeclRef::isTransparent() const {
   return false;
 }
 
-/// \brief True if the function should have its body serialized.
+/// True if the function should have its body serialized.
 IsSerialized_t SILDeclRef::isSerialized() const {
   DeclContext *dc;
-  if (auto closure = getAbstractClosureExpr())
+  if (auto closure = getAbstractClosureExpr()) {
     dc = closure->getLocalContext();
-  else {
-    auto *d = getDecl();
 
-    // Default argument generators are serialized if the function was
-    // type-checked in Swift 4 mode.
-    if (kind == SILDeclRef::Kind::DefaultArgGenerator) {
-      auto *afd = cast<AbstractFunctionDecl>(d);
-      switch (afd->getDefaultArgumentResilienceExpansion()) {
-      case ResilienceExpansion::Minimal:
-        return IsSerialized;
-      case ResilienceExpansion::Maximal:
-        return IsNotSerialized;
-      }
-    }
-
-    dc = getDecl()->getInnermostDeclContext();
-
-    // Enum element constructors are serialized if the enum is
-    // @_versioned or public.
-    if (isEnumElement())
-      if (d->getEffectiveAccess() >= AccessLevel::Public)
-        return IsSerialized;
-
-    // Currying thunks are serialized if referenced from an inlinable
-    // context -- Sema's semantic checks ensure the serialization of
-    // such a thunk is valid, since it must in turn reference a public
-    // symbol, or dispatch via class_method or witness_method.
-    if (isCurried)
-      if (d->getEffectiveAccess() >= AccessLevel::Public)
+    // Otherwise, ask the AST if we're inside an @inlinable context.
+    if (dc->getResilienceExpansion() == ResilienceExpansion::Minimal) {
+      if (isForeign)
         return IsSerializable;
 
-    if (isForeignToNativeThunk())
+      return IsSerialized;
+    }
+
+    return IsNotSerialized;
+  }
+
+  if (isIVarInitializerOrDestroyer())
+    return IsNotSerialized;
+
+  auto *d = getDecl();
+
+  // Default argument generators are serialized if the containing
+  // declaration is public.
+  if (isDefaultArgGenerator()) {
+    auto scope =
+      d->getFormalAccessScope(/*useDC=*/nullptr,
+                              /*treatUsableFromInlineAsPublic=*/true);
+
+    if (scope.isPublic())
+      return IsSerialized;
+    return IsNotSerialized;
+  }
+
+  // Stored property initializers are inlinable if the type is explicitly
+  // marked as @_fixed_layout.
+  if (isStoredPropertyInitializer()) {
+    auto *nominal = cast<NominalTypeDecl>(d->getDeclContext());
+    auto scope =
+      nominal->getFormalAccessScope(/*useDC=*/nullptr,
+                                    /*treatUsableFromInlineAsPublic=*/true);
+    if (!scope.isPublic())
+      return IsNotSerialized;
+    if (nominal->isFormallyResilient())
+      return IsNotSerialized;
+    return IsSerialized;
+  }
+
+  // Note: if 'd' is a function, then 'dc' is the function itself, not
+  // its parent context.
+  dc = d->getInnermostDeclContext();
+
+  // Local functions are serializable if their parent function is
+  // serializable.
+  if (d->getDeclContext()->isLocalContext()) {
+    if (dc->getResilienceExpansion() == ResilienceExpansion::Minimal)
       return IsSerializable;
 
-    // The allocating entry point for designated initializers are serialized
-    // if the class is @_versioned or public.
-    if (kind == SILDeclRef::Kind::Allocator) {
-      auto *ctor = cast<ConstructorDecl>(d);
-      if (ctor->isDesignatedInit() &&
-          ctor->getDeclContext()->getAsClassOrClassExtensionContext()) {
-        if (ctor->getEffectiveAccess() >= AccessLevel::Public &&
-            !ctor->hasClangNode())
-          return IsSerialized;
-      }
+    return IsNotSerialized;
+  }
+
+  // Anything else that is not public is not serializable.
+  if (d->getEffectiveAccess() < AccessLevel::Public)
+    return IsNotSerialized;
+
+  // 'read' and 'modify' accessors synthesized on-demand are serialized if
+  // visible outside the module.
+  if (auto fn = dyn_cast<FuncDecl>(d))
+    if (!isClangImported() &&
+        fn->hasForcedStaticDispatch())
+      return IsSerialized;
+
+  // Enum element constructors are serializable if the enum is
+  // @usableFromInline or public.
+  if (isEnumElement())
+    return IsSerializable;
+
+  // Currying thunks are serialized if referenced from an inlinable
+  // context -- Sema's semantic checks ensure the serialization of
+  // such a thunk is valid, since it must in turn reference a public
+  // symbol, or dispatch via class_method or witness_method.
+  if (isCurried)
+    return IsSerializable;
+
+  if (isForeignToNativeThunk())
+    return IsSerializable;
+
+  // The allocating entry point for designated initializers are serialized
+  // if the class is @usableFromInline or public.
+  if (kind == SILDeclRef::Kind::Allocator) {
+    auto *ctor = cast<ConstructorDecl>(d);
+    if (ctor->isDesignatedInit() &&
+        ctor->getDeclContext()->getSelfClassDecl()) {
+      if (!ctor->hasClangNode())
+        return IsSerialized;
     }
   }
 
+  if (isForeign) {
+    // @objc thunks for methods are not serializable since they're only
+    // referenced from the method table.
+    if (d->getDeclContext()->isTypeContext())
+      return IsNotSerialized;
+
+    // @objc thunks for top-level functions are serializable since they're
+    // referenced from @convention(c) conversions inside inlinable
+    // functions.
+    return IsSerializable;
+  }
+
   // Declarations imported from Clang modules are serialized if
-  // referenced from an inlineable context.
+  // referenced from an inlinable context.
   if (isClangImported())
     return IsSerializable;
 
-  // Otherwise, ask the AST if we're inside an @_inlineable context.
+  // Otherwise, ask the AST if we're inside an @inlinable context.
   if (dc->getResilienceExpansion() == ResilienceExpansion::Minimal)
     return IsSerialized;
 
   return IsNotSerialized;
 }
 
-/// \brief True if the function has noinline attribute.
+/// True if the function has an @inline(never) attribute.
 bool SILDeclRef::isNoinline() const {
   if (!hasDecl())
     return false;
-  if (auto InlineA = getDecl()->getAttrs().getAttribute<InlineAttr>())
-    if (InlineA->getKind() == InlineKind::Never)
+
+  auto *decl = getDecl();
+  if (auto *attr = decl->getAttrs().getAttribute<InlineAttr>())
+    if (attr->getKind() == InlineKind::Never)
       return true;
-   return false;
+
+  if (auto *accessorDecl = dyn_cast<AccessorDecl>(decl)) {
+    auto *storage = accessorDecl->getStorage();
+    if (auto *attr = storage->getAttrs().getAttribute<InlineAttr>())
+      if (attr->getKind() == InlineKind::Never)
+        return true;
+  }
+
+  return false;
 }
 
-/// \brief True if the function has noinline attribute.
+/// True if the function has the @inline(__always) attribute.
 bool SILDeclRef::isAlwaysInline() const {
   if (!hasDecl())
     return false;
-  if (auto InlineA = getDecl()->getAttrs().getAttribute<InlineAttr>())
-    if (InlineA->getKind() == InlineKind::Always)
+
+  auto *decl = getDecl();
+  if (auto attr = decl->getAttrs().getAttribute<InlineAttr>())
+    if (attr->getKind() == InlineKind::Always)
       return true;
+
+  if (auto *accessorDecl = dyn_cast<AccessorDecl>(decl)) {
+    auto *storage = accessorDecl->getStorage();
+    if (auto *attr = storage->getAttrs().getAttribute<InlineAttr>())
+      if (attr->getKind() == InlineKind::Always)
+        return true;
+  }
+
   return false;
 }
 
@@ -692,10 +710,6 @@ std::string SILDeclRef::mangle(ManglingKind MKind) const {
     case SILDeclRef::ManglingKind::DynamicThunk:
       SKind = ASTMangler::SymbolKind::DynamicThunk;
       break;
-    case SILDeclRef::ManglingKind::SwiftDispatchThunk:
-      assert(!isForeign && !isDirectReference && !isCurried);
-      SKind = ASTMangler::SymbolKind::SwiftDispatchThunk;
-      break;
   }
 
   switch (kind) {
@@ -758,20 +772,15 @@ std::string SILDeclRef::mangle(ManglingKind MKind) const {
 
   case SILDeclRef::Kind::GlobalAccessor:
     assert(!isCurried);
-    return mangler.mangleAccessorEntity(AccessorKind::IsMutableAddressor,
-                                        AddressorKind::Unsafe,
+    return mangler.mangleAccessorEntity(AccessorKind::MutableAddress,
                                         cast<AbstractStorageDecl>(getDecl()),
                                         /*isStatic*/ false,
                                         SKind);
 
-  case SILDeclRef::Kind::GlobalGetter:
-    assert(!isCurried);
-    return mangler.mangleGlobalGetterEntity(getDecl(), SKind);
-
   case SILDeclRef::Kind::DefaultArgGenerator:
     assert(!isCurried);
     return mangler.mangleDefaultArgumentEntity(
-                                        cast<AbstractFunctionDecl>(getDecl()),
+                                        cast<DeclContext>(getDecl()),
                                         defaultArgIndex,
                                         SKind);
 
@@ -786,17 +795,15 @@ std::string SILDeclRef::mangle(ManglingKind MKind) const {
 bool SILDeclRef::requiresNewVTableEntry() const {
   if (cast<AbstractFunctionDecl>(getDecl())->needsNewVTableEntry())
     return true;
-  if (kind == SILDeclRef::Kind::Allocator) {
-    auto *cd = cast<ConstructorDecl>(getDecl());
-    if (cd->isRequired()) {
-      auto *baseCD = cd->getOverriddenDecl();
-      if(!baseCD ||
-         !baseCD->isRequired() ||
-         baseCD->hasClangNode())
-        return true;
-    }
-  }
   return false;
+}
+
+bool SILDeclRef::requiresNewWitnessTableEntry() const {
+  return requiresNewWitnessTableEntry(cast<AbstractFunctionDecl>(getDecl()));
+}
+
+bool SILDeclRef::requiresNewWitnessTableEntry(AbstractFunctionDecl *func) {
+  return func->getOverriddenDecls().empty();
 }
 
 SILDeclRef SILDeclRef::getOverridden() const {
@@ -806,33 +813,50 @@ SILDeclRef SILDeclRef::getOverridden() const {
   if (!overridden)
     return SILDeclRef();
 
-  return SILDeclRef(overridden, kind, getResilienceExpansion(), isCurried);
+  return SILDeclRef(overridden, kind, isCurried);
 }
 
 SILDeclRef SILDeclRef::getNextOverriddenVTableEntry() const {
   if (auto overridden = getOverridden()) {
-    // If we overrode a foreign decl, a dynamic method, this is an
+    // If we overrode a foreign decl or dynamic method, if this is an
     // accessor for a property that overrides an ObjC decl, or if it is an
     // @NSManaged property, then it won't be in the vtable.
     if (overridden.getDecl()->hasClangNode())
       return SILDeclRef();
-
-    // If we overrode a non-required initializer, there won't be a vtable
-    // slot for the allocator.
+    
+    // An @objc convenience initializer can be "overridden" in the sense that
+    // its selector is reclaimed by a subclass's convenience init with the
+    // same name. The AST models this as an override for the purposes of
+    // ObjC selector validation, but it isn't for Swift method dispatch
+    // purposes.
     if (overridden.kind == SILDeclRef::Kind::Allocator) {
-      if (!cast<ConstructorDecl>(overridden.getDecl())->isRequired())
+      auto overriddenCtor = cast<ConstructorDecl>(overridden.getDecl());
+      if (!overriddenCtor->isDesignatedInit()
+          && !overriddenCtor->isRequired())
         return SILDeclRef();
-    } else if (overridden.getDecl()->isDynamic()) {
+    }
+
+    // Initializing entry points for initializers won't be in the vtable.
+    // For Swift designated initializers, they're only used in super.init
+    // chains, which can always be statically resolved. Other native Swift
+    // initializers only have allocating entry points. ObjC initializers always
+    // have the initializing entry point (corresponding to the -init method)
+    // but those are never in the vtable.
+    if (overridden.kind == SILDeclRef::Kind::Initializer) {
+      return SILDeclRef();
+    }
+    if (overridden.getDecl()->isObjCDynamic()) {
       return SILDeclRef();
     }
     
-    if (auto *ovFD = dyn_cast<FuncDecl>(overridden.getDecl()))
-      if (auto *asd = ovFD->getAccessorStorageDecl()) {
-        if (asd->hasClangNode())
-          return SILDeclRef();
-        if (asd->isDynamic())
-          return SILDeclRef();
+    if (auto *accessor = dyn_cast<AccessorDecl>(overridden.getDecl())) {
+      auto *asd = accessor->getStorage();
+      if (asd->hasClangNode())
+        return SILDeclRef();
+      if (asd->isObjCDynamic()) {
+        return SILDeclRef();
       }
+    }
 
     // If we overrode a decl from an extension, it won't be in a vtable
     // either. This can occur for extensions to ObjC classes.
@@ -842,6 +866,54 @@ SILDeclRef SILDeclRef::getNextOverriddenVTableEntry() const {
     return overridden;
   }
   return SILDeclRef();
+}
+
+SILDeclRef SILDeclRef::getOverriddenWitnessTableEntry() const {
+  auto bestOverridden =
+    getOverriddenWitnessTableEntry(cast<AbstractFunctionDecl>(getDecl()));
+  return SILDeclRef(bestOverridden, kind, isCurried);
+}
+
+AbstractFunctionDecl *SILDeclRef::getOverriddenWitnessTableEntry(
+                                                 AbstractFunctionDecl *func) {
+  if (!isa<ProtocolDecl>(func->getDeclContext()))
+    return func;
+
+  AbstractFunctionDecl *bestOverridden = nullptr;
+
+  SmallVector<AbstractFunctionDecl *, 4> stack;
+  SmallPtrSet<AbstractFunctionDecl *, 4> visited;
+  stack.push_back(func);
+  visited.insert(func);
+
+  while (!stack.empty()) {
+    auto current = stack.back();
+    stack.pop_back();
+
+    auto overriddenDecls = current->getOverriddenDecls();
+    if (overriddenDecls.empty()) {
+      // This entry introduced a witness table entry. Determine whether it is
+      // better than the best entry we've seen thus far.
+      if (!bestOverridden ||
+          ProtocolDecl::compare(
+                        cast<ProtocolDecl>(current->getDeclContext()),
+                        cast<ProtocolDecl>(bestOverridden->getDeclContext()))
+            < 0) {
+        bestOverridden = cast<AbstractFunctionDecl>(current);
+      }
+
+      continue;
+    }
+
+    // Add overridden declarations to the stack.
+    for (auto overridden : overriddenDecls) {
+      auto overriddenFunc = cast<AbstractFunctionDecl>(overridden);
+      if (visited.insert(overriddenFunc).second)
+        stack.push_back(overriddenFunc);
+    }
+  }
+
+  return bestOverridden;
 }
 
 SILDeclRef SILDeclRef::getOverriddenVTableEntry() const {
@@ -866,29 +938,62 @@ SubclassScope SILDeclRef::getSubclassScope() const {
   if (!hasDecl())
     return SubclassScope::NotApplicable;
 
+  auto *decl = getDecl();
+
+  if (!isa<AbstractFunctionDecl>(decl))
+    return SubclassScope::NotApplicable;
+
   // If this declaration is a function which goes into a vtable, then it's
-  // symbol must be as visible as its class. Derived classes even have to put
+  // symbol must be as visible as its class, because derived classes have to put
   // all less visible methods of the base class into their vtables.
 
-  auto *FD = dyn_cast<AbstractFunctionDecl>(getDecl());
-  if (!FD)
+  if (auto *CD = dyn_cast<ConstructorDecl>(decl)) {
+    // Initializing entry points do not appear in the vtable.
+    if (kind == SILDeclRef::Kind::Initializer)
+      return SubclassScope::NotApplicable;
+    // Non-required convenience inits do not apper in the vtable.
+    if (!CD->isRequired() && !CD->isDesignatedInit())
+      return SubclassScope::NotApplicable;
+  } else if (isa<DestructorDecl>(decl)) {
+    // Detructors do not appear in the vtable.
+    return SubclassScope::NotApplicable;
+  } else {
+    assert(isa<FuncDecl>(decl));
+  }
+
+  DeclContext *context = decl->getDeclContext();
+
+  // Methods from extensions don't go in the vtable.
+  if (isa<ExtensionDecl>(context))
     return SubclassScope::NotApplicable;
 
-  DeclContext *context = FD->getDeclContext();
-
-  // Methods from extensions don't go into vtables (yet).
-  if (context->isExtensionContext())
+  // Various forms of thunks don't either.
+  if (isThunk() || isForeign)
     return SubclassScope::NotApplicable;
 
-  auto *classType = context->getAsClassOrClassExtensionContext();
+  // Default arg generators don't go in the vtable.
+  if (isDefaultArgGenerator())
+    return SubclassScope::NotApplicable;
+
+  // Only non-final methods in non-final classes go in the vtable.
+  auto *classType = context->getSelfClassDecl();
   if (!classType || classType->isFinal())
     return SubclassScope::NotApplicable;
 
-  if (FD->isFinal())
+  if (decl->isFinal())
     return SubclassScope::NotApplicable;
 
-  assert(FD->getEffectiveAccess() <= classType->getEffectiveAccess() &&
+  assert(decl->getEffectiveAccess() <= classType->getEffectiveAccess() &&
          "class must be as visible as its members");
+
+  // FIXME: This is too narrow. Any class with resilient metadata should
+  // probably have this, at least for method overrides that don't add new
+  // vtable entries.
+  if (classType->isResilient()) {
+    if (isa<ConstructorDecl>(decl))
+      return SubclassScope::NotApplicable;
+    return SubclassScope::Resilient;
+  }
 
   switch (classType->getEffectiveAccess()) {
   case AccessLevel::Private:
@@ -911,11 +1016,9 @@ unsigned SILDeclRef::getParameterListCount() const {
   auto *vd = getDecl();
 
   if (auto *func = dyn_cast<AbstractFunctionDecl>(vd)) {
-    return func->getParameterLists().size();
+    return func->hasImplicitSelfDecl() ? 2 : 1;
   } else if (auto *ed = dyn_cast<EnumElementDecl>(vd)) {
     return ed->hasAssociatedValues() ? 2 : 1;
-  } else if (isa<DestructorDecl>(vd)) {
-    return 1;
   } else if (isa<ClassDecl>(vd)) {
     return 2;
   } else if (isa<VarDecl>(vd)) {
@@ -923,4 +1026,47 @@ unsigned SILDeclRef::getParameterListCount() const {
   } else {
     llvm_unreachable("Unhandled ValueDecl for SILDeclRef");
   }
+}
+
+static bool isDesignatedConstructorForClass(ValueDecl *decl) {
+  if (auto *ctor = dyn_cast_or_null<ConstructorDecl>(decl))
+    if (ctor->getDeclContext()->getSelfClassDecl())
+      return ctor->isDesignatedInit();
+  return false;
+}
+
+bool SILDeclRef::canBeDynamicReplacement() const {
+  if (kind == SILDeclRef::Kind::Destroyer ||
+      kind == SILDeclRef::Kind::DefaultArgGenerator)
+    return false;
+  if (kind == SILDeclRef::Kind::Initializer)
+    return isDesignatedConstructorForClass(getDecl());
+  if (kind == SILDeclRef::Kind::Allocator)
+    return !isDesignatedConstructorForClass(getDecl());
+  return true;
+}
+
+bool SILDeclRef::isDynamicallyReplaceable() const {
+  if (kind == SILDeclRef::Kind::DefaultArgGenerator)
+    return false;
+  if (isStoredPropertyInitializer())
+    return false;
+
+  // Class allocators are not dynamic replaceable.
+  if (kind == SILDeclRef::Kind::Allocator &&
+      isDesignatedConstructorForClass(getDecl()))
+    return false;
+
+  if (kind == SILDeclRef::Kind::Destroyer ||
+      (kind == SILDeclRef::Kind::Initializer &&
+       !isDesignatedConstructorForClass(getDecl())) ||
+      kind == SILDeclRef::Kind::GlobalAccessor) {
+    return false;
+  }
+
+  if (!hasDecl())
+    return false;
+
+  auto decl = getDecl();
+  return decl->isNativeDynamic();
 }

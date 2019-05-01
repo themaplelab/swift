@@ -1,9 +1,13 @@
-// RUN: %empty-directory(%t.mod)
+// RUN: %empty-directory(%t.mod1)
+// RUN: %empty-directory(%t.mod2)
 // RUN: %empty-directory(%t.sdk)
 // RUN: %empty-directory(%t.module-cache)
-// RUN: %swift -emit-module -o %t.mod/cake1.swiftmodule %S/Inputs/cake1.swift -parse-as-library -I %S/Inputs/APINotesLeft
-// RUN: %swift -emit-module -o %t.mod/cake2.swiftmodule %S/Inputs/cake2.swift -parse-as-library -I %S/Inputs/APINotesRight
-// RUN: %api-digester -dump-sdk -module cake1 -o %t.dump1.json -module-cache-path %t.module-cache -sdk %t.sdk -swift-version 3 -I %t.mod -I %S/Inputs/APINotesLeft
-// RUN: %api-digester -dump-sdk -module cake2 -o %t.dump2.json -module-cache-path %t.module-cache -sdk %t.sdk -swift-version 3 -I %t.mod -I %S/Inputs/APINotesRight
-// RUN: %api-digester -diagnose-sdk --input-paths %t.dump1.json -input-paths %t.dump2.json > %t.result
-// RUN: diff -u %S/Outputs/Cake.txt %t.result
+// RUN: %swift -emit-module -o %t.mod1/cake.swiftmodule %S/Inputs/cake1.swift -parse-as-library -enable-library-evolution -I %S/Inputs/APINotesLeft %clang-importer-sdk-nosource
+// RUN: %swift -emit-module -o %t.mod2/cake.swiftmodule %S/Inputs/cake2.swift -parse-as-library -enable-library-evolution -I %S/Inputs/APINotesRight %clang-importer-sdk-nosource
+// RUN: %api-digester -dump-sdk -module cake -o - -module-cache-path %t.module-cache %clang-importer-sdk-nosource -I %t.mod1 -I %S/Inputs/APINotesLeft | sed 's/"cake"/"cake1"/' > %t.dump1.json
+// RUN: %api-digester -dump-sdk -module cake -o - -module-cache-path %t.module-cache %clang-importer-sdk-nosource -I %t.mod2 -I %S/Inputs/APINotesLeft | sed 's/"cake"/"cake2"/' > %t.dump2.json
+// RUN: %api-digester -diagnose-sdk -print-module --input-paths %t.dump1.json -input-paths %t.dump2.json -o %t.result
+
+// RUN: %clang -E -P -x c %S/Outputs/Cake.txt -o - | sed '/^\s*$/d' > %t.expected
+// RUN: %clang -E -P -x c %t.result -o - | sed '/^\s*$/d' > %t.result.tmp
+// RUN: diff -u %t.expected %t.result.tmp

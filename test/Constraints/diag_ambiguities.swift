@@ -27,7 +27,7 @@ func g(_ x: Int, _ y: Int) -> () {} // expected-note{{found this candidate}}
 C(g) // expected-error{{ambiguous use of 'g'}}
 
 func h<T>(_ x: T) -> () {}
-C(h) // expected-error{{ambiguous use of 'init'}}
+C(h) // expected-error{{ambiguous use of 'init(_:)'}}
 
 func rdar29691909_callee(_ o: AnyObject?) -> Any? { return o } // expected-note {{found this candidate}}
 func rdar29691909_callee(_ o: AnyObject) -> Any { return o } // expected-note {{found this candidate}}
@@ -37,7 +37,9 @@ func rdar29691909(o: AnyObject) -> Any? {
 }
 
 func rdar29907555(_ value: Any!) -> String {
-  return "\(value)" // no error
+  return "\(value)" // expected-warning {{string interpolation produces a debug description for an optional value; did you mean to make this explicit?}}
+  // expected-note@-1 {{use 'String(describing:)' to silence this warning}}
+  // expected-note@-2 {{provide a default value to avoid this warning}}
 }
 
 struct SR3715 {
@@ -49,7 +51,7 @@ struct SR3715 {
   func take(_ a: [Any]) {}
 
   func test() {
-    take([overloaded]) // no error
+    take([overloaded])
   }
 }
 

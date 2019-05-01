@@ -6,27 +6,36 @@ else() # for Ubuntu
   set(JNI_INCLUDE_PATH "$ENV{JAVA_HOME}/include/linux")
 endif()
 
-add_swift_library(swiftFrontendTool STATIC
+add_swift_host_library(swiftFrontendTool STATIC
   FrontendTool.cpp
   ImportedModules.cpp
   ReferenceDependencies.cpp
-  TBD.cpp
-  DEPENDS
-    swift-syntax-generated-headers SwiftOptions
-  LINK_LIBRARIES
-    swiftIndex
-    swiftIDE
-    swiftTBDGen swiftIRGen swiftSIL swiftSILGen swiftSILOptimizer
-    swiftDemangling
-    swiftImmediate
-    swiftSerialization
-    swiftPrintAsObjC
-    swiftFrontend
+  TBD.cpp)
+add_dependencies(swiftFrontendTool
+  swift-syntax-generated-headers
+  SwiftOptions)
+target_link_libraries(swiftFrontendTool INTERFACE
+  clangAPINotes
+  clangBasic)
+target_link_libraries(swiftFrontendTool PRIVATE
     swiftClangImporter
+    swiftDemangling
+    swiftDWARFImporter
+    swiftFrontend
+    swiftIDE
+    swiftImmediate
+    swiftIndex
+    swiftIRGen
     swiftOption
     swiftWALASupport
     clangAPINotes
     clangBasic
+    swiftPrintAsObjC
+    swiftSerialization
+    swiftSIL
+    swiftSILGen
+    swiftSILOptimizer
+    swiftTBDGen
   C_COMPILE_FLAGS
     -I$ENV{WALA_HOME}/com.ibm.wala.cast/source/c/include
     -I$ENV{JAVA_HOME}/include/

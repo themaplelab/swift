@@ -12,12 +12,20 @@
 #define EOF (-1)
 #define UINT32_MAX 0xFFFFFFFFU
 #define INT64_MAX 0x7FFFFFFFFFFFFFFFLL
+#if defined(_WIN32)
+// MSVC compatibility will always return a signed value when the suffix is `LL`
+// or `i64` and other targets will promote it to an unsigned type.
+#define UINT64_MAX 0xFFFFFFFFFFFFFFFFULL
+#else
 #define UINT64_MAX 0xFFFFFFFFFFFFFFFFLL
+#endif
 #define MINUS_THREE -3
 #define true 1
 #define false 0
 #define TRUE 1
 #define FALSE 0
+
+#define LL_TO_ULL 0x8000000000000000LL
 
 #define A_PI M_PI
 
@@ -144,3 +152,12 @@
 
 #define RECURSION_WITH_EXPR3 RECURSION_WITH_EXPR3_HELPER + 1
 #define RECURSION_WITH_EXPR3_HELPER RECURSION_WITH_EXPR3 + 1
+
+
+// Casts with problematic types
+#define UNAVAILABLE_ONE ((unavailable_t)1)
+typedef unsigned unavailable_t __attribute__((unavailable));
+#define DEPRECATED_ONE ((deprecated_t)1)
+typedef unsigned deprecated_t __attribute__((deprecated));
+#define OKAY_TYPED_ONE ((okay_t)1)
+typedef unsigned okay_t;

@@ -1,5 +1,5 @@
-// RUN: %target-typecheck-verify-swift -typecheck %s -verify
-// RUN: %target-typecheck-verify-swift -typecheck -debug-generic-signatures %s > %t.dump 2>&1 
+// RUN: %target-typecheck-verify-swift -typecheck -verify
+// RUN: %target-typecheck-verify-swift -typecheck -debug-generic-signatures > %t.dump 2>&1
 // RUN: %FileCheck %s < %t.dump
 
 protocol P1 { 
@@ -32,11 +32,13 @@ func inferFromParameterType<T>(_ x: X1<T>) {
 
 // Infer protocol requirements from the return type of a generic function.
 func inferFromReturnType<T>(_ x: T) -> X1<T> {
+  _ = 0
   x.p1()
 }
 
 // Infer protocol requirements from the superclass of a generic parameter.
 func inferFromSuperclass<T, U : X2<T>>(_ t: T, u: U) -> T {
+  _ = 0
   t.p1()
 }
 
@@ -154,12 +156,11 @@ protocol P10 {
 }
 
 // CHECK-LABEL: sameTypeConcrete1@
-// CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : P10, τ_0_0 : P9, τ_0_0.A == X3, τ_0_0.A == X3, τ_0_0.B == Int, τ_0_0.C == Int>
+// CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : P10, τ_0_0 : P9, τ_0_0.A == X3, τ_0_0.B == Int, τ_0_0.C == Int>
 func sameTypeConcrete1<T : P9 & P10>(_: T) where T.A == X3, T.C == T.B, T.C == Int { }
 
 // CHECK-LABEL: sameTypeConcrete2@
 // CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : P10, τ_0_0 : P9, τ_0_0.B == X3, τ_0_0.C == X3>
-// FIXME: Should have τ_0_0.A == τ_0_0.A
 func sameTypeConcrete2<T : P9 & P10>(_: T) where T.B : X3, T.C == T.B, T.C == X3 { }
 // expected-warning@-1{{redundant superclass constraint 'T.B' : 'X3'}}
 // expected-note@-2{{same-type constraint 'T.C' == 'X3' written here}}
@@ -175,10 +176,10 @@ extension RangeReplaceableCollection
 }
 
 // CHECK-LABEL: X14.recursiveConcreteSameType
-// CHECK: Generic signature: <T, V where T == CountableRange<Int>>
-// CHECK-NEXT: Canonical generic signature: <τ_0_0, τ_1_0 where τ_0_0 == CountableRange<Int>>
+// CHECK: Generic signature: <T, V where T == Range<Int>>
+// CHECK-NEXT: Canonical generic signature: <τ_0_0, τ_1_0 where τ_0_0 == Range<Int>>
 struct X14<T> where T.Iterator == IndexingIterator<T> {
-	func recursiveConcreteSameType<V>(_: V) where T == CountableRange<Int> { }
+	func recursiveConcreteSameType<V>(_: V) where T == Range<Int> { }
 }
 
 // rdar://problem/30478915
@@ -402,7 +403,7 @@ protocol P30 {
 protocol P31 { }
 
 // CHECK-LABEL: .sameTypeNameMatch1@
-// CHECK: Generic signature: <T where T : P29, T : P30, T.X : P31, T.X == T.X>
+// CHECK: Generic signature: <T where T : P29, T : P30, T.X : P31>
 func sameTypeNameMatch1<T: P29 & P30>(_: T) where T.X: P31 { }
 
 // ----------------------------------------------------------------------------
@@ -429,3 +430,90 @@ struct Bar<U: P32> {}
 // CHECK: Generic signature: <V where V : P34>
 // CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : P34>
 func conditionalConformance2<V>(_: Bar<Foo<V>>) {}
+
+// Mentioning a nested type that is conditional should infer that requirement (SR 6850)
+
+protocol P35 {}
+protocol P36 {
+    func foo()
+}
+
+struct ConditionalNested<T> {}
+
+extension ConditionalNested where T: P35 {
+    struct Inner {}
+}
+
+// CHECK: Generic signature: <T where T : P35, T : P36>
+// CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : P35, τ_0_0 : P36>
+extension ConditionalNested.Inner: P36 where T: P36 {
+    func foo() {}
+
+    struct Inner2 {}
+}
+
+// CHECK-LABEL: conditionalNested1@
+// CHECK: Generic signature: <U where U : P35>
+// CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : P35>
+func conditionalNested1<U>(_: [ConditionalNested<U>.Inner?]) {}
+
+// CHECK-LABEL: conditionalNested2@
+// CHECK: Generic signature: <U where U : P35, U : P36>
+// CHECK: Canonical generic signature: <τ_0_0 where τ_0_0 : P35, τ_0_0 : P36>
+func conditionalNested2<U>(_: [ConditionalNested<U>.Inner.Inner2?]) {}
+
+//
+// Generate typalias adds requirements that can be inferred
+//
+typealias X1WithP2<T: P2> = X1<T>
+
+// Inferred requirement T: P2 from the typealias
+func testX1WithP2<T>(_: X1WithP2<T>) {
+  _ = X5<T>() // requires P2
+}
+
+// Overload based on the inferred requirement.
+func testX1WithP2Overloading<T>(_: X1<T>) {
+  _ = X5<T>() // expected-error{{type 'T' does not conform to protocol 'P2'}}
+}
+
+func testX1WithP2Overloading<T>(_: X1WithP2<T>) {
+  _ = X5<T>() // requires P2
+}
+
+// Extend using the inferred requirement.
+extension X1WithP2 {
+  func f() {
+    _ = X5<T>() // okay: inferred T: P2 from generic typealias
+  }
+}
+
+extension X1: P1 {
+  func p1() { }
+}
+
+typealias X1WithP2Changed<T: P2> = X1<X1<T>>
+typealias X1WithP2MoreArgs<T: P2, U> = X1<T>
+
+extension X1WithP2Changed {
+  func bad1() {
+    _ = X5<T>() // expected-error{{type 'T' does not conform to protocol 'P2'}}
+  }
+}
+
+extension X1WithP2MoreArgs {
+  func bad2() {
+    _ = X5<T>() // expected-error{{type 'T' does not conform to protocol 'P2'}}
+  }
+}
+
+// Inference from protocol inheritance clauses.
+typealias ExistentialP4WithP2Assoc<T: P4> = P4 where T.P4Assoc : P2
+
+protocol P37 : ExistentialP4WithP2Assoc<Self> { }
+
+extension P37 {
+  func f() {
+    _ = X5<P4Assoc>() // requires P2
+  }
+}

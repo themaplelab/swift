@@ -53,7 +53,8 @@ def _apply_default_arguments(args):
 
     # Build LLDB if any LLDB-related options were specified.
     if args.lldb_build_variant is not None or \
-       args.lldb_assertions is not None:
+       args.lldb_assertions is not None or \
+       args.lldb_build_with_xcode is not None:
         args.build_lldb = True
 
     # Set the default build variant.
@@ -74,6 +75,9 @@ def _apply_default_arguments(args):
 
     if args.lldb_build_variant is None:
         args.lldb_build_variant = args.build_variant
+
+    if args.lldb_build_with_xcode is None:
+        args.lldb_build_with_xcode = '0'
 
     if args.foundation_build_variant is None:
         args.foundation_build_variant = args.build_variant
@@ -100,6 +104,12 @@ def _apply_default_arguments(args):
 
     if args.swift_stdlib_assertions is None:
         args.swift_stdlib_assertions = args.assertions
+
+    if args.llbuild_assertions is None:
+        args.llbuild_assertions = args.assertions
+
+    if args.lldb_assertions is None:
+        args.lldb_assertions = args.assertions
 
     # Set the default CMake generator.
     if args.cmake_generator is None:
@@ -132,12 +142,12 @@ def _apply_default_arguments(args):
         args.build_external_benchmarks = False
         args.build_lldb = False
         args.build_llbuild = False
+        args.build_libcxx = False
         args.build_swiftpm = False
         args.build_xctest = False
         args.build_foundation = False
         args.build_libdispatch = False
         args.build_libicu = False
-        args.build_playgroundlogger = False
         args.build_playgroundsupport = False
 
     # --skip-{ios,tvos,watchos} or --skip-build-{ios,tvos,watchos} are
@@ -157,6 +167,16 @@ def _apply_default_arguments(args):
     if not args.android or not args.build_android:
         args.build_android = False
 
+    # --test-paths implies --test and/or --validation-test
+    # depending on what directories/files have been specified.
+    if args.test_paths:
+        for path in args.test_paths:
+            if path.startswith('test'):
+                args.test = True
+            elif path.startswith('validation-test'):
+                args.test = True
+                args.validation_test = True
+
     # --validation-test implies --test.
     if args.validation_test:
         args.test = True
@@ -169,6 +189,10 @@ def _apply_default_arguments(args):
     if args.test_optimize_for_size:
         args.test = True
 
+    # --test-optimize-none-implicit-dynamic implies --test.
+    if args.test_optimize_none_implicit_dynamic:
+        args.test = True
+
     # If none of tests specified skip swift stdlib test on all platforms
     if not args.test and not args.validation_test and not args.long_test:
         args.test_linux = False
@@ -178,6 +202,9 @@ def _apply_default_arguments(args):
         args.test_ios = False
         args.test_tvos = False
         args.test_watchos = False
+        args.test_android = False
+        args.test_indexstoredb = False
+        args.test_sourcekitlsp = False
 
     # --skip-test-ios is merely a shorthand for host and simulator tests.
     if not args.test_ios:
@@ -211,6 +238,10 @@ def _apply_default_arguments(args):
         args.test_watchos_simulator = False
 
     if not args.build_android:
+        args.test_android = False
+        args.test_android_host = False
+
+    if not args.test_android:
         args.test_android_host = False
 
     if not args.host_test:
@@ -256,8 +287,8 @@ def create_argument_parser():
     option(['-n', '--dry-run'], store_true,
            help='print the commands that would be executed, but do not '
                 'execute them')
-    option('--no-legacy-impl', store_false('legacy_impl'),
-           help='avoid legacy implementation')
+    option('--legacy-impl', store_true('legacy_impl'),
+           help='use legacy implementation')
 
     option('--build-runtime-with-host-compiler', toggle_true,
            help='Use the host compiler, not the self-built one to compile the '
@@ -308,13 +339,14 @@ def create_argument_parser():
                 '(like bin, lib, and include) will be installed.')
     option('--install-symroot', store_path,
            help='the path to install debug symbols into')
+    option('--install-destdir', store_path,
+           help='the path to use as the filesystem root for the installation')
 
     option(['-j', '--jobs'], store_int('build_jobs'),
            default=multiprocessing.cpu_count(),
            help='the number of parallel build jobs to use')
 
     option('--darwin-xcrun-toolchain', store,
-           default=defaults.DARWIN_XCRUN_TOOLCHAIN,
            help='the name of the toolchain to use on Darwin')
     option('--cmake', store_path(executable=True),
            help='the path to a CMake executable that will be used to build '
@@ -334,6 +366,10 @@ def create_argument_parser():
     option('--host-cxx', store_path(executable=True),
            help='the absolute path to CXX, the "clang++" compiler for the '
                 'host platform. Default is auto detected.')
+    option('--cmake-c-launcher', store_path(executable=True),
+           help='the absolute path to set CMAKE_C_COMPILER_LAUNCHER')
+    option('--cmake-cxx-launcher', store_path(executable=True),
+           help='the absolute path to set CMAKE_CXX_COMPILER_LAUNCHER')
     option('--host-lipo', store_path(executable=True),
            help='the absolute path to lipo. Default is auto detected.')
     option('--host-libtool', store_path(executable=True),
@@ -350,6 +386,9 @@ def create_argument_parser():
            help='enable Thread Sanitizer on the swift runtime')
     option('--enable-lsan', toggle_true,
            help='enable Leak Sanitizer for swift tools')
+    option('--enable-sanitize-coverage', toggle_true,
+           help='enable sanitizer coverage for swift tools. Necessary for '
+                'fuzzing swiftc')
 
     option('--compiler-vendor', store,
            choices=['none', 'apple'],
@@ -434,11 +473,11 @@ def create_argument_parser():
            help='the maximum number of parallel link jobs to use when '
                 'compiling swift tools.')
 
-    option('--enable-sil-ownership', store_true,
-           help='Enable the SIL ownership model')
+    option('--disable-guaranteed-normal-arguments', store_true,
+           help='Disable guaranteed normal arguments')
 
-    option('--enable-guaranteed-normal-arguments', store_true,
-           help='Enable guaranteed normal arguments')
+    option('--enable-stdlibcore-exclusivity-checking', store_true,
+           help='Enable exclusivity checking in stdlibCore')
 
     option('--force-optimized-typechecker', store_true,
            help='Force the type checker to be built with '
@@ -488,8 +527,29 @@ def create_argument_parser():
     option(['-b', '--llbuild'], store_true('build_llbuild'),
            help='build llbuild')
 
+    option(['--libcxx'], store_true('build_libcxx'),
+           help='build libcxx')
+
     option(['-p', '--swiftpm'], store_true('build_swiftpm'),
            help='build swiftpm')
+
+    option(['--swiftsyntax'], store_true('build_swiftsyntax'),
+           help='build swiftSyntax')
+
+    option(['--skstresstester'], store_true('build_skstresstester'),
+           help='build the SourceKit stress tester')
+
+    option(['--swiftevolve'], store_true('build_swiftevolve'),
+           help='build the swift-evolve tool')
+
+    option(['--indexstore-db'], toggle_true('build_indexstoredb'),
+           help='build IndexStoreDB')
+    option(['--sourcekit-lsp'], toggle_true('build_sourcekitlsp'),
+           help='build SourceKitLSP')
+    option(['--toolchain-benchmarks'],
+           toggle_true('build_toolchainbenchmarks'),
+           help='build Swift Benchmarks using swiftpm against the just built '
+                'toolchain')
 
     option('--xctest', toggle_true('build_xctest'),
            help='build xctest')
@@ -503,14 +563,14 @@ def create_argument_parser():
     option('--libicu', toggle_true('build_libicu'),
            help='build libicu')
 
-    option('--playgroundlogger', store_true('build_playgroundlogger'),
-           help='build playgroundlogger')
-
     option('--playgroundsupport', store_true('build_playgroundsupport'),
            help='build PlaygroundSupport')
 
     option('--build-ninja', toggle_true,
            help='build the Ninja tool')
+
+    option(['--build-libparser-only'], store_true('build_libparser_only'),
+           help='build only libParser for SwiftSyntax')
 
     # -------------------------------------------------------------------------
     in_group('Extra actions to perform before or in addition to building')
@@ -567,6 +627,14 @@ def create_argument_parser():
     option('--debug-lldb', store('lldb_build_variant'),
            const='Debug',
            help='build the Debug variant of LLDB')
+
+    option('--lldb-build-with-xcode', store('lldb_build_with_xcode'),
+           const='1',
+           help='build LLDB using xcodebuild, if possible')
+
+    option('--lldb-build-with-cmake', store('lldb_build_with_xcode'),
+           const='0',
+           help='build LLDB using CMake')
 
     option('--debug-cmark', store('cmark_build_variant'),
            const='Debug',
@@ -635,6 +703,13 @@ def create_argument_parser():
            const=False,
            help='disable assertions in LLDB')
 
+    option('--llbuild-assertions', store,
+           const=True,
+           help='enable assertions in llbuild')
+    option('--no-llbuild-assertions', store('llbuild_assertions'),
+           const=False,
+           help='disable assertions in llbuild')
+
     # -------------------------------------------------------------------------
     in_group('Select the CMake generator')
 
@@ -680,8 +755,19 @@ def create_argument_parser():
            help='run the test suite in optimize for size mode too '
                 '(implies --test)')
 
+    # FIXME: Convert to store_true action
+    option('-y', store('test_optimize_none_implicit_dynamic', const=True),
+           help='run the test suite in optimize none with implicit dynamic'
+                ' mode too (implies --test)')
+    option('--test-optimize-none-implicit-dynamic', toggle_true,
+           help='run the test suite in optimize none with implicit dynamic'
+                'mode too (implies --test)')
+
     option('--long-test', toggle_true,
            help='run the long test suite')
+
+    option('--stress-test', toggle_true,
+           help='run the stress test suite')
 
     option('--host-test', toggle_true,
            help='run executable tests on host devices (such as iOS or tvOS)')
@@ -822,10 +908,18 @@ def create_argument_parser():
            help='skip testing watchOS device targets on the host machine (the '
                 'watch itself)')
 
+    option('--skip-test-android',
+           toggle_false('test_android'),
+           help='skip testing all Android targets.')
     option('--skip-test-android-host',
            toggle_false('test_android_host'),
            help='skip testing Android device targets on the host machine (the '
                 'phone itself)')
+
+    option('--skip-test-indexstore-db', toggle_false('test_indexstoredb'),
+           help='skip testing indexstore-db')
+    option('--skip-test-sourcekit-lsp', toggle_false('test_sourcekitlsp'),
+           help='skip testing sourcekit-lsp')
 
     # -------------------------------------------------------------------------
     in_group('Build settings specific for LLVM')
@@ -856,19 +950,28 @@ def create_argument_parser():
                 'Swift')
 
     option('--android-icu-uc', store_path,
-           help='Path to a directory containing libicuuc.so')
+           help='Path to libicuuc.so')
     option('--android-icu-uc-include', store_path,
            help='Path to a directory containing headers for libicuuc')
     option('--android-icu-i18n', store_path,
-           help='Path to a directory containing libicui18n.so')
+           help='Path to libicui18n.so')
     option('--android-icu-i18n-include', store_path,
            help='Path to a directory containing headers libicui18n')
+    option('--android-icu-data', store_path,
+           help='Path to libicudata.so')
     option('--android-deploy-device-path', store_path,
            default=android.adb.commands.DEVICE_TEMP_DIR,
            help='Path on an Android device to which built Swift stdlib '
                 'products will be deployed. If running host tests, specify '
                 'the "{}" directory.'.format(
                     android.adb.commands.DEVICE_TEMP_DIR))
+
+    option('--android-arch', store,
+           choices=['armv7', 'aarch64'],
+           default='armv7',
+           help='The Android target architecture when building for Android. '
+                'Currently only armv7 and aarch64 are supported. '
+                '%(default)s is the default.')
 
     # -------------------------------------------------------------------------
     in_group('Unsupported options')
@@ -877,6 +980,7 @@ def create_argument_parser():
     option('--common-cmake-options', unsupported)
     option('--only-execute', unsupported)
     option('--skip-test-optimize-for-size', unsupported)
+    option('--skip-test-optimize-none-implicit-dynamic', unsupported)
     option('--skip-test-optimized', unsupported)
 
     # -------------------------------------------------------------------------
@@ -942,6 +1046,9 @@ SWIFT_SOURCE_ROOT: a directory containing the source for LLVM, Clang, Swift.
                      /lldb                       (optional)
                      /llbuild                    (optional)
                      /swiftpm                    (optional, requires llbuild)
+                     /swift-syntax               (optional, requires swiftpm)
+                     /swift-stress-tester        (optional,
+                                                   requires swift-syntax)
                      /compiler-rt                (optional)
                      /swift-corelibs-xctest      (optional)
                      /swift-corelibs-foundation  (optional)

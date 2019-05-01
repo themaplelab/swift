@@ -37,6 +37,9 @@ class SyntaxASTMap;
 
 namespace syntax {
 
+struct SyntaxVisitor;
+class SourceFileSyntax;
+
 template <typename SyntaxNode>
 SyntaxNode make(RC<RawSyntax> Raw) {
   auto Data = SyntaxData::make(Raw);
@@ -69,7 +72,9 @@ protected:
 
 public:
   Syntax(const RC<SyntaxData> Root, const SyntaxData *Data)
-  : Root(Root), Data(Data) {}
+  : Root(Root), Data(Data) {
+    assert(Data != nullptr);
+  }
 
   virtual ~Syntax() {}
 
@@ -79,12 +84,15 @@ public:
   /// Get the shared raw syntax.
   RC<RawSyntax> getRaw() const;
 
+  /// Get an ID for this node that is stable across incremental parses
+  SyntaxNodeId getId() const { return getRaw()->getId(); }
+
   /// Get the number of child nodes in this piece of syntax, not including
   /// tokens.
   size_t getNumChildren() const;
 
   /// Get the Nth child of this piece of syntax.
-  Syntax getChild(const size_t N) const;
+  llvm::Optional<Syntax> getChild(const size_t N) const;
 
   /// Returns true if the syntax node is of the given type.
   template <typename T>
@@ -122,9 +130,15 @@ public:
   /// Return the parent of this node, if it has one.
   llvm::Optional<Syntax> getParent() const;
 
+  /// Return the root syntax of this node.
+  Syntax getRoot() const;
+
   /// Returns the child index of this node in its parent,
   /// if it has one, otherwise 0.
-  CursorIndex getIndexInParent() const;
+  CursorIndex getIndexInParent() const { return getData().getIndexInParent(); }
+
+  /// Return the number of bytes this node takes when spelled out in the source
+  size_t getTextLength() const { return getRaw()->getTextLength(); }
 
   /// Returns true if this syntax node represents a token.
   bool isToken() const;
@@ -168,10 +182,35 @@ public:
     return Root == Other.Root && Data == Other.Data;
   }
 
+  static bool kindof(SyntaxKind Kind) {
+    return true;
+  }
+
   static bool classof(const Syntax *S) {
     // Trivially true.
     return true;
   }
+
+  /// Recursively visit this node.
+  void accept(SyntaxVisitor &Visitor);
+
+  /// Get the absolute position of this raw syntax: its offset, line,
+  /// and column.
+  AbsolutePosition getAbsolutePosition() const {
+    return Data->getAbsolutePosition();
+  }
+
+  /// Get the absolute end position (exclusively) where the trailing trivia of
+  /// this node ends.
+  AbsolutePosition getAbsoluteEndPositionAfterTrailingTrivia() const {
+    return Data->getAbsoluteEndPositionAfterTrailingTrivia();
+  }
+
+  /// Get the absolute position at which the leading trivia of this node starts.
+  AbsolutePosition getAbsolutePositionBeforeLeadingTrivia() const {
+    return Data->getAbsolutePositionBeforeLeadingTrivia();
+  }
+
   // TODO: hasSameStructureAs ?
 };
 

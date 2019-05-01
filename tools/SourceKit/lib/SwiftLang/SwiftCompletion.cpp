@@ -13,6 +13,7 @@
 #include "CodeCompletionOrganizer.h"
 #include "SwiftASTManager.h"
 #include "SwiftLangSupport.h"
+#include "SwiftEditorDiagConsumer.h"
 #include "SourceKit/Support/Logging.h"
 #include "SourceKit/Support/UIdent.h"
 
@@ -111,21 +112,6 @@ static bool swiftCodeCompleteImpl(SwiftLangSupport &Lang,
                                   ArrayRef<const char *> Args,
                                   std::string &Error) {
 
-  trace::TracedOperation TracedOp;
-  if (trace::enabled()) {
-    trace::SwiftInvocation SwiftArgs;
-    trace::initTraceInfo(SwiftArgs,
-                         UnresolvedInputFile->getBufferIdentifier(),
-                         Args);
-    SwiftArgs.addFile(UnresolvedInputFile->getBufferIdentifier(),
-                      UnresolvedInputFile->getBuffer());
-
-    TracedOp.start(trace::OperationKind::CodeCompletionInit, SwiftArgs,
-                   { std::make_pair("Offset", std::to_string(Offset)),
-                     std::make_pair("InputBufferSize",
-                                    std::to_string(UnresolvedInputFile->getBufferSize()))});
-  }
-  
   // Resolve symlinks for the input file; we resolve them for the input files
   // in the arguments as well.
   // FIXME: We need the Swift equivalent of Clang's FileEntry.
@@ -133,33 +119,50 @@ static bool swiftCodeCompleteImpl(SwiftLangSupport &Lang,
       UnresolvedInputFile->getBuffer(),
       Lang.resolvePathSymlinks(UnresolvedInputFile->getBufferIdentifier()));
 
-  CompilerInstance CI;
-  // Display diagnostics to stderr.
-  PrintingDiagnosticConsumer PrintDiags;
-  CI.addDiagnosticConsumer(&PrintDiags);
-
-  CompilerInvocation Invocation;
-  bool Failed = Lang.getASTManager().initCompilerInvocation(
-      Invocation, Args, CI.getDiags(), InputFile->getBufferIdentifier(), Error);
-  if (Failed) {
-    return false;
-  }
-  if (!Invocation.getFrontendOptions().Inputs.hasInputs()) {
-    Error = "no input filenames specified";
-    return false;
-  }
-
   auto origBuffSize = InputFile->getBufferSize();
   unsigned CodeCompletionOffset = Offset;
   if (CodeCompletionOffset > origBuffSize) {
     CodeCompletionOffset = origBuffSize;
   }
 
+  CompilerInstance CI;
+  // Display diagnostics to stderr.
+  PrintingDiagnosticConsumer PrintDiags;
+  CI.addDiagnosticConsumer(&PrintDiags);
+
+  EditorDiagConsumer TraceDiags;
+  trace::TracedOperation TracedOp(trace::OperationKind::CodeCompletion);
+  if (TracedOp.enabled()) {
+    CI.addDiagnosticConsumer(&TraceDiags);
+    trace::SwiftInvocation SwiftArgs;
+    trace::initTraceInfo(SwiftArgs, InputFile->getBufferIdentifier(), Args);
+    TracedOp.setDiagnosticProvider(
+        [&TraceDiags](SmallVectorImpl<DiagnosticEntryInfo> &diags) {
+          TraceDiags.getAllDiagnostics(diags);
+        });
+    TracedOp.start(SwiftArgs,
+                   {std::make_pair("OriginalOffset", std::to_string(Offset)),
+                    std::make_pair("Offset",
+                      std::to_string(CodeCompletionOffset))});
+  }
+
+  CompilerInvocation Invocation;
+  bool Failed = Lang.getASTManager()->initCompilerInvocation(
+      Invocation, Args, CI.getDiags(), InputFile->getBufferIdentifier(), Error);
+  if (Failed) {
+    return false;
+  }
+  if (!Invocation.getFrontendOptions().InputsAndOutputs.hasInputs()) {
+    Error = "no input filenames specified";
+    return false;
+  }
+
   const char *Position = InputFile->getBufferStart() + CodeCompletionOffset;
-  std::unique_ptr<llvm::MemoryBuffer> NewBuffer =
-      llvm::MemoryBuffer::getNewUninitMemBuffer(InputFile->getBufferSize() + 1,
+  std::unique_ptr<llvm::WritableMemoryBuffer> NewBuffer =
+      llvm::WritableMemoryBuffer::getNewUninitMemBuffer(
+                                              InputFile->getBufferSize() + 1,
                                               InputFile->getBufferIdentifier());
-  char *NewBuf = const_cast<char*>(NewBuffer->getBufferStart());
+  char *NewBuf = NewBuffer->getBufferStart();
   char *NewPos = std::copy(InputFile->getBufferStart(), Position, NewBuf);
   *NewPos = '\0';
   std::copy(Position, InputFile->getBufferEnd(), NewPos+1);
@@ -185,33 +188,13 @@ static bool swiftCodeCompleteImpl(SwiftLangSupport &Lang,
     return true;
   }
 
-  TracedOp.finish();
-
-  if (trace::enabled()) {
-    trace::SwiftInvocation SwiftArgs;
-    trace::initTraceInfo(SwiftArgs, InputFile->getBufferIdentifier(), Args);
-    trace::initTraceFiles(SwiftArgs, CI);
-
-    // Replace primary file with original content
-    std::for_each(SwiftArgs.Files.begin(), SwiftArgs.Files.end(),
-                  [&] (trace::StringPairs::value_type &Pair) {
-                    if (Pair.first == InputFile->getBufferIdentifier()) {
-                      Pair.second = InputFile->getBuffer();
-                    }
-                  });
-
-    TracedOp.start(trace::OperationKind::CodeCompletion, SwiftArgs,
-                   {std::make_pair("OriginalOffset", std::to_string(Offset)),
-                    std::make_pair("Offset",
-                      std::to_string(CodeCompletionOffset))});
-  }
-
   CloseClangModuleFiles scopedCloseFiles(
       *CI.getASTContext().getClangModuleLoader());
   SwiftConsumer.setContext(&CI.getASTContext(), &Invocation,
                            &CompletionContext);
   CI.performSema();
   SwiftConsumer.clearContext();
+
   return true;
 }
 
@@ -222,7 +205,7 @@ void SwiftLangSupport::codeComplete(llvm::MemoryBuffer *UnresolvedInputFile,
   SwiftCodeCompletionConsumer SwiftConsumer([&](
       MutableArrayRef<CodeCompletionResult *> Results,
       SwiftCompletionInfo &info) {
-    bool hasExpectedType = info.completionContext->HasExpectedTypeRelation;
+    bool hasRequiredType = info.completionContext->typeContextKind == TypeContextKind::Required;
     CodeCompletionContext::sortCompletionResults(Results);
     // FIXME: this adhoc filtering should be configurable like it is in the
     // codeCompleteOpen path.
@@ -234,7 +217,7 @@ void SwiftLangSupport::codeComplete(llvm::MemoryBuffer *UnresolvedInputFile,
           break;
         case CodeCompletionLiteralKind::ImageLiteral:
         case CodeCompletionLiteralKind::ColorLiteral:
-          if (hasExpectedType &&
+          if (hasRequiredType &&
               Result->getExpectedTypeRelation() <
                   CodeCompletionResult::Convertible)
             continue;
@@ -725,9 +708,9 @@ CompletionKind CodeCompletion::SessionCache::getCompletionKind() {
   llvm::sys::ScopedLock L(mtx);
   return completionKind;
 }
-bool CodeCompletion::SessionCache::getCompletionHasExpectedTypes() {
+TypeContextKind CodeCompletion::SessionCache::getCompletionTypeContextKind() {
   llvm::sys::ScopedLock L(mtx);
-  return completionHasExpectedTypes;
+  return typeContextKind;
 }
 bool CodeCompletion::SessionCache::getCompletionMayUseImplicitMemberExpr() {
   llvm::sys::ScopedLock L(mtx);
@@ -877,7 +860,6 @@ static bool canonicalizeFilterName(const char *origName,
       continue;
     }
   }
-  llvm_unreachable("exit is on null byte");
 }
 
 static void translateFilterRules(ArrayRef<FilterRule> rawFilterRules,
@@ -1034,7 +1016,7 @@ static void transformAndForwardResults(
 
   CodeCompletion::CodeCompletionOrganizer organizer(
       options, session->getCompletionKind(),
-      session->getCompletionHasExpectedTypes());
+      session->getCompletionTypeContextKind());
 
   auto &rules = session->getFilterRules();
 
@@ -1178,7 +1160,7 @@ void SwiftLangSupport::codeCompleteOpen(
   }
 
   CompletionKind completionKind = CompletionKind::None;
-  bool hasExpectedTypes = false;
+  TypeContextKind typeContextKind = TypeContextKind::None;
   bool mayUseImplicitMemberExpr = false;
 
   SwiftCodeCompletionConsumer swiftConsumer(
@@ -1186,7 +1168,7 @@ void SwiftLangSupport::codeCompleteOpen(
           SwiftCompletionInfo &info) {
         auto &completionCtx = *info.completionContext;
         completionKind = completionCtx.CodeCompletionKind;
-        hasExpectedTypes = completionCtx.HasExpectedTypeRelation;
+        typeContextKind = completionCtx.typeContextKind;
         mayUseImplicitMemberExpr = completionCtx.MayUseImplicitMemberExpr;
         completions =
             extendCompletions(results, sink, info, nameToPopularity, CCOpts);
@@ -1194,10 +1176,14 @@ void SwiftLangSupport::codeCompleteOpen(
 
   // Add any codecomplete.open specific flags.
   std::vector<const char *> extendedArgs(args.begin(), args.end());
-  if (CCOpts.addInitsToTopLevel)
+  if (CCOpts.addInitsToTopLevel) {
+    extendedArgs.push_back("-Xfrontend");
     extendedArgs.push_back("-code-complete-inits-in-postfix-expr");
-  if (CCOpts.callPatternHeuristics)
+  }
+  if (CCOpts.callPatternHeuristics) {
+    extendedArgs.push_back("-Xfrontend");
     extendedArgs.push_back("-code-complete-call-pattern-heuristics");
+  }
 
   // Invoke completion.
   std::string error;
@@ -1223,7 +1209,7 @@ void SwiftLangSupport::codeCompleteOpen(
   std::vector<std::string> argsCopy(extendedArgs.begin(), extendedArgs.end());
   SessionCacheRef session{new SessionCache(
       std::move(sink), std::move(bufferCopy), std::move(argsCopy),
-      completionKind, hasExpectedTypes, mayUseImplicitMemberExpr,
+      completionKind, typeContextKind, mayUseImplicitMemberExpr,
       std::move(filterRules))};
   session->setSortedCompletions(std::move(completions));
 

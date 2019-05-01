@@ -15,13 +15,13 @@
 import Typedefs
 import Lib
 
-// CHECK-IR-LABEL: define{{.*}} void @_T04main19testWitnessDispatch
+// CHECK-IR-LABEL: define{{.*}} void @"$s4main19testWitnessDispatch
 public func testWitnessDispatch(user: Proto) {
   // The important thing in this CHECK line is the "i32 11", which is the offset
   // for the witness table slot for 'lastMethod()'. If the layout here
   // changes, please check that offset 11 is still correct.
   // CHECK-IR-NOT: ret
-  // CHECK-IR: [[SLOT:%.+]] = getelementptr inbounds i8*, i8** {{%.+}}, i32 11
+  // CHECK-IR: [[SLOT:%.+]] = getelementptr inbounds i8*, i8** {{%.+}}, i32 12
   // CHECK-IR-NOT: ret
   // CHECK-IR: [[RAW_METHOD:%.+]] = load i8*, i8** [[SLOT]]
   // CHECK-IR-NOT: ret
@@ -31,13 +31,13 @@ public func testWitnessDispatch(user: Proto) {
   _ = user.lastMethod()
 } // CHECK-IR: ret void
 
-// CHECK-IR-LABEL: define{{.*}} void @_T04main19testGenericDispatch
+// CHECK-IR-LABEL: define{{.*}} void @"$s4main19testGenericDispatch
 public func testGenericDispatch<T: Proto>(user: T) {
   // The important thing in this CHECK line is the "i32 11", which is the offset
   // for the witness table slot for 'lastMethod()'. If the layout here
   // changes, please check that offset 11 is still correct.
   // CHECK-IR-NOT: ret
-  // CHECK-IR: [[SLOT:%.+]] = getelementptr inbounds i8*, i8** %T.Proto, i32 11
+  // CHECK-IR: [[SLOT:%.+]] = getelementptr inbounds i8*, i8** %T.Proto, i32 12
   // CHECK-IR-NOT: ret
   // CHECK-IR: [[RAW_METHOD:%.+]] = load i8*, i8** [[SLOT]]
   // CHECK-IR-NOT: ret
@@ -117,10 +117,10 @@ public struct ProtoLibImpl : Proto {
 // CHECK-WITNESS-TABLE-LABEL: sil_witness_table{{.*}} ProtoLibImpl: Proto module Lib {
 // 0 CHECK-WITNESS-TABLE-NEXT: #Proto.unwrappedProp!getter.1:
 // 1 CHECK-WITNESS-TABLE-NEXT: #Proto.unwrappedProp!setter.1:
-// 2 CHECK-WITNESS-TABLE-NEXT: #Proto.unwrappedProp!materializeForSet.1:
+// 2 CHECK-WITNESS-TABLE-NEXT: #Proto.unwrappedProp!modify.1:
 // 3 CHECK-WITNESS-TABLE-NEXT: #Proto.wrappedProp!getter.1:
 // 4 CHECK-WITNESS-TABLE-NEXT: #Proto.wrappedProp!setter.1:
-// 5 CHECK-WITNESS-TABLE-NEXT: #Proto.wrappedProp!materializeForSet.1:
+// 5 CHECK-WITNESS-TABLE-NEXT: #Proto.wrappedProp!modify.1:
 // 6 CHECK-WITNESS-TABLE-NEXT: #Proto.returnsUnwrappedMethod!1:
 // 7 CHECK-WITNESS-TABLE-NEXT: #Proto.returnsWrappedMethod!1:
 // 8 CHECK-WITNESS-TABLE-NEXT: #Proto.subscript!getter.1:

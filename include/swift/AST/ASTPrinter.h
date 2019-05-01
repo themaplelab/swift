@@ -44,6 +44,8 @@ enum class PrintNameContext {
   Normal,
   /// Keyword context, where no keywords are escaped.
   Keyword,
+  /// Type member context, e.g. properties or enum cases.
+  TypeMember,
   /// Generic parameter context, where 'Self' is not escaped.
   GenericParameter,
   /// Class method return type, where 'Self' is not escaped.
@@ -84,7 +86,7 @@ enum class PrintStructureKind {
 class ASTPrinter {
   unsigned CurrentIndentation = 0;
   unsigned PendingNewlines = 0;
-  const NominalTypeDecl *SynthesizeTarget = nullptr;
+  TypeOrExtensionDecl SynthesizeTarget;
 
   void printTextImpl(StringRef Text);
 
@@ -118,6 +120,10 @@ public:
   /// Callers should use callPrintDeclPost().
   virtual void printDeclPost(const Decl *D, Optional<BracketOptions> Bracket) {}
 
+  /// Called before printing the result type of the declaration. Printer can
+  /// replace \p TL to customize the input.
+  virtual void printDeclResultTypePre(ValueDecl *VD, TypeLoc &TL) {}
+
   /// Called before printing a type.
   virtual void printTypePre(const TypeLoc &TL) {}
   /// Called after printing a type.
@@ -136,13 +142,14 @@ public:
 
   /// Called before printing a synthesized extension.
   virtual void printSynthesizedExtensionPre(const ExtensionDecl *ED,
-                                            const NominalTypeDecl *NTD,
+                                            TypeOrExtensionDecl NTD,
                                             Optional<BracketOptions> Bracket) {}
 
   /// Called after printing a synthesized extension.
   virtual void printSynthesizedExtensionPost(const ExtensionDecl *ED,
-                                             const NominalTypeDecl *NTD,
-                                             Optional<BracketOptions> Bracket) {}
+                                             TypeOrExtensionDecl TargetDecl,
+                                             Optional<BracketOptions> Bracket) {
+  }
 
   /// Called before printing a structured entity.
   ///
@@ -185,10 +192,13 @@ public:
     return *this << StringRef(&c, 1);
   }
 
-  void printKeyword(StringRef name) {
+  void printKeyword(StringRef name, PrintOptions Opts, StringRef Suffix = "") {
+    if (Opts.SkipUnderscoredKeywords && name.startswith("_"))
+      return;
     callPrintNamePre(PrintNameContext::Keyword);
     *this << name;
     printNamePost(PrintNameContext::Keyword);
+    *this << Suffix;
   }
 
   void printAttrName(StringRef name, bool needAt = false) {
@@ -206,6 +216,8 @@ public:
     return *this;
   }
 
+  void printEscapedStringLiteral(StringRef str);
+
   void printName(Identifier Name,
                  PrintNameContext Context = PrintNameContext::Normal);
 
@@ -213,7 +225,7 @@ public:
     CurrentIndentation = NumSpaces;
   }
 
-  void setSynthesizedTarget(NominalTypeDecl *Target) {
+  void setSynthesizedTarget(TypeOrExtensionDecl Target) {
     assert((!SynthesizeTarget || !Target || Target == SynthesizeTarget) &&
            "unexpected change of setSynthesizedTarget");
     // FIXME: this can overwrite the original target with nullptr.
@@ -324,6 +336,11 @@ StringRef getCodePlaceholder();
 void printEnumElementsAsCases(
     llvm::DenseSet<EnumElementDecl *> &UnhandledElements,
     llvm::raw_ostream &OS);
+
+void getInheritedForPrinting(const Decl *decl,
+                             llvm::function_ref<bool(const Decl*)> shouldPrint,
+                             llvm::SmallVectorImpl<TypeLoc> &Results);
+
 } // namespace swift
 
 #endif // LLVM_SWIFT_AST_ASTPRINTER_H

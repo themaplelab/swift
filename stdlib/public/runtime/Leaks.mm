@@ -131,10 +131,13 @@ static void dumpSwiftHeapObjects() {
     kindDescriptor = #name;                                                    \
     break;
 #include "swift/ABI/MetadataKind.def"
+    default:
+      kindDescriptor = "unknown";
+      break;
     }
 
-    if (const NominalTypeDescriptor *NTD =
-            Metadata->getNominalTypeDescriptor()) {
+    if (auto *NTD =
+            Metadata->getTypeContextDescriptor()) {
       fprintf(stderr, "{"
                       "\"type\": \"nominal\", "
                       "\"name\": \"%s\", "

@@ -2,11 +2,10 @@
 
 .. highlight:: none
 
-============================
+.. contents::
+
 Debugging the Swift Compiler
 ============================
-
-.. contents::
 
 Abstract
 --------
@@ -249,7 +248,17 @@ to be invoked with the sil function body. Note,
 ``sil-mode-display-function-cfg`` does not take any arguments.
 
 **NOTE** viewcfg must be in the $PATH for viewcfg to work.
+
 **NOTE** Since we use open, .dot files should be associated with the Graphviz app for viewcfg to work.
+
+There is another useful script to view the CFG of a disassembled function:
+``./utils/dev-scripts/blockifyasm``.
+It splits a disassembled function up into basic blocks which can then be
+used with viewcfg::
+
+    (lldb) disassemble
+      <copy-paste output to file.s>
+    $ blockifyasm < file.s | viewcfg
 
 Using Breakpoints
 ~~~~~~~~~~~~~~~~~
@@ -367,6 +376,53 @@ Then by running ``lldb test -s test.lldb``, lldb will:
 Using LLDB scripts can enable one to use complex debugger workflows without
 needing to retype the various commands perfectly every time.
 
+Custom LLDB Commands
+~~~~~~~~~~~~~~~~~~~~
+
+If you've ever found yourself repeatedly entering a complex sequence of
+commands within a debug session, consider using custom lldb commands. Custom
+commands are a handy way to automate debugging tasks.
+
+For example, say we need a command that prints the contents of the register
+``rax`` and then steps to the next instruction. Here's how to define that
+command within a debug session::
+
+    (lldb) script
+    Python Interactive Interpreter. To exit, type 'quit()', 'exit()' or Ctrl-D.
+    >>> def custom_step():
+    ...   print "rax =", lldb.frame.FindRegister("rax")
+    ...   lldb.thread.StepInstruction(True)
+    ...
+    >>> ^D
+
+You can call this function using the ``script`` command, or via an alias::
+
+    (lldb) script custom_step()
+    rax = ...
+    <debugger steps to the next instruction>
+
+    (lldb) command alias cs script custom_step()
+    (lldb) cs
+    rax = ...
+    <debugger steps to the next instruction>
+
+Printing registers and single-stepping are by no means the only things you can
+do with custom commands. The LLDB Python API surfaces a lot of useful
+functionality, such as arbitrary expression evaluation.
+
+There are some pre-defined custom commands which can be especially useful while
+debugging the swift compiler. These commands live in
+``swift/utils/lldb/lldbToolBox.py``. There is a wrapper script available in
+``SWIFT_BINARY_DIR/bin/lldb-with-tools`` which launches lldb with those
+commands loaded.
+
+A command named ``sequence`` is included in lldbToolBox. ``sequence`` runs
+multiple semicolon separated commands together as one command. This can be used
+to define custom commands using just other lldb commands. For example,
+``custom_step()`` function defined above could be defined as::
+
+    (lldb) command alias cs sequence p/x $rax; stepi
+
 Reducing SIL test cases using bug_reducer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -381,16 +437,35 @@ reducing SIL test cases by:
 For more information and a high level example, see:
 ./swift/utils/bug_reducer/README.md.
 
+Using ``clang-tidy`` to run the Static Analyzer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Recent versions of LLVM package the tool ``clang-tidy``. This can be used in
+combination with a json compilation database to run static analyzer checks as
+well as cleanups/modernizations on a code-base. Swift's cmake invocation by
+default creates one of these json databases at the root path of the swift host
+build, for example on macOS::
+
+    $PATH_TO_BUILD/swift-macosx-x86_64/compile_commands.json
+
+Using this file, one invokes ``clang-tidy`` on a specific file in the codebase
+as follows::
+
+    clang-tidy -p=$PATH_TO_BUILD/swift-macosx-x86_64/compile_commands.json $FULL_PATH_TO_FILE
+
+One can also use shell regex to visit multiple files in the same directory. Example::
+
+    clang-tidy -p=$PATH_TO_BUILD/swift-macosx-x86_64/compile_commands.json $FULL_PATH_TO_DIR/*.cpp
 
 Debugging Swift Executables
----------------------------
+===========================
 
 One can use the previous tips for debugging the Swift compiler with Swift
 executables as well. Here are some additional useful techniques that one can use
 in Swift executables.
 
 Determining the mangled name of a function in LLDB
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+--------------------------------------------------
 
 One problem that often comes up when debugging Swift code in LLDB is that LLDB
 shows the demangled name instead of the mangled name. This can lead to mistakes
@@ -404,8 +479,15 @@ function in the current frame::
     Module: file = "/Volumes/Files/work/solon/build/build-swift/validation-test-macosx-x86_64/stdlib/Output/CollectionType.swift.gyb.tmp/CollectionType3", arch = "x86_64"
     Symbol: id = {0x0000008c}, range = [0x0000000100004db0-0x00000001000056f0), name="ext.CollectionType3.CollectionType3.MutableCollectionType2<A where A: CollectionType3.MutableCollectionType2>.(subscript.materializeForSet : (Swift.Range<A.Index>) -> Swift.MutableSlice<A>).(closure #1)", mangled="_TFFeRq_15CollectionType322MutableCollectionType2_S_S0_m9subscriptFGVs5Rangeqq_s16MutableIndexable5Index_GVs12MutableSliceq__U_FTBpRBBRQPS0_MS4__T_"
 
-Debugging failures in LLDB
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Manually symbolication using LLDB
+---------------------------------
+
+One can perform manual symbolication of a crash log or an executable using LLDB
+without running the actual executable. For a detailed guide on how to do this,
+see: https://lldb.llvm.org/symbolication.html.
+
+Debugging LLDB failures
+=======================
 
 Sometimes one needs to be able to while debugging actually debug LLDB and its
 interaction with Swift itself. Some examples of problems where this can come up
@@ -426,7 +508,7 @@ For more details about any of the information below, please run::
     (lldb) help log enable
 
 "Types" Log
-```````````
+-----------
 
 The "types" log reports on LLDB's process of constructing SwiftASTContexts and
 errors that may occur. The two main tasks here are:
@@ -448,7 +530,7 @@ That will write the types log to the file passed to the -f option.
 
 **NOTE** Module loading can happen as a side-effect of other operations in lldb
  (e.g. the "file" command). To be sure that one has enabled logging before /any/
- module loading has occured, place the command into either::
+ module loading has occurred, place the command into either::
 
    ~/.lldbinit
    $PWD/.lldbinit
@@ -457,7 +539,7 @@ This will ensure that the type import command is run before /any/ modules are
 imported.
 
 "Expression" Log
-````````````````
+----------------
 
 The "expression" log reports on the process of wrapping, parsing, SILGen'ing,
 JITing, and inserting an expression into the current Swift module. Since this can
@@ -473,8 +555,8 @@ following non-exhaustive list of state:
 1. The unparsed, textual expression passed to the compiler.
 2. The parsed expression.
 3. The initial SILGen.
-4. SILGen after SILLinking has occured.
-5. SILGen after SILLinking and Guaranteed Optimizations have occured.
+4. SILGen after SILLinking has occurred.
+5. SILGen after SILLinking and Guaranteed Optimizations have occurred.
 6. The resulting LLVM IR.
 7. The assembly code that will be used by the JIT.
 
@@ -485,7 +567,7 @@ such a situation, run all expressions before the bad expression, turn on the
 logging, and only then run the bad expression.
 
 Multiple Logs at a Time
-```````````````````````
+-----------------------
 
 Note, you can also turn on more than one log at a time as well, e.x.::
 
